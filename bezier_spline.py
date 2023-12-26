@@ -51,6 +51,7 @@ class BezierCurve:
     def __init__(self) -> None:
         self.nodes = [Point() for _ in range(4)]
         self.fixed_nodes = {}
+        self.binded_nodes = {}
         
     def X(self, t:float) -> float:
         k1_x = self.nodes[0].x
@@ -85,18 +86,31 @@ class BezierCurve:
     def fixnode(self, node_idx:int, coord:str, value:float):
         key = str(node_idx) + '_' + coord
         self.fixed_nodes[key] = value
+        if key in self.binded_nodes.keys(): del self.binded_nodes[key]
         if coord == 'x': self.nodes[node_idx-1].x = value
         else: self.nodes[node_idx-1].y = value
     
+    def bindnode(self, node_idx:int, pivot_node_idx:int, coord:str):
+        key = str(node_idx) + '_' + coord
+        self.binded_nodes[key] = pivot_node_idx
+        if key in self.fixed_nodes.keys(): del self.fixed_nodes[key]
+        
+        if coord == 'x': self.nodes[node_idx-1].x = self.nodes[pivot_node_idx-1].x
+        else: self.nodes[node_idx-1].y = self.nodes[pivot_node_idx-1].y
+    
     def get_chromo_length(self) -> int:
-        return 8 - len(self.fixed_nodes.keys())
+        return 8 - len(self.fixed_nodes.keys()) - len(self.binded_nodes.keys())
     
     def set_chromo(self, chromo:list):
         chromo_i = 0
         for node_idx in range(4):
             for coord in ['x', 'y']:
                 key = str(node_idx+1) + '_' + coord
-                if key not in self.fixed_nodes.keys():
+
+                if key in self.binded_nodes.keys():
+                    self.nodes[node_idx].set_coord(coord, self.nodes[self.binded_nodes[key]-1].get_coord(coord))
+
+                elif key not in self.fixed_nodes.keys():
                     self.nodes[node_idx].set_coord(coord, chromo[chromo_i])
                     chromo_i += 1
     
