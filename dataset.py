@@ -24,7 +24,7 @@ class Dataset:
     def func(self, x:float) -> float:
         pass
 
-    def inrange(self, dp:DataPoint, scale:float=2.5) -> bool:
+    def inrange(self, dp:DataPoint, scale:float=1.) -> bool:
         x_padd = (self.xu - self.xl) * scale
         y_padd = (self.yu - self.yl) * scale
         
@@ -68,9 +68,9 @@ class MagmanDataset(Dataset):
     def __init__(self) -> None:
         super().__init__()
         self.xl = -2.
-        self.xu = 0.
+        self.xu = 2.
         self.yl = -1.
-        self.yu = 1
+        self.yu = 1.
 
         self.c1 = 1.4
         self.c2 = 1.2
