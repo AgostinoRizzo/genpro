@@ -39,7 +39,7 @@ class Dataset:
         plt.clf()
 
         for dp in self.data:
-            plt.plot(dp.x, dp.y, 'bo')
+            plt.plot(dp.x, dp.y, 'bo', markersize=1)
 
 class PolyDataset(Dataset):   
     def __init__(self) -> None:
@@ -50,7 +50,7 @@ class PolyDataset(Dataset):
         self.yu = 1.
      
     def func(self, x: float) -> float:
-        return x
+        return x**2
 
 class TrigonDataset(Dataset):   
     def __init__(self) -> None:

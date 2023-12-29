@@ -191,7 +191,7 @@ class BezierCurve:
                     S.inrange_xy(self.getx(2), self.gety(2)) and \
                     S.inrange_xy(self.getx(3), self.gety(3)) and \
                     S.inrange_xy(self.getx(4), self.gety(4))
-        if not inrange: return False
+        #if not inrange: return False
 
         if self.getx(1) > self.getx(4): return False
         if self.getx(2) > self.getx(3): return False
