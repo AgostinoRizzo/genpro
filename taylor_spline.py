@@ -70,7 +70,7 @@ def _callback_generation(ga_instance):
 def _init_ga():
     fitness_function = _fitfunc
 
-    num_generations = 300
+    num_generations = 500
     num_parents_mating = 4
 
     sol_per_pop = 100
@@ -122,7 +122,7 @@ class TaylorSpline:
         self.deriv = [0 for _ in range(degree+1)]
         self.xl = xl
         self.xu = xu
-        self.inters_point:dataset.DataPoint() = None
+        self.fixed_deriv = {}
     
     def set_deriv(self, deriv:list):
         self.deriv = deriv
@@ -130,21 +130,23 @@ class TaylorSpline:
     def y(self, x:float) -> float:
         degree = len(self.deriv)
         y = 0.
-
-        if self.inters_point is None:
-            for n in range(degree):
-                y += (self.deriv[n] / math.factorial(n)) * ((x - self.x0) ** n)
-        else:
-            y += self.inters_point.y
-            for n in range(1, degree):
-                y -= (self.deriv[n] / math.factorial(n)) * ((self.inters_point.x - self.x0) ** n)
-            for n in range(1, degree):
-                y += (self.deriv[n] / math.factorial(n)) * ((x - self.x0) ** n)
+        for n in range(degree):
+            y += (self.deriv[n] / math.factorial(n)) * ((x - self.x0) ** n)
+        
         return y
     
-    def set_inters_point(self, x:float, y:float):
-        self.inters_point = dataset.DataPoint(x, y)
+    def y_prime(self, x:float) -> float:
+        degree = len(self.deriv)
+        y_prime = 0.
+        for n in range(1, degree):
+            y_prime += (self.deriv[n] / math.factorial(n)) * n * ((x - self.x0) ** (n-1))
+        
+        return y_prime
     
+    def fix_deriv(self, degree:int, value:float):
+        self.fixed_deriv[degree] = value
+        self.deriv[degree] = value
+
     def fitness(self, S:dataset.Dataset) -> float:
         sse = 0.
         with_limits = self.xl is not None and self.xu is not None
@@ -154,10 +156,15 @@ class TaylorSpline:
         return -sse
 
     def get_chromo_length(self) -> int:
-        return len(self.deriv)
+        return len(self.deriv) - len(self.fixed_deriv.keys())
 
     def set_chromo(self, chromo:np.array):
-        self.deriv = chromo.tolist()
+        chromo = chromo.tolist()
+        chromo_idx = 0
+        for didx in range(len(self.deriv)):
+            if didx not in self.fixed_deriv.keys():
+                self.deriv[didx] = chromo[chromo_idx]
+                chromo_idx += 1
 
     def fit(self, S:dataset.Dataset, silent:bool=False):
         global _S
@@ -178,36 +185,73 @@ class TaylorSpline:
         xl = -5 if self.xl is None else self.xl  # TODO: fix it (default)
         xu = -5 if self.xu is None else self.xu  # TODO: fix it (default)
         x = np.linspace(xl, xu, 100)
-        plt.plot(x, self.y(x), color='red')
+        plt.plot(x, self.y(x))
+        plt.ylim(-2, 2) 
         if show: plt.show()
 
 
 class TaylorSplineConnector:
-    def __init__(self, steps:float) -> None:
-        self.steps = steps
     
     def fit(self, S:dataset.Dataset) -> list:
-        stepsize = (S.xu - S.xl) / self.steps
-        stepsize_2 = stepsize / 2.
-        padding = 0.8
-        print(f"Stepsize = {stepsize}; stepsize_2 = {stepsize_2}; padding = {padding}")
+        exp_radius = (S.xu - S.xl) * 0.1  # TODO: fix it or as hyper-parameter
+        print(f"ExpRadius = {exp_radius}")
 
-        x0 = S.xl + stepsize_2
-        join_x = None
-        join_y = None
+        x0 = (S.xu + S.xl) / 2. # TODO: fix it or as hyper-parameter
         tsplines = []
 
-        while x0 <= S.xu:
-            tspline = TaylorSpline(x0, 3, x0-stepsize_2, x0+stepsize_2)
-            if join_x is not None:
-                tspline.set_inters_point(join_x, join_y)
-            
-            print(f"Fitting on x0 = {x0} from {x0-stepsize_2} to {x0+stepsize_2}")
-            tspline.fit(S, silent=True)
+        # fit root spline
+        tspline_root = TaylorSpline(x0, 3, x0-exp_radius, x0+exp_radius)
+        print(f"Fitting root on x0 = {x0} to [{x0-exp_radius}, {x0+exp_radius}]")
+        tspline_root.fit(S, silent=True)
+        tspline_root.xl = x0 - exp_radius * 0.8
+        tspline_root.xu = x0 + exp_radius * 0.8
 
-            join_x = x0+stepsize_2 - padding
-            join_y = tspline.y(join_x)
-            x0 += stepsize - padding
+        #
+        # expand to the right
+        #
+        x0_root = x0
+        x0 += exp_radius * 0.8  # TODO: fix it or hyper-parameter
+        join_y = tspline_root.y(x0)
+        join_deriv = tspline_root.y_prime(x0)
+        tsplines.append(tspline_root)
+
+        while x0 < S.xu:
+            tspline = TaylorSpline(x0, 3, x0-exp_radius, x0+exp_radius)
+            if join_y is not None:
+                tspline.fix_deriv(0, join_y)
+                tspline.fix_deriv(1, join_deriv)
+            
+            print(f"Fitting (to right) on x0 = {x0} to [{x0-exp_radius}, {x0+exp_radius}]")
+            tspline.fit(S, silent=True)
+            tspline.xl = x0
+            tspline.xu = x0 + exp_radius * 0.8
+
+            x0 += exp_radius * 0.8  # TODO: fix it or hyper-parameter
+            join_y = tspline.y(x0)
+            join_deriv = tspline.y_prime(x0)
+            tsplines.append(tspline)
+        
+        #
+        # expand to the left
+        #
+        x0 = x0_root - exp_radius * 0.8  # TODO: fix it or hyper-parameter
+        join_y = tspline_root.y(x0)
+        join_deriv = tspline_root.y_prime(x0)
+
+        while x0 > S.xl:  # expand to the left
+            tspline = TaylorSpline(x0, 3, x0-exp_radius, x0+exp_radius)
+            if join_y is not None:
+                tspline.fix_deriv(0, join_y)
+                tspline.fix_deriv(1, join_deriv)
+            
+            print(f"Fitting (to left) on x0 = {x0} to [{x0-exp_radius}, {x0+exp_radius}]")
+            tspline.fit(S, silent=True)
+            tspline.xl = x0 - exp_radius * 0.8
+            tspline.xu = x0
+
+            x0 -= exp_radius * 0.8  # TODO: fix it or hyper-parameter
+            join_y = tspline.y(x0)
+            join_deriv = tspline.y_prime(x0)
             tsplines.append(tspline)
         
         return tsplines
