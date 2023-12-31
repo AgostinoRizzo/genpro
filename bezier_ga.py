@@ -43,19 +43,20 @@ def __crossover_func(parents, offspring_size, ga_instance):  # single point cros
     return np.array(offspring)
 
 def __mutation_func(offspring, ga_instance):
+    coord_map = __spline.get_chromo_coordmap()
     for chromosome_idx in range(offspring.shape[0]):
         random_gene_idx = np.random.choice(range(offspring.shape[1]))
 
         added = False
-        for _ in range(100):
-            delta = min((__S.xu-__S.xl)*0.1*0.5, (__S.yu-__S.yl)*0.1*0.5)
-            delta = np.random.uniform(-delta, delta)  # TODO: choose it
+        for _ in range(10000):
+            delta = (__S.xu-__S.xl)*0.5*0.5 if coord_map[random_gene_idx] == 'x' else (__S.yu-__S.yl)*0.5*0.5
+            delta = np.random.uniform(-delta, delta)
             mutated = offspring[chromosome_idx].copy()
             mutated[random_gene_idx] += delta
             __spline.set_chromo(mutated)
             
             if __spline.isvalid(__S):
-                offspring[chromosome_idx, random_gene_idx] += delta
+                offspring[chromosome_idx][random_gene_idx] += delta
                 added = True
                 break
         
@@ -66,13 +67,18 @@ def __mutation_func(offspring, ga_instance):
 
 def __create_initial_population(size:int) -> np.array:
     pop = []
-    chromo_len = __spline.get_chromo_length()
+    chromo_len  = __spline.get_chromo_length()
+    chromo_cmap = __spline.get_chromo_coordmap()
     for _ in range(size):
         added = False
         for _ in range(100000):
             chromo = []
-            for _ in range(chromo_len):
-                chromo.append(random.uniform(__S.xl, __S.xu))  # TODO: adjust limits
+            for ci in range(chromo_len):
+                l = None; u = None
+                if chromo_cmap[ci] == 'x': l = __S.xl; u = __S.xu
+                else: l = __S.yl; u = __S.yu
+
+                chromo.append(random.uniform(l, u))
             
             __spline.set_chromo(np.array(chromo))
             if __spline.isvalid(__S):
@@ -158,7 +164,7 @@ def fit_spline_local(S:dataset.Dataset):
 
     __S = S
 
-    n_curves = 1
+    n_curves = 2
     xfix = S.xl
     spline_connector = bezier_spline.BezierCurveConnector(S.xl, S.xu)
 
@@ -167,7 +173,8 @@ def fit_spline_local(S:dataset.Dataset):
         c: bezier_spline.BezierCurve = bezier_spline.BezierCurve()
         
         c.fixnode(1, 'x', xfix)
-        #if ic == n_curves-1: c.fixnode(4, 'x', S.xu)
+        if ic == n_curves-1: c.fixnode(4, 'x', S.xu)
+        else: c.fixnode(4, 'x', 0.)
         
         __spline = c
         __function_inputs = c.get_chromo_length()

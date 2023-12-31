@@ -137,6 +137,16 @@ class BezierCurve:
     def get_chromo_length(self) -> int:
         return 8 - len(self.fixed_nodes.keys()) - len(self.binded_nodes.keys())
     
+    def get_chromo_coordmap(self) -> list:
+        cmap = []
+        for node_idx in range(4):
+            for coord in ['x', 'y']:
+                key = str(node_idx+1) + '_' + coord
+                
+                if key not in self.binded_nodes.keys() and key not in self.fixed_nodes.keys():
+                    cmap.append(coord)
+        return cmap
+    
     def get_chromo(self) -> list:
         chromo = []
         for node_idx in range(4):
@@ -226,7 +236,6 @@ class BezierCurve:
         plt.plot([self.getx(3), self.getx(4)], [self.gety(3), self.gety(4)], 'ro', linestyle="--")
     
 
-
 class BezierCurveConnector:
     def __init__(self, xl:float, xu:float) -> None:
         self.curves = []
@@ -288,14 +297,6 @@ class BezierCurveConnector:
 
             self.curves[i].set_chromo(sub_chromo)
             chromo = chromo[5:]
-        
-        """xintv = self.xu - self.xl
-        xstep = xintv / len(self.curves)
-        x = self.xl
-        for c in self.curves:
-            c.getnode(1).x = x
-            x += xstep
-            c.getnode(4).x = x"""
     
     def isvalid(self, S:Dataset) -> bool:
         for c in self.curves:
@@ -311,6 +312,3 @@ class BezierCurveConnector:
     def plot(self):
         for c in self.curves:
             c.plot()
-
-
-
