@@ -4,6 +4,7 @@ import numpy as np
 from matplotlib import pyplot as plt
 from IPython.display import clear_output
 import pygad
+import sympy
 
 import dataset
 
@@ -126,6 +127,9 @@ class TaylorSpline:
     
     def set_deriv(self, deriv:list):
         self.deriv = deriv
+    
+    def get_degree(self) -> int:
+        return len(self.deriv)
 
     def y(self, x:float) -> float:
         degree = len(self.deriv)
@@ -167,6 +171,7 @@ class TaylorSpline:
                 chromo_idx += 1
 
     def fit(self, S:dataset.Dataset, silent:bool=False):
+        """
         global _S
         global _tspline
         global _function_inputs
@@ -180,6 +185,13 @@ class TaylorSpline:
         ga_instance.run()
         solution = _ga_output(ga_instance)
         self.set_chromo(solution)
+        """
+        tspline_solver = TaylorSplineSolver(self, S)
+        sol = tspline_solver.solve(silent=silent)
+
+        for d in sol.keys():
+            order = int(str(d)[1])
+            self.deriv[order] = sol[d]
 
     def plot(self, show:bool=True):
         xl = -5 if self.xl is None else self.xl  # TODO: fix it (default)
@@ -190,17 +202,57 @@ class TaylorSpline:
         if show: plt.show()
 
 
+class TaylorSplineSolver:
+    def __init__(self, tspline:TaylorSpline, S:dataset.Dataset) -> None:
+        self.tspline = tspline
+        self.S = S
+    
+    def solve(self, silent:bool=False):
+        degree = self.tspline.get_degree()
+        unknowns = sympy.symbols(f"d0:{degree}")
+        x_deltas = []
+        y_deltas = []
+        if not silent: print('Degree: ' + str(degree) + '; Unknowns: ' + str(unknowns))
+        
+        for dp in self.S.data:
+            if dp.x < self.tspline.xl or dp.x > self.tspline.xu: continue
+
+            x_delta = dp.x - self.tspline.x0
+            x_deltas.append(x_delta)
+
+            y_delta = 0.
+            for n in range(degree):
+                y_delta += unknowns[n] * ((x_delta ** n) / math.factorial(n))
+            y_delta -= dp.y
+            y_deltas.append(y_delta)
+        
+        if not silent: print("Generating equations...")
+        eqs = []
+        for n in range(degree):
+            deriv_wrt_n = 0.
+            n_factorial = math.factorial(n)
+            
+            for i in range(len(x_deltas)):
+                #deriv_wrt_n += 2 * y_deltas[i] * ((x_deltas[i] ** n) / math.factorial(n))
+                deriv_wrt_n += y_deltas[i] * ((x_deltas[i] ** n) / n_factorial)
+            eqs.append(deriv_wrt_n)
+
+        if not silent: print('Solving...')
+        return sympy.solve(eqs)
+            
+            
+
 class TaylorSplineConnector:
     
-    def fit(self, S:dataset.Dataset) -> list:
-        exp_radius = (S.xu - S.xl) * 0.1  # TODO: fix it or as hyper-parameter
+    def fit(self, S:dataset.Dataset, spline_degree:int) -> list:
+        exp_radius = (S.xu - S.xl) * 0.2  # TODO: fix it or as hyper-parameter
         print(f"ExpRadius = {exp_radius}")
 
         x0 = (S.xu + S.xl) / 2. # TODO: fix it or as hyper-parameter
         tsplines = []
 
         # fit root spline
-        tspline_root = TaylorSpline(x0, 3, x0-exp_radius, x0+exp_radius)
+        tspline_root = TaylorSpline(x0, spline_degree, x0-exp_radius, x0+exp_radius)
         print(f"Fitting root on x0 = {x0} to [{x0-exp_radius}, {x0+exp_radius}]")
         tspline_root.fit(S, silent=True)
         tspline_root.xl = x0 - exp_radius * 0.8
@@ -216,7 +268,7 @@ class TaylorSplineConnector:
         tsplines.append(tspline_root)
 
         while x0 < S.xu:
-            tspline = TaylorSpline(x0, 3, x0-exp_radius, x0+exp_radius)
+            tspline = TaylorSpline(x0, spline_degree, x0-exp_radius, x0+exp_radius)
             if join_y is not None:
                 tspline.fix_deriv(0, join_y)
                 tspline.fix_deriv(1, join_deriv)
@@ -239,7 +291,7 @@ class TaylorSplineConnector:
         join_deriv = tspline_root.y_prime(x0)
 
         while x0 > S.xl:  # expand to the left
-            tspline = TaylorSpline(x0, 3, x0-exp_radius, x0+exp_radius)
+            tspline = TaylorSpline(x0, spline_degree, x0-exp_radius, x0+exp_radius)
             if join_y is not None:
                 tspline.fix_deriv(0, join_y)
                 tspline.fix_deriv(1, join_deriv)
