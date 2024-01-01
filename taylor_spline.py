@@ -170,28 +170,32 @@ class TaylorSpline:
                 self.deriv[didx] = chromo[chromo_idx]
                 chromo_idx += 1
 
-    def fit(self, S:dataset.Dataset, silent:bool=False):
-        """
-        global _S
-        global _tspline
-        global _function_inputs
-        global _silent
+    def fit(self, S:dataset.Dataset, silent:bool=False, method:str='linsys'):
+        if method == 'ga':
+            global _S
+            global _tspline
+            global _function_inputs
+            global _silent
 
-        _S = S
-        _tspline = self
-        _function_inputs = self.get_chromo_length()
-        _silent = silent
-        ga_instance = _init_ga()
-        ga_instance.run()
-        solution = _ga_output(ga_instance)
-        self.set_chromo(solution)
-        """
-        tspline_solver = TaylorSplineSolver(self, S)
-        sol = tspline_solver.solve(silent=silent)
+            _S = S
+            _tspline = self
+            _function_inputs = self.get_chromo_length()
+            _silent = silent
+            ga_instance = _init_ga()
+            ga_instance.run()
+            solution = _ga_output(ga_instance)
+            self.set_chromo(solution)
+        
+        elif method == 'linsys':
+            tspline_solver = TaylorSplineSolver(self, S)
+            sol = tspline_solver.solve(silent=silent)
 
-        for d in sol.keys():
-            order = int(str(d)[1])
-            self.deriv[order] = sol[d]
+            for d in sol.keys():
+                order = int(str(d)[1])
+                self.deriv[order] = sol[d]
+        
+        else:
+            raise RuntimeError('Invalid fitting method.')
 
     def plot(self, show:bool=True):
         xl = -5 if self.xl is None else self.xl  # TODO: fix it (default)
@@ -237,8 +241,28 @@ class TaylorSplineSolver:
                 deriv_wrt_n += y_deltas[i] * ((x_deltas[i] ** n) / n_factorial)
             eqs.append(deriv_wrt_n)
 
+        #
+        # add equations for fixed derivatives.
+        #
+        fixed_deriv_map = {}
+        unknowns_tmp = []
+
+        for didx in self.tspline.fixed_deriv.keys():
+            fixed_deriv_map[unknowns[didx]] = self.tspline.fixed_deriv[didx]
+        
+        for n in range(degree):
+            if n not in self.tspline.fixed_deriv.keys():
+                unknowns_tmp.append(unknowns[n])
+        unknowns = unknowns_tmp
+        
+        for eqidx in range(len(eqs)):
+            eqs[eqidx] = eqs[eqidx].subs(fixed_deriv_map)
+        eqs = eqs[:len(unknowns)]
+
         if not silent: print('Solving...')
-        return sympy.solve(eqs)
+        res = sympy.solve(eqs, *unknowns)
+        if not silent: print("Result: " + str(res))
+        return res
             
             
 
