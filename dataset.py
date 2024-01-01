@@ -18,7 +18,7 @@ class Dataset:
         y_noise = (self.yu - self.yl) * noise * 0.5
         for _ in range(size):
             x = random.uniform(self.xl, self.xu)
-            y = self.func(x) + (0. if noise == 0. else random.uniform(-y_noise, y_noise))
+            y = self.func(x) + (0. if noise == 0. else random.gauss(sigma=y_noise))
             self.data.append(DataPoint(x, y))
     
     def func(self, x:float) -> float:
