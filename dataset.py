@@ -7,16 +7,22 @@ class DataPoint:
         self.x = x
         self.y = y
 
+
 class DataKnowledge:
-    def __init__(self) -> None:
-        self.points = []
+    def __init__(self, dataset) -> None:
+        self.dataset = dataset
+        self.derivs = {}
     
-    def add_point(self, p:DataPoint):
-        self.points.append(p)
+    def add_deriv(self, d:int, xy:DataPoint):
+        if d not in self.derivs.keys():
+            self.derivs[d] = []
+        self.derivs[d].append(xy)
     
     def plot(self):
-        for dp in self.points:
-            plt.plot(dp.x, dp.y, 'rx', markersize=10)
+        if 0 in self.derivs.keys():
+            for xy in self.derivs[0]:
+                plt.plot(xy.x, xy.y, 'rx', markersize=10)
+            
 
 class Dataset:
     def __init__(self) -> None:
@@ -25,7 +31,7 @@ class Dataset:
         self.xu = 1.
         self.yl = 0.
         self.yu = 1.
-        self.knowledge = DataKnowledge()
+        self.knowledge = DataKnowledge(self)
     
     def sample(self, size:int=100, noise:float=0.):
         y_noise = (self.yu - self.yl) * noise * 0.5
@@ -74,11 +80,17 @@ class TrigonDataset(Dataset):
         self.xu = 5.
         self.yl = -1.
         self.yu = 1.
-        self.knowledge.add_point(DataPoint( 0., 0.))
-        self.knowledge.add_point(DataPoint(  .5*math.pi,  1.))
-        self.knowledge.add_point(DataPoint( -.5*math.pi, -1.))
-        self.knowledge.add_point(DataPoint( 1.5*math.pi, -1.))
-        self.knowledge.add_point(DataPoint(-1.5*math.pi,  1.))
+
+        self.knowledge.add_deriv(0, DataPoint( 0., 0.))
+        self.knowledge.add_deriv(0, DataPoint(  .5*math.pi,  1.))
+        self.knowledge.add_deriv(0, DataPoint( -.5*math.pi, -1.))
+        self.knowledge.add_deriv(0, DataPoint( 1.5*math.pi, -1.))
+        self.knowledge.add_deriv(0, DataPoint(-1.5*math.pi,  1.))
+
+        self.knowledge.add_deriv(1, DataPoint(  .5*math.pi,  0.))
+        self.knowledge.add_deriv(1, DataPoint( -.5*math.pi,  0.))
+        self.knowledge.add_deriv(1, DataPoint( 1.5*math.pi,  0.))
+        self.knowledge.add_deriv(1, DataPoint(-1.5*math.pi,  0.))
      
     def func(self, x: float) -> float:
         return math.sin(x)
