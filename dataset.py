@@ -74,10 +74,11 @@ class TrigonDataset(Dataset):
         self.xu = 5.
         self.yl = -1.
         self.yu = 1.
-        self.knowledge.add_point(DataPoint(0., 0.))
-        self.knowledge.add_point(DataPoint(1., -0.5))
-        self.knowledge.add_point(DataPoint( .5*math.pi,  0.8))
-        self.knowledge.add_point(DataPoint(-.5*math.pi, -0.8))
+        self.knowledge.add_point(DataPoint( 0., 0.))
+        self.knowledge.add_point(DataPoint(  .5*math.pi,  1.))
+        self.knowledge.add_point(DataPoint( -.5*math.pi, -1.))
+        self.knowledge.add_point(DataPoint( 1.5*math.pi, -1.))
+        self.knowledge.add_point(DataPoint(-1.5*math.pi,  1.))
      
     def func(self, x: float) -> float:
         return math.sin(x)
