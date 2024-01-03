@@ -1,10 +1,22 @@
 import random
+import math
 import matplotlib.pyplot as plt
 
 class DataPoint:
     def __init__(self, x:float, y:float) -> None:
         self.x = x
         self.y = y
+
+class DataKnowledge:
+    def __init__(self) -> None:
+        self.points = []
+    
+    def add_point(self, p:DataPoint):
+        self.points.append(p)
+    
+    def plot(self):
+        for dp in self.points:
+            plt.plot(dp.x, dp.y, 'rx', markersize=10)
 
 class Dataset:
     def __init__(self) -> None:
@@ -13,6 +25,7 @@ class Dataset:
         self.xu = 1.
         self.yl = 0.
         self.yu = 1.
+        self.knowledge = DataKnowledge()
     
     def sample(self, size:int=100, noise:float=0.):
         y_noise = (self.yu - self.yl) * noise * 0.5
@@ -40,6 +53,8 @@ class Dataset:
 
         for dp in self.data:
             plt.plot(dp.x, dp.y, 'bo', markersize=1)
+        
+        self.knowledge.plot()
 
 class PolyDataset(Dataset):   
     def __init__(self) -> None:
@@ -59,9 +74,12 @@ class TrigonDataset(Dataset):
         self.xu = 5.
         self.yl = -1.
         self.yu = 1.
+        self.knowledge.add_point(DataPoint(0., 0.))
+        self.knowledge.add_point(DataPoint(1., -0.5))
+        self.knowledge.add_point(DataPoint( .5*math.pi,  0.8))
+        self.knowledge.add_point(DataPoint(-.5*math.pi, -0.8))
      
     def func(self, x: float) -> float:
-        import math
         return math.sin(x)
 
 class MagmanDataset(Dataset):

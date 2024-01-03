@@ -124,6 +124,7 @@ class TaylorSpline:
         self.xl = xl
         self.xu = xu
         self.fixed_deriv = {}
+        self.inters_points = []
     
     def set_deriv(self, deriv:list):
         self.deriv = deriv
@@ -150,6 +151,11 @@ class TaylorSpline:
     def fix_deriv(self, degree:int, value:float):
         self.fixed_deriv[degree] = value
         self.deriv[degree] = value
+    
+    def intersect(self, *points:dataset.DataPoint):
+        for p in points:
+            if p.x >= self.xl and p.x <= self.xu:
+                self.inters_points.append(p)
 
     def fitness(self, S:dataset.Dataset) -> float:
         sse = 0.
@@ -192,7 +198,18 @@ class TaylorSpline:
 
             for d in sol.keys():
                 order = int(str(d)[1])
-                self.deriv[order] = sol[d]
+                sol_d = sol[d]
+                if type(sol_d) not in [float, int] and len(sol_d.free_symbols) > 0:
+                    for d in sol_d.free_symbols: sol_d = sol_d.subs({d:2.}) 
+                self.deriv[order] = float(sol_d)
+            
+            for didx in range(len(self.deriv)-1, -1, -1):
+                if type(self.deriv[didx]) != float and type(self.deriv[didx]) != int:  # TODO: check sympy type
+                    sol_d = self.deriv[didx].subs(sol)
+                    if type(sol_d) not in [float, int]:
+                        for d in sol_d.free_symbols: sol_d = sol_d.subs({d:2.}) 
+                    self.deriv[didx] = float(sol_d)
+                    sol[sympy.symbols(f"d{didx}")] = self.deriv[didx]
         
         else:
             raise RuntimeError('Invalid fitting method.')
@@ -214,10 +231,26 @@ class TaylorSplineSolver:
     def solve(self, silent:bool=False):
         degree = self.tspline.get_degree()
         unknowns = sympy.symbols(f"d0:{degree}")
-        x_deltas = []
-        y_deltas = []
+        
+        #
+        # build fitness function from dataset.
+        #
+        fit_expr = 0.
+        for dp in self.S.data:
+            if dp.x < self.tspline.xl or dp.x > self.tspline.xu: continue
+            
+            point_fit_expr = 0.
+            for n in range(degree):
+                point_fit_expr += (unknowns[n] / math.factorial(n)) * ((dp.x - self.tspline.x0) ** n)
+            point_fit_expr = (point_fit_expr - dp.y) ** 2
+
+            fit_expr += point_fit_expr
+
+        #x_deltas = []
+        #y_deltas = []
         if not silent: print('Degree: ' + str(degree) + '; Unknowns: ' + str(unknowns))
         
+        """
         for dp in self.S.data:
             if dp.x < self.tspline.xl or dp.x > self.tspline.xu: continue
 
@@ -240,28 +273,79 @@ class TaylorSplineSolver:
                 #deriv_wrt_n += 2 * y_deltas[i] * ((x_deltas[i] ** n) / math.factorial(n))
                 deriv_wrt_n += y_deltas[i] * ((x_deltas[i] ** n) / n_factorial)
             eqs.append(deriv_wrt_n)
+        """
 
         #
-        # add equations for fixed derivatives.
+        # fix derivatives for intersection points.
+        #
+        inters_eqs = []
+        inters_derivs = []
+        for dp in self.tspline.inters_points:
+            x_delta = dp.x - self.tspline.x0
+            eq = dp.y
+            
+            fixed = False
+
+            for n in range(degree):  # TODO: try/check derivative order.
+                if n in self.tspline.fixed_deriv.keys() or n in inters_derivs: continue
+
+                for m in range(degree):
+                    if m == n: continue
+                    eq -= (unknowns[m] / math.factorial(m)) * (x_delta ** m)
+                eq *= math.factorial(n) / (x_delta ** n)
+                eq -= unknowns[n]
+
+                inters_eqs.append(eq)
+                inters_derivs.append(n)
+
+                fixed = True
+                break
+
+            if not fixed: raise RuntimeError(f"Cannot intersect {len(self.tspline.inters_points)} points with spline of order {degree-1}.")
+        
+        res = sympy.solve(inters_eqs, *unknowns)  # TODO: manage no solution
+        print("RES_INTERS: " + str(res))
+        for d in inters_derivs:
+            self.tspline.fix_deriv(d, res[unknowns[d]])
+            print(str(self.tspline.fixed_deriv))
+                
+
+        #
+        # substitute fixed derivatives.
         #
         fixed_deriv_map = {}
-        unknowns_tmp = []
 
         for didx in self.tspline.fixed_deriv.keys():
             fixed_deriv_map[unknowns[didx]] = self.tspline.fixed_deriv[didx]
         
+        unknowns_origin = unknowns
+        unknowns = []
+
         for n in range(degree):
             if n not in self.tspline.fixed_deriv.keys():
-                unknowns_tmp.append(unknowns[n])
-        unknowns = unknowns_tmp
+                unknowns.append(unknowns_origin[n])
         
-        for eqidx in range(len(eqs)):
-            eqs[eqidx] = eqs[eqidx].subs(fixed_deriv_map)
-        eqs = eqs[:len(unknowns)]
+        fit_expr = fit_expr.subs(fixed_deriv_map)
 
+        #
+        # generate equations.
+        #
+        if not silent: print("Generating equations...")
+        eqs = []
+        for d in unknowns:
+            eqs.append(sympy.diff(fit_expr, d))
+
+        if len(eqs) == 0:  # all derivatives are fixed (len(self.fixed_deriv) == len(deriv)).
+            if not silent: print('All derivatives already fixed (unique/trivial solution).')
+            res = {}
+            for d in self.tspline.fixed_deriv.keys():
+                res[unknowns_origin[d]] = self.tspline.fixed_deriv[d]
+            return res
+        
         if not silent: print('Solving...')
-        res = sympy.solve(eqs, *unknowns)
-        if not silent: print("Result: " + str(res))
+        
+        res = sympy.solve(eqs, *unknowns)  # TODO: manage no solution
+        if silent: print("Result: " + str(res))
         return res
             
             
@@ -278,6 +362,7 @@ class TaylorSplineConnector:
         # fit root spline
         tspline_root = TaylorSpline(x0, spline_degree, x0-exp_radius, x0+exp_radius)
         print(f"Fitting root on x0 = {x0} to [{x0-exp_radius}, {x0+exp_radius}]")
+        tspline_root.intersect(*S.knowledge.points)
         tspline_root.fit(S, silent=True)
         tspline_root.xl = x0 - exp_radius * 0.8
         tspline_root.xu = x0 + exp_radius * 0.8
@@ -291,6 +376,7 @@ class TaylorSplineConnector:
         join_deriv = tspline_root.y_prime(x0)
         tsplines.append(tspline_root)
 
+        """
         while x0 < S.xu:
             tspline = TaylorSpline(x0, spline_degree, x0-exp_radius, x0+exp_radius)
             if join_y is not None:
@@ -329,6 +415,6 @@ class TaylorSplineConnector:
             join_y = tspline.y(x0)
             join_deriv = tspline.y_prime(x0)
             tsplines.append(tspline)
-        
+        """
         return tsplines
 
