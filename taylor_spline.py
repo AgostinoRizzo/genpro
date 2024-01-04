@@ -240,6 +240,7 @@ class TaylorSplineSolver:
         #
         # build fitness function from dataset.
         #
+        if not silent: print("Building fitness function from dataset...")
         fit_expr = 0.
         for dp in self.S.data:
             if dp.x < self.tspline.xl or dp.x > self.tspline.xu: continue
@@ -311,7 +312,9 @@ class TaylorSplineSolver:
                 unknowns.append(unknowns_origin[n])
         
         fit_expr = fit_expr.subs(fixed_deriv_map)
-
+        if not silent: print('Simplifying fit expression...')
+        fit_expr = sympy.simplify(fit_expr)
+        
         #
         # generate equations.
         #
@@ -330,15 +333,16 @@ class TaylorSplineSolver:
         if not silent: print('Solving...')
         
         res = sympy.solve(eqs, *unknowns)  # TODO: manage no solution
-        if not silent: print("Result: " + str(res))
+        if not silent: print("Result: " + str(res) + "\n")
         return res
             
             
 
 class TaylorSplineConnector:
     
-    def fit(self, S:dataset.Dataset, spline_degree:int) -> list:
-        exp_radius = (S.xu - S.xl) * 0.2  # TODO: fix it or as hyper-parameter
+    def fit(self, S:dataset.Dataset, spline_degree:int, silent:bool=True) -> list:
+        exp_radius = (S.xu - S.xl) * 0.1#0.2 #0.05  # TODO: fix it or as hyper-parameter
+        exp_span = 0.3
         print(f"ExpRadius = {exp_radius}")
 
         x0 = 0. #(S.xu + S.xl) / 2. # TODO: fix it or as hyper-parameter
@@ -350,33 +354,33 @@ class TaylorSplineConnector:
         tspline_root = TaylorSpline(x0, spline_degree, x0-exp_radius, x0+exp_radius)
         print(f"Fitting root on x0 = {x0} to [{x0-exp_radius}, {x0+exp_radius}]")
         tspline_root.intersect(S.knowledge.derivs, side='all')
-        tspline_root.fit(S, silent=True)
-        tspline_root.xl = x0 - exp_radius * 0.8
-        tspline_root.xu = x0 + exp_radius * 0.8
+        tspline_root.fit(S, silent=silent)
+        tspline_root.xl = x0 - exp_radius * exp_span
+        tspline_root.xu = x0 + exp_radius * exp_span
 
         #
         # expand to the right
         #
         x0_root = x0
-        x0 += exp_radius * 0.8  # TODO: fix it or hyper-parameter
+        x0 += exp_radius * exp_span  # TODO: fix it or hyper-parameter
         join_y = tspline_root.y(x0)
         join_deriv = tspline_root.y_prime(x0)
         tsplines.append(tspline_root)
 
-        
+        k = 0
         while x0 < S.xu:
-            tspline = TaylorSpline(x0, spline_degree, x0-exp_radius, x0+exp_radius)
+            tspline = TaylorSpline(x0, spline_degree, x0, x0+exp_radius)
             if join_y is not None:
                 tspline.fix_deriv(0, join_y)
                 tspline.fix_deriv(1, join_deriv)
             
             print(f"Fitting (to right) on x0 = {x0} to [{x0-exp_radius}, {x0+exp_radius}]")
             tspline.intersect(S.knowledge.derivs, side='right')
-            tspline.fit(S, silent=True)
+            tspline.fit(S, silent=silent)
             tspline.xl = x0
-            tspline.xu = x0 + exp_radius * 0.8
+            tspline.xu = x0 + exp_radius * exp_span
 
-            x0 += exp_radius * 0.8  # TODO: fix it or hyper-parameter
+            x0 += exp_radius * exp_span  # TODO: fix it or hyper-parameter
             join_y = tspline.y(x0)
             join_deriv = tspline.y_prime(x0)
             tsplines.append(tspline)
@@ -384,23 +388,23 @@ class TaylorSplineConnector:
         #
         # expand to the left
         #
-        x0 = x0_root - exp_radius * 0.8  # TODO: fix it or hyper-parameter
+        x0 = x0_root - exp_radius * exp_span  # TODO: fix it or hyper-parameter
         join_y = tspline_root.y(x0)
         join_deriv = tspline_root.y_prime(x0)
 
         while x0 > S.xl:  # expand to the left
-            tspline = TaylorSpline(x0, spline_degree, x0-exp_radius, x0+exp_radius)
+            tspline = TaylorSpline(x0, spline_degree, x0-exp_radius, x0)
             if join_y is not None:
                 tspline.fix_deriv(0, join_y)
                 tspline.fix_deriv(1, join_deriv)
             
             print(f"Fitting (to left) on x0 = {x0} to [{x0-exp_radius}, {x0+exp_radius}]")
             tspline.intersect(S.knowledge.derivs, side='left')
-            tspline.fit(S, silent=True)
-            tspline.xl = x0 - exp_radius * 0.8
+            tspline.fit(S, silent=silent)
+            tspline.xl = x0 - exp_radius * exp_span
             tspline.xu = x0
 
-            x0 -= exp_radius * 0.8  # TODO: fix it or hyper-parameter
+            x0 -= exp_radius * exp_span  # TODO: fix it or hyper-parameter
             join_y = tspline.y(x0)
             join_deriv = tspline.y_prime(x0)
             tsplines.append(tspline)

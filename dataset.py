@@ -76,8 +76,8 @@ class PolyDataset(Dataset):
 class TrigonDataset(Dataset):   
     def __init__(self) -> None:
         super().__init__()
-        self.xl = -5.
-        self.xu = 5.
+        self.xl = -20.
+        self.xu = 20.
         self.yl = -1.
         self.yu = 1.
 
@@ -106,6 +106,15 @@ class MagmanDataset(Dataset):
         self.c1 = 1.4
         self.c2 = 1.2
         self.i = 7.
+
+        self.knowledge.add_deriv(0, DataPoint( 0., 0.))
+        self.knowledge.add_deriv(0, DataPoint(-0.5,  1.6))
+        self.knowledge.add_deriv(0, DataPoint( 0.5, -1.6))
+        self.knowledge.add_deriv(0, DataPoint(self.xl,  0.1))
+        self.knowledge.add_deriv(0, DataPoint(self.xu, -0.1))
+
+        self.knowledge.add_deriv(1, DataPoint(-0.5,  0.))
+        self.knowledge.add_deriv(1, DataPoint( 0.5,  0.))
     
     def func(self, x: float) -> float:
         return -self.i*self.c1*x / (x**2 + self.c2)**3
