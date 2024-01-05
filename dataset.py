@@ -6,6 +6,9 @@ class DataPoint:
     def __init__(self, x:float, y:float) -> None:
         self.x = x
         self.y = y
+    
+    def distance(self, other) -> float:
+        return math.sqrt((other.x-self.x)**2 + (other.y-self.y)**2)
 
 
 class DataKnowledge:
@@ -61,6 +64,7 @@ class Dataset:
             plt.plot(dp.x, dp.y, 'bo', markersize=1)
         
         self.knowledge.plot()
+
 
 class PolyDataset(Dataset):   
     def __init__(self) -> None:

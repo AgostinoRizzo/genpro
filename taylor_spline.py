@@ -120,7 +120,7 @@ def _ga_output(ga_instance):
 class TaylorSpline:
     def __init__(self, x0:float, degree:int=1, xl:float=None, xu:float=None) -> None:
         self.x0 = x0
-        self.deriv = [0 for _ in range(degree+1)]
+        self.deriv = [0. for _ in range(degree+1)]
         self.xl = xl
         self.xu = xu
         self.fixed_deriv = {}
@@ -217,6 +217,18 @@ class TaylorSpline:
         
         else:
             raise RuntimeError('Invalid fitting method.')
+    
+    def compute_length(self) -> float:
+        dx = (self.xu - self.xl) * 0.1
+        x = self.xl + dx
+        l = 0.
+        prev_point = dataset.DataPoint(self.xl, self.y(self.xl))
+        while x < self.xu:
+            curr_point = dataset.DataPoint(x, self.y(x))
+            l += prev_point.distance(curr_point)
+            prev_point = curr_point
+            x += dx
+        return l
 
     def plot(self, show:bool=True):
         xl = -5 if self.xl is None else self.xl  # TODO: fix it (default)
@@ -231,8 +243,8 @@ class TaylorSplineSolver:
     def __init__(self, tspline:TaylorSpline, S:dataset.Dataset) -> None:
         self.tspline = tspline
         self.S = S
-    
-    def solve(self, silent:bool=False):
+      
+    def solve(self, silent:bool=False) -> dict:
         degree = self.tspline.get_degree()
         unknowns = sympy.symbols(f"d0:{degree}")
         x = sympy.symbols('x')
@@ -240,21 +252,9 @@ class TaylorSplineSolver:
         #
         # build fitness function from dataset.
         #
-        if not silent: print("Building fitness function from dataset...")
-        fit_expr = 0.
-        for dp in self.S.data:
-            if dp.x < self.tspline.xl or dp.x > self.tspline.xu: continue
-            
-            point_fit_expr = 0.
-            for n in range(degree):
-                point_fit_expr += (unknowns[n] / math.factorial(n)) * ((dp.x - self.tspline.x0) ** n)
-            point_fit_expr = (point_fit_expr - dp.y) ** 2
-
-            fit_expr += point_fit_expr
-
-        if not silent: print('Degree: ' + str(degree) + '; Unknowns: ' + str(unknowns))
+        fit_expr = self.__build_fitexpr(unknowns, silent)
+        if type(fit_expr) == float: return {}  # TODO: generalize type check (needed when no data points).
        
-
         #
         # fix derivatives (on x0) for intersection derivatives.
         #
@@ -312,8 +312,9 @@ class TaylorSplineSolver:
                 unknowns.append(unknowns_origin[n])
         
         fit_expr = fit_expr.subs(fixed_deriv_map)
-        if not silent: print('Simplifying fit expression...')
-        fit_expr = sympy.simplify(fit_expr)
+        #if not silent: print('Simplifying fit expression...')
+        #fit_expr = sympy.simplify(fit_expr)
+        #print(str(fit_expr))
         
         #
         # generate equations.
@@ -335,14 +336,30 @@ class TaylorSplineSolver:
         res = sympy.solve(eqs, *unknowns)  # TODO: manage no solution
         if not silent: print("Result: " + str(res) + "\n")
         return res
+    
+    def __build_fitexpr(self, unknowns:list, silent:bool=True):
+        degree = self.tspline.get_degree()
+        if not silent: print("Building fitness function from dataset...")
+        fit_expr = 0.
+        for dp in self.S.data:
+            if dp.x < self.tspline.xl or dp.x > self.tspline.xu: continue
             
+            point_fit_expr = 0.
+            for n in range(degree):
+                point_fit_expr += (unknowns[n] / math.factorial(n)) * ((dp.x - self.tspline.x0) ** n)
+            point_fit_expr = (point_fit_expr - dp.y) ** 2
+
+            fit_expr += point_fit_expr
+
+        if not silent: print('Degree: ' + str(degree) + '; Unknowns: ' + str(unknowns))
+        return fit_expr            
             
 
 class TaylorSplineConnector:
     
     def fit(self, S:dataset.Dataset, spline_degree:int, silent:bool=True) -> list:
-        exp_radius = (S.xu - S.xl) * 0.1#0.2 #0.05  # TODO: fix it or as hyper-parameter
-        exp_span = 0.3
+        exp_radius = (S.xu - S.xl) * 0.2 #0.2 #0.05  # TODO: fix it or as hyper-parameter
+        exp_span = 0.4
         print(f"ExpRadius = {exp_radius}")
 
         x0 = 0. #(S.xu + S.xl) / 2. # TODO: fix it or as hyper-parameter
@@ -351,36 +368,28 @@ class TaylorSplineConnector:
         #
         # fit root spline
         #
-        tspline_root = TaylorSpline(x0, spline_degree, x0-exp_radius, x0+exp_radius)
-        print(f"Fitting root on x0 = {x0} to [{x0-exp_radius}, {x0+exp_radius}]")
-        tspline_root.intersect(S.knowledge.derivs, side='all')
-        tspline_root.fit(S, silent=silent)
-        tspline_root.xl = x0 - exp_radius * exp_span
-        tspline_root.xu = x0 + exp_radius * exp_span
+        tspline_root, exp_radius_actual_root = TaylorSplineConnector.__fit_tspline(spline_degree+1, x0, exp_radius, exp_span, S, side='all', silent=silent)
+        tspline_root.xl = x0 - exp_radius_actual_root * exp_span  # TODO: remove it (redundant, alreadt in __fit_tspline)
+        tspline_root.xu = x0 + exp_radius_actual_root * exp_span  # TODO: remove it (redundant, alreadt in __fit_tspline)
 
         #
         # expand to the right
         #
         x0_root = x0
-        x0 += exp_radius * exp_span  # TODO: fix it or hyper-parameter
+        x0 += exp_radius_actual_root * exp_span  # TODO: fix it or hyper-parameter
         join_y = tspline_root.y(x0)
         join_deriv = tspline_root.y_prime(x0)
         tsplines.append(tspline_root)
 
-        k = 0
-        while x0 < S.xu:
-            tspline = TaylorSpline(x0, spline_degree, x0, x0+exp_radius)
-            if join_y is not None:
-                tspline.fix_deriv(0, join_y)
-                tspline.fix_deriv(1, join_deriv)
-            
-            print(f"Fitting (to right) on x0 = {x0} to [{x0-exp_radius}, {x0+exp_radius}]")
-            tspline.intersect(S.knowledge.derivs, side='right')
-            tspline.fit(S, silent=silent)
-            tspline.xl = x0
-            tspline.xu = x0 + exp_radius * exp_span
 
-            x0 += exp_radius * exp_span  # TODO: fix it or hyper-parameter
+        while x0 < S.xu:
+            tspline, exp_radius_actual = TaylorSplineConnector.__fit_tspline(spline_degree, x0, exp_radius, exp_span, 
+                                                                             S, side='right', join_y=join_y, join_deriv=join_deriv, 
+                                                                             silent=silent)
+            tspline.xl = x0
+            tspline.xu = x0 + exp_radius_actual * exp_span
+
+            x0 += exp_radius_actual * exp_span  # TODO: fix it or hyper-parameter
             join_y = tspline.y(x0)
             join_deriv = tspline.y_prime(x0)
             tsplines.append(tspline)
@@ -388,26 +397,75 @@ class TaylorSplineConnector:
         #
         # expand to the left
         #
-        x0 = x0_root - exp_radius * exp_span  # TODO: fix it or hyper-parameter
+        x0 = x0_root - exp_radius_actual_root * exp_span  # TODO: fix it or hyper-parameter
         join_y = tspline_root.y(x0)
         join_deriv = tspline_root.y_prime(x0)
 
         while x0 > S.xl:  # expand to the left
-            tspline = TaylorSpline(x0, spline_degree, x0-exp_radius, x0)
-            if join_y is not None:
-                tspline.fix_deriv(0, join_y)
-                tspline.fix_deriv(1, join_deriv)
-            
-            print(f"Fitting (to left) on x0 = {x0} to [{x0-exp_radius}, {x0+exp_radius}]")
-            tspline.intersect(S.knowledge.derivs, side='left')
-            tspline.fit(S, silent=silent)
-            tspline.xl = x0 - exp_radius * exp_span
+            tspline, exp_radius_actual = TaylorSplineConnector.__fit_tspline(spline_degree, x0, exp_radius, exp_span, 
+                                                                             S, side='left', join_y=join_y, join_deriv=join_deriv,
+                                                                             silent=silent)
+            tspline.xl = x0 - exp_radius_actual * exp_span
             tspline.xu = x0
 
-            x0 -= exp_radius * exp_span  # TODO: fix it or hyper-parameter
+            x0 -= exp_radius_actual * exp_span  # TODO: fix it or hyper-parameter
             join_y = tspline.y(x0)
             join_deriv = tspline.y_prime(x0)
             tsplines.append(tspline)
         
         return tsplines
+    
+    def __fit_tspline(spline_degree:int,
+                      x0:float, exp_radius:float, 
+                      exp_span:float,
+                      S:dataset.Dataset,
+                      side:str='all',
+                      join_y:float=None,
+                      join_deriv:float=None,
+                      silent:bool=False) -> (TaylorSpline, float):
+        exp_length = exp_radius * 2.
+        exp_radius_actual = exp_radius
+        tspline_length = 0
+        tspline = None
+        length_reached = False
+        increase_length = None
 
+        while not length_reached:
+            tspline = None
+            if   side == 'all':   tspline = TaylorSpline(x0, spline_degree, x0-exp_radius_actual, x0+exp_radius_actual)
+            elif side == 'right': tspline = TaylorSpline(x0, spline_degree, x0, x0+exp_radius_actual)
+            elif side == 'left':  tspline = TaylorSpline(x0, spline_degree, x0-exp_radius_actual, x0)
+            else: raise RuntimeError('Invalid side.')
+            
+            if join_y is not None and join_deriv is not None:
+                tspline.fix_deriv(0, join_y)
+                tspline.fix_deriv(1, join_deriv)
+            
+            print(f"Fitting on x0 = {x0} to [{x0-exp_radius_actual}, {x0+exp_radius_actual}]")
+            tspline.intersect(S.knowledge.derivs, side='all')
+            tspline.fit(S, silent=silent)
+            
+            tspline_length = tspline.compute_length()
+
+            if tspline_length == 0.:
+                exp_radius_actual = exp_radius * 0.2
+                increase_length = True
+                continue
+            
+            length_reached = True
+            if tspline_length < exp_length and (increase_length is None or increase_length):
+                exp_radius_actual += exp_radius * 0.2
+                length_reached = False
+                increase_length = True
+            elif tspline_length > exp_length and (increase_length is None or not increase_length):
+                exp_radius_actual -= exp_radius * 0.2
+                length_reached = False
+                increase_length = False
+
+            if tspline.xl < S.xl or tspline.xu > S.xu:
+                length_reached = True
+
+        tspline.xl = x0 - exp_radius_actual * exp_span
+        tspline.xu = x0 + exp_radius_actual * exp_span
+
+        return tspline, exp_radius_actual
