@@ -352,6 +352,8 @@ class TaylorSplineSolver:
         q = []
         A = []
         b = []
+        G = []
+        h = []
         lb = [-np.inf for _ in range(degree)]
         ub = [+np.inf for _ in range(degree)]
 
@@ -423,19 +425,43 @@ class TaylorSplineSolver:
                 A.append(A_row)
                 b.append(b_term)
         
+
+        #
+        # add positivity/negativity constraints.
+        #
+        import random
+        for d in self.S.knowledge.sign.keys():
+            if d != 0: raise RuntimeError('Positivity/Negativity of order != 0 not supported.')  # TODO
+            for (_l,_u,s) in self.S.knowledge.sign[d]:
+                
+                l = max(_l, self.tspline.xl)
+                u = min(_u, self.tspline.xu)
+                if l > u: continue
+                
+                for _ in range(10):  # TODO: n sample as hyper-parameter
+                    x = random.uniform(l, u)
+                    
+                    sign = -1. if s == '+' else +1.
+                    G_row = []
+                    for n in range(degree):
+                        G_row.append( (1. / math.factorial(n)) * ((x - self.tspline.x0) ** n) * sign )
+                    G.append(G_row)
+                    h.append(0.)
+
+
         #
         # solve quadprog.
         #
         if not silent: print("Solving quadprog...")
         
+        if len(G) == 0: G = None; h = None
+        else: G = np.array(G, dtype=np.double); h = np.array(h, dtype=np.double)
         if len(A) == 0: A = None; b = None
         else: A = np.array(A, dtype=np.double); b = np.array(b, dtype=np.double)
         lb = np.array(lb, dtype=np.double)
         ub = np.array(ub, dtype=np.double)
-        G = None
-        h = None
         
-        sol = solve_qp(P, q, A=A, b=b, lb=lb, ub=ub, solver="cvxopt", verbose=False)
+        sol = solve_qp(P, q, G=G, h=h, A=A, b=b, lb=lb, ub=ub, solver="cvxopt", verbose=False)
         sol_map = {}
         for n in range(degree):
             sol_map[unknowns[n]] = sol[n]

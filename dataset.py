@@ -15,16 +15,26 @@ class DataKnowledge:
     def __init__(self, dataset) -> None:
         self.dataset = dataset
         self.derivs = {}
+        self.sign = {}
     
     def add_deriv(self, d:int, xy:DataPoint):
         if d not in self.derivs.keys():
             self.derivs[d] = []
         self.derivs[d].append(xy)
     
+    def add_sign(self, d:int, l:float, u:float, sign:str='+'):
+        if d not in self.sign.keys():
+            self.sign[d] = []
+        self.sign[d].append((l,u,sign))
+    
     def plot(self):
         if 0 in self.derivs.keys():
             for xy in self.derivs[0]:
                 plt.plot(xy.x, xy.y, 'rx', markersize=10)
+        
+        if 0 in self.sign.keys():
+            for (l,u,s) in self.sign[0]:
+                plt.axvspan(l, u, alpha=0.05, color='g' if s == '+' else 'r')
             
 
 class Dataset:
@@ -111,14 +121,20 @@ class MagmanDataset(Dataset):
         self.c2 = 1.2
         self.i = 7.
 
+        # intersection points
         self.knowledge.add_deriv(0, DataPoint( 0., 0.))
         self.knowledge.add_deriv(0, DataPoint(-0.5,  1.6))
         self.knowledge.add_deriv(0, DataPoint( 0.5, -1.6))
         self.knowledge.add_deriv(0, DataPoint(self.xl,  0.1))
         self.knowledge.add_deriv(0, DataPoint(self.xu, -0.1))
 
+        # known (first) derivatives
         self.knowledge.add_deriv(1, DataPoint(-0.5,  0.))
         self.knowledge.add_deriv(1, DataPoint( 0.5,  0.))
+
+        # known positivity/negativity
+        self.knowledge.add_sign(0, self.xl -1., 0.0001, '+')
+        self.knowledge.add_sign(0, 0.0001, self.xu +1., '-')
     
     def func(self, x: float) -> float:
         return -self.i*self.c1*x / (x**2 + self.c2)**3
