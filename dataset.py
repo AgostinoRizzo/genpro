@@ -132,9 +132,24 @@ class MagmanDataset(Dataset):
         self.knowledge.add_deriv(1, DataPoint(-0.5,  0.))
         self.knowledge.add_deriv(1, DataPoint( 0.5,  0.))
 
+        #
+        # positivity/negativity contraints
+        #
+        
         # known positivity/negativity
-        self.knowledge.add_sign(0, self.xl -1., 0.0001, '+')
-        self.knowledge.add_sign(0, 0.0001, self.xu +1., '-')
+        self.knowledge.add_sign(0, self.xl, 0.0001, '+')
+        self.knowledge.add_sign(0, 0.0001, self.xu, '-')
     
+        # monotonically increasing/decreasing
+        self.knowledge.add_sign(1, self.xl, -0.5, '+')
+        self.knowledge.add_sign(1, -0.5, 0.5, '-')
+        self.knowledge.add_sign(1, 0.5, self.xu, '+')
+
+        # concavity/convexity
+        self.knowledge.add_sign(2, self.xl, -1., '+')
+        self.knowledge.add_sign(2, 1., self.xu, '-')
+
+
+
     def func(self, x: float) -> float:
         return -self.i*self.c1*x / (x**2 + self.c2)**3

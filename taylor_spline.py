@@ -431,7 +431,8 @@ class TaylorSplineSolver:
         #
         import random
         for d in self.S.knowledge.sign.keys():
-            if d != 0: raise RuntimeError('Positivity/Negativity of order != 0 not supported.')  # TODO
+            if d < 0 or d > degree: raise RuntimeError(f"Positivity/Negativity of order {d} not supported for degree {degree}.")
+
             for (_l,_u,s) in self.S.knowledge.sign[d]:
                 
                 l = max(_l, self.tspline.xl)
@@ -439,14 +440,22 @@ class TaylorSplineSolver:
                 if l > u: continue
                 
                 for _ in range(10):  # TODO: n sample as hyper-parameter
-                    x = random.uniform(l, u)
+                    x_sample = random.uniform(l, u)
                     
+                    f_x = 0.
+                    for n in range(degree):
+                        f_x += (unknowns[n] / math.factorial(n)) * ((x - self.tspline.x0) ** n)
+                    for _ in range(d):
+                        f_x = sympy.diff(f_x, x)
+                    f_x = sympy.simplify(f_x.subs({x: x_sample}))
+
                     sign = -1. if s == '+' else +1.
                     G_row = []
                     for n in range(degree):
-                        G_row.append( (1. / math.factorial(n)) * ((x - self.tspline.x0) ** n) * sign )
+                        G_row.append( f_x.coeff(unknowns[n]) * sign )
+                    h_val = float( sympy.simplify(f_x.subs(zero_unknowns)) ) * sign
                     G.append(G_row)
-                    h.append(0.)
+                    h.append(h_val)
 
 
         #
@@ -462,6 +471,7 @@ class TaylorSplineSolver:
         ub = np.array(ub, dtype=np.double)
         
         sol = solve_qp(P, q, G=G, h=h, A=A, b=b, lb=lb, ub=ub, solver="cvxopt", verbose=False)
+        if sol is None: raise RuntimeError('Quadprog: no solution found.')
         sol_map = {}
         for n in range(degree):
             sol_map[unknowns[n]] = sol[n]
