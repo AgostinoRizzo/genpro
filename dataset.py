@@ -1,5 +1,6 @@
 import random
 import math
+import numpy as np
 import matplotlib.pyplot as plt
 
 class DataPoint:
@@ -75,6 +76,10 @@ class Dataset:
         
         self.knowledge.plot()
 
+        x = np.linspace(self.xl, self.xu, 100)
+        plt.plot(x, self.func(x), linestyle='dashed', color='black')
+        plt.ylim(-2, 2)
+
 
 class PolyDataset(Dataset):   
     def __init__(self) -> None:
@@ -123,10 +128,10 @@ class MagmanDataset(Dataset):
 
         # intersection points
         self.knowledge.add_deriv(0, DataPoint( 0., 0.))
-        self.knowledge.add_deriv(0, DataPoint(-0.5,  1.6))
-        self.knowledge.add_deriv(0, DataPoint( 0.5, -1.6))
-        self.knowledge.add_deriv(0, DataPoint(self.xl,  0.1))
-        self.knowledge.add_deriv(0, DataPoint(self.xu, -0.1))
+        self.knowledge.add_deriv(0, DataPoint(-0.5, self.func(-0.5)))
+        self.knowledge.add_deriv(0, DataPoint( 0.5, self.func( 0.5)))
+        self.knowledge.add_deriv(0, DataPoint(self.xl, self.func(self.xl)))
+        self.knowledge.add_deriv(0, DataPoint(self.xu, self.func(self.xu)))
 
         # known (first) derivatives
         self.knowledge.add_deriv(1, DataPoint(-0.5,  0.))
@@ -148,8 +153,6 @@ class MagmanDataset(Dataset):
         # concavity/convexity
         self.knowledge.add_sign(2, self.xl, -1., '+')
         self.knowledge.add_sign(2, 1., self.xu, '-')
-
-
 
     def func(self, x: float) -> float:
         return -self.i*self.c1*x / (x**2 + self.c2)**3
