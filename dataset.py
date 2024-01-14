@@ -1,6 +1,7 @@
 import random
 import math
 import numpy as np
+import csv
 import matplotlib.pyplot as plt
 
 class DataPoint:
@@ -54,6 +55,9 @@ class Dataset:
             y = self.func(x) + (0. if noise == 0. else random.gauss(sigma=y_noise))
             self.data.append(DataPoint(x, y))
     
+    def load(self, filename:str):
+        raise RuntimeError('Load from CSV file not supported.')
+    
     def func(self, x:float) -> float:
         pass
 
@@ -68,7 +72,7 @@ class Dataset:
         return self.inrange(DataPoint(x, y), scale)
     
     def plot(self):
-        plt.figure(2, figsize=[8,8])
+        plt.figure(2, figsize=[10,8])
         plt.clf()
 
         for dp in self.data:
@@ -78,7 +82,8 @@ class Dataset:
 
         x = np.linspace(self.xl, self.xu, 100)
         plt.plot(x, self.func(x), linestyle='dashed', color='black')
-        plt.ylim(-2, 2)
+        plt.ylim(self.yl, self.yu)
+        plt.grid()
 
 
 class PolyDataset(Dataset):   
@@ -114,45 +119,172 @@ class TrigonDataset(Dataset):
     def func(self, x: float) -> float:
         return math.sin(x)
 
+
 class MagmanDataset(Dataset):
     def __init__(self) -> None:
         super().__init__()
-        self.xl = -2.
-        self.xu = 2.
-        self.yl = -1.
-        self.yu = 1.
-
-        self.c1 = 1.4
-        self.c2 = 1.2
-        self.i = 7.
-
+        self.xl = -0.075
+        self.xu =  0.075
+        self.yl = -0.25
+        self.yu =  0.25
+        
+        self.c1 = .00032
+        self.c2 = .000305
+        self.i  = .000004
+        peak_x  = 0.00788845
+        
         # intersection points
         self.knowledge.add_deriv(0, DataPoint( 0., 0.))
-        self.knowledge.add_deriv(0, DataPoint(-0.5, self.func(-0.5)))
-        self.knowledge.add_deriv(0, DataPoint( 0.5, self.func( 0.5)))
+        self.knowledge.add_deriv(0, DataPoint(-peak_x, self.func(-peak_x)))
+        self.knowledge.add_deriv(0, DataPoint( peak_x, self.func( peak_x)))
         self.knowledge.add_deriv(0, DataPoint(self.xl, self.func(self.xl)))
         self.knowledge.add_deriv(0, DataPoint(self.xu, self.func(self.xu)))
 
         # known (first) derivatives
-        self.knowledge.add_deriv(1, DataPoint(-0.5,  0.))
-        self.knowledge.add_deriv(1, DataPoint( 0.5,  0.))
+        self.knowledge.add_deriv(1, DataPoint(-peak_x,  0.))
+        self.knowledge.add_deriv(1, DataPoint( peak_x,  0.))
 
         #
         # positivity/negativity contraints
         #
         
         # known positivity/negativity
-        self.knowledge.add_sign(0, self.xl, 0.0001, '+')
-        self.knowledge.add_sign(0, 0.0001, self.xu, '-')
+        self.knowledge.add_sign(0, self.xl, -0.00001, '+')
+        self.knowledge.add_sign(0, 0.00001, self.xu, '-')
     
         # monotonically increasing/decreasing
-        self.knowledge.add_sign(1, self.xl, -0.5, '+')
-        self.knowledge.add_sign(1, -0.5, 0.5, '-')
-        self.knowledge.add_sign(1, 0.5, self.xu, '+')
+        self.knowledge.add_sign(1, self.xl, -0.01, '+')
+        #self.knowledge.add_sign(1, -peak_x+0.1, peak_x-0.1, '-')
+        self.knowledge.add_sign(1, -0.01, self.xu, '+')
 
         # concavity/convexity
-        self.knowledge.add_sign(2, self.xl, -1., '+')
-        self.knowledge.add_sign(2, 1., self.xu, '-')
+        self.knowledge.add_sign(2, self.xl, -0.01, '+')
+        self.knowledge.add_sign(2, 0.01, self.xu, '-')
 
     def func(self, x: float) -> float:
         return -self.i*self.c1*x / (x**2 + self.c2)**3
+    
+    def load(self, filename:str):
+        csvfile = open(filename)
+        csvreader = csv.reader(csvfile)
+        for entry in csvreader:
+            self.data.append(DataPoint(float(entry[0]), float(entry[1])))
+        csvfile.close()
+
+
+class MagmanDatasetScaled(Dataset):
+    def __init__(self) -> None:
+        super().__init__()
+        self.xl = -2.
+        self.xu = 2.
+        self.yl = -2.
+        self.yu = 2.
+
+        self.__xl = -0.075
+        self.__xu =  0.075
+        self.__yl = -0.25
+        self.__yu =  0.25
+
+        #self.c1 = 1.4
+        #self.c2 = 1.2
+        #self.i = 7.
+        #peak_x = 0.5
+
+        self.c1 = .00032
+        self.c2 = .000305
+        self.i = .000004
+        #peak_x = 0.00788845
+        peak_x = 0.208
+
+        # intersection points
+        self.knowledge.add_deriv(0, DataPoint( 0., 0.))
+        self.knowledge.add_deriv(0, DataPoint(-peak_x, self.func(-peak_x)))
+        self.knowledge.add_deriv(0, DataPoint( peak_x, self.func( peak_x)))
+        self.knowledge.add_deriv(0, DataPoint(self.xl, self.func(self.xl)))
+        self.knowledge.add_deriv(0, DataPoint(self.xu, self.func(self.xu)))
+
+        # known (first) derivatives
+        self.knowledge.add_deriv(1, DataPoint(-peak_x,  0.))
+        self.knowledge.add_deriv(1, DataPoint( peak_x,  0.))
+
+        #
+        # positivity/negativity contraints
+        #
+        
+        # known positivity/negativity
+        self.knowledge.add_sign(0, self.xl, -0.001, '+')
+        self.knowledge.add_sign(0, 0.001, self.xu, '-')
+    
+        # monotonically increasing/decreasing
+        self.knowledge.add_sign(1, self.xl, -0.81, '+')
+        #self.knowledge.add_sign(1, -peak_x+0.1, peak_x-0.1, '-')
+        self.knowledge.add_sign(1, 0.81, self.xu, '+')
+
+        # concavity/convexity
+        self.knowledge.add_sign(2, self.xl, -0.81, '+')
+        self.knowledge.add_sign(2, 0.81, self.xu, '-')
+
+    def func(self, x: float) -> float:
+        x = self.__xmap(x, toorigin=True)
+        y = -self.i*self.c1*x / (x**2 + self.c2)**3
+        return self.__ymap(y)
+    
+    def load(self, filename:str):
+        csvfile = open(filename)
+        csvreader = csv.reader(csvfile)
+        for entry in csvreader:
+            self.data.append(DataPoint(self.__xmap(float(entry[0])), self.__ymap(float(entry[1]))))
+        csvfile.close()
+    
+    def __xmap(self, x:float, toorigin:bool=False) -> float:
+        if toorigin: return self.__xl + (((x - self.xl) / (self.xu - self.xl)) * (self.__xu - self.__xl))
+        return self.xl + (((x - self.__xl) / (self.__xu - self.__xl)) * (self.xu - self.xl))
+    
+    def __ymap(self, y:float) -> float:
+        return self.yl + (((y - self.__yl) / (self.__yu - self.__yl)) * (self.yu - self.yl)) 
+
+
+"""        
+class MagmanDataset(Dataset):
+    def __init__(self) -> None:
+        super().__init__()
+        self.xl = -10.
+        self.xu = 10.
+        self.yl = -3.
+        self.yu = 3.
+
+        self.c1 = 10
+        self.c2 = 0.6
+        self.i = 0.2
+
+        # intersection points
+        self.knowledge.add_deriv(0, DataPoint( 0., 0.))
+        self.knowledge.add_deriv(0, DataPoint(-5, self.func(-5)))
+        self.knowledge.add_deriv(0, DataPoint( 5, self.func( 5)))
+        self.knowledge.add_deriv(0, DataPoint(self.xl, self.func(self.xl)))
+        self.knowledge.add_deriv(0, DataPoint(self.xu, self.func(self.xu)))
+
+        # known (first) derivatives
+        self.knowledge.add_deriv(1, DataPoint(-5,  0.))
+        self.knowledge.add_deriv(1, DataPoint( 5,  0.))
+
+        #
+        # positivity/negativity contraints
+        #
+        
+        # known positivity/negativity
+        self.knowledge.add_sign(0, self.xl, 0.01, '+')
+        self.knowledge.add_sign(0, 0.0001, self.xu, '-')
+    
+        # monotonically increasing/decreasing
+        self.knowledge.add_sign(1, self.xl, -5.5, '+')
+        #self.knowledge.add_sign(1, -5, 5, '-')
+        self.knowledge.add_sign(1, 5.5, self.xu, '+')
+
+        # concavity/convexity
+        self.knowledge.add_sign(2, self.xl, -5.5, '+')
+        self.knowledge.add_sign(2, 5.5, self.xu, '-')
+
+    def func(self, x: float) -> float:
+        return -self.i*self.c1*x / (x**2 + self.c2)**3
+"""

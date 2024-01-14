@@ -9,6 +9,7 @@ from qpsolvers import solve_qp
 
 import dataset
 
+_INF = 100000.0
 
 _S = None
 _tspline = None
@@ -232,12 +233,19 @@ class TaylorSpline:
             x += dx
         return l
 
+    def compute_datacoverage(self, S:dataset.Dataset, exp_span:float=1.0) -> int:
+        xl = self.x0 - ((self.x0 - self.xl) * exp_span)
+        xu = self.x0 + ((self.xu - self.x0) * exp_span)
+        npts = 0
+        for dp in S.data:
+            if dp.x >= xl and dp.x <= xu: npts += 1
+        return npts
+
     def plot(self, show:bool=True):
         xl = -1 if self.xl is None else self.xl  # TODO: fix it (default)
         xu =  1 if self.xu is None else self.xu  # TODO: fix it (default)
         x = np.linspace(xl, xu, 100)
         plt.plot(x, self.y(x))
-        plt.ylim(-2, 2) 
         if show: plt.show()
 
 
@@ -354,8 +362,8 @@ class TaylorSplineSolver:
         b = []
         G = []
         h = []
-        lb = [-np.inf for _ in range(degree)]
-        ub = [+np.inf for _ in range(degree)]
+        lb = [-_INF for _ in range(degree)]
+        ub = [+_INF for _ in range(degree)]
 
         #
         # build fitness matrix from dataset.
@@ -437,10 +445,15 @@ class TaylorSplineSolver:
                 
                 l = max(_l, self.tspline.xl)
                 u = min(_u, self.tspline.xu)
+                #l = max(_l, self.tspline.x0 - (self.tspline.x0 - self.tspline.xl) * 0.4)
+                #u = min(_u, self.tspline.x0 + (self.tspline.xu - self.tspline.x0) * 0.4)
                 if l > u: continue
                 
-                for _ in range(10):  # TODO: n sample as hyper-parameter
-                    x_sample = random.uniform(l, u)
+                for x_sample_idx in range(10):  # TODO: n sample as hyper-parameter
+                    x_sample = l
+                    if x_sample_idx == 0: x_sample = l
+                    elif x_sample_idx == 1: x_sample = u
+                    else: x_sample = random.uniform(l, u)
                     
                     f_x = 0.
                     for n in range(degree):
@@ -463,14 +476,22 @@ class TaylorSplineSolver:
         #
         if not silent: print("Solving quadprog...")
         
-        if len(G) == 0: G = None; h = None
-        else: G = np.array(G, dtype=np.double); h = np.array(h, dtype=np.double)
-        if len(A) == 0: A = None; b = None
-        else: A = np.array(A, dtype=np.double); b = np.array(b, dtype=np.double)
+        if len(G) == 0:
+            G = None
+            h = None
+        else:
+            G = np.array(G, dtype=np.double)
+            h = np.array(h, dtype=np.double)
+        if len(A) == 0:
+            A = None
+            b = None
+        else:
+            A = np.array(A, dtype=np.double)
+            b = np.array(b, dtype=np.double)
         lb = np.array(lb, dtype=np.double)
         ub = np.array(ub, dtype=np.double)
         
-        sol = solve_qp(P, q, G=G, h=h, A=A, b=b, lb=lb, ub=ub, solver="cvxopt", verbose=False)
+        sol = solve_qp(P=P, q=q, G=G, h=h, A=A, b=b, lb=lb, ub=ub, solver="cvxopt", verbose=False)
         if sol is None: raise RuntimeError('Quadprog: no solution found.')
         sol_map = {}
         for n in range(degree):
@@ -514,17 +535,25 @@ class TaylorSplineSolver:
 
             b.append(dp.y)
 
+        # TODO: revise (when no data points some default shape (here minimize all derivs (0.0001 as weight)))
+        for i in range(degree):
+            M_row = []
+            for j in range(degree):
+                M_row.append(0.0001 if i == j else 0.)
+            M.append(M_row)
+            b.append(0.)
+    
         M = np.array(M, dtype=np.double)
-        Q = np.dot(M.T, M)
+        P = np.dot(M.T, M)
         q = -np.dot(M.T, np.array(b, dtype=np.double))
         
-        return Q, q        
+        return P, q        
             
 
 class TaylorSplineConnector:
     
     def fit(self, S:dataset.Dataset, spline_degree:int, silent:bool=True) -> list:
-        exp_radius = (S.xu - S.xl) * 0.2 #0.2 #0.05  # TODO: fix it or as hyper-parameter
+        exp_radius = (S.xu - S.xl) * 0.2 #0.05  # TODO: fix it or as hyper-parameter
         exp_span = 0.4
         print(f"ExpRadius = {exp_radius}")
 
@@ -533,7 +562,7 @@ class TaylorSplineConnector:
 
         #
         # fit root spline
-        #
+        # TODO: spline_degree+1 (check it!)
         tspline_root, exp_radius_actual_root = TaylorSplineConnector.__fit_tspline(spline_degree+1, x0, exp_radius, exp_span, S, side='all', silent=silent)
         tspline_root.xl = x0 - exp_radius_actual_root * exp_span  # TODO: remove it (redundant, alreadt in __fit_tspline)
         tspline_root.xu = x0 + exp_radius_actual_root * exp_span  # TODO: remove it (redundant, alreadt in __fit_tspline)
@@ -546,7 +575,6 @@ class TaylorSplineConnector:
         join_y = tspline_root.y(x0)
         join_deriv = tspline_root.y_prime(x0)
         tsplines.append(tspline_root)
-
 
         while x0 < S.xu:
             tspline, exp_radius_actual = TaylorSplineConnector.__fit_tspline(spline_degree, x0, exp_radius, exp_span, 
@@ -590,6 +618,7 @@ class TaylorSplineConnector:
                       join_deriv:float=None,
                       silent:bool=False) -> (TaylorSpline, float):
         exp_length = exp_radius * 2.
+        exp_dataconverage = len(S.data) * 0.2  # TODO: hyperparameter
         exp_radius_actual = exp_radius
         tspline_length = 0
         tspline = None
@@ -612,27 +641,33 @@ class TaylorSplineConnector:
             tspline.fit(S, silent=silent)
             
             tspline_length = tspline.compute_length()
-
-            if tspline_length == 0.:
+            tspline_datacoverage = tspline.compute_datacoverage(S, exp_span)
+            
+            if tspline_length == 0.:  # TODO: zero check (or very small) (as below)
                 exp_radius_actual = exp_radius * 0.2
                 increase_length = True
                 continue
             
             length_reached = True
-            if tspline_length < exp_length and (increase_length is None or increase_length):
+            if (tspline_length < exp_length or tspline_datacoverage < exp_dataconverage) and (increase_length is None or increase_length):
                 exp_radius_actual += exp_radius * 0.2
                 length_reached = False
                 increase_length = True
             elif tspline_length > exp_length and (increase_length is None or not increase_length):
                 exp_radius_actual -= exp_radius * 0.2
-                length_reached = False
+                length_reached =  True  # TODO: (now does not go "backwords") previously was False
                 increase_length = False
 
-            if tspline.xl < S.xl or tspline.xu > S.xu:
+            if tspline.x0 - ((tspline.x0 - tspline.xl) * exp_span) < S.xl or \
+               tspline.x0 + ((tspline.xu - tspline.x0) * exp_span) > S.xu:
                 length_reached = True
             
-            length_reached = True
+            if exp_radius_actual <= 0.00001:  # TODO: zero check (or very small)
+                exp_radius_actual = exp_radius * 0.2
+                increase_length = True
+                continue
 
+            #length_reached = True
 
         tspline.xl = x0 - exp_radius_actual * exp_span
         tspline.xu = x0 + exp_radius_actual * exp_span
