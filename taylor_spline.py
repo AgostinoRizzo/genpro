@@ -242,10 +242,11 @@ class TaylorSpline:
         return npts
 
     def plot(self, show:bool=True):
-        xl = -1 if self.xl is None else self.xl  # TODO: fix it (default)
-        xu =  1 if self.xu is None else self.xu  # TODO: fix it (default)
-        x = np.linspace(xl, xu, 100)
-        plt.plot(x, self.y(x))
+        xl = 0#-1 if self.xl is None else self.xl  # TODO: fix it (default)
+        xu = 10#1 if self.xu is None else self.xu  # TODO: fix it (default)
+        x = np.linspace(xl, xu, 200)
+        plt.plot(x, self.y(x), color='red', linewidth=2.5)
+        plt.plot(self.x0, self.y(self.x0), 'ro', markersize=10)
         if show: plt.show()
 
 
@@ -552,12 +553,12 @@ class TaylorSplineSolver:
 
 class TaylorSplineConnector:
     
-    def fit(self, S:dataset.Dataset, spline_degree:int, silent:bool=True) -> list:
-        exp_radius = (S.xu - S.xl) * 0.2 #0.05  # TODO: fix it or as hyper-parameter
+    def fit(self, S:dataset.Dataset, spline_degree:int, silent:bool=True, x0_in:float=0.) -> list:
+        exp_radius = (S.xu - S.xl) * 0.1 #0.05  # TODO: fix it or as hyper-parameter
         exp_span = 0.4
-        print(f"ExpRadius = {exp_radius}")
+        #print(f"ExpRadius = {exp_radius}")
 
-        x0 = (S.xu + S.xl) / 2. # TODO: fix it or as hyper-parameter
+        x0 = x0_in #(S.xu + S.xl) / 2. # TODO: fix it or as hyper-parameter
         tsplines = []
 
         #
@@ -575,6 +576,8 @@ class TaylorSplineConnector:
         join_y = tspline_root.y(x0)
         join_deriv = tspline_root.y_prime(x0)
         tsplines.append(tspline_root)
+
+        return tsplines
 
         while x0 < S.xu:
             tspline, exp_radius_actual = TaylorSplineConnector.__fit_tspline(spline_degree, x0, exp_radius, exp_span, 
@@ -618,7 +621,7 @@ class TaylorSplineConnector:
                       join_deriv:float=None,
                       silent:bool=False) -> (TaylorSpline, float):
         exp_length = exp_radius * 2.
-        exp_dataconverage = len(S.data) * 0.2  # TODO: hyperparameter
+        exp_dataconverage = len(S.data) * 0.05  # TODO: hyperparameter
         exp_radius_actual = exp_radius
         tspline_length = 0
         tspline = None
@@ -636,7 +639,7 @@ class TaylorSplineConnector:
                 tspline.fix_deriv(0, join_y)
                 tspline.fix_deriv(1, join_deriv)
             
-            print(f"Fitting on x0 = {x0} to [{x0-exp_radius_actual}, {x0+exp_radius_actual}]")
+            #print(f"Fitting on x0 = {x0} to [{x0-exp_radius_actual}, {x0+exp_radius_actual}]")
             tspline.intersect(S.knowledge.derivs, side='all')
             tspline.fit(S, silent=silent)
             
@@ -667,7 +670,7 @@ class TaylorSplineConnector:
                 increase_length = True
                 continue
 
-            #length_reached = True
+            length_reached = True
 
         tspline.xl = x0 - exp_radius_actual * exp_span
         tspline.xu = x0 + exp_radius_actual * exp_span

@@ -2,7 +2,20 @@ import random
 import math
 import numpy as np
 import csv
+from sklearn.model_selection import train_test_split
 import matplotlib.pyplot as plt
+
+def tikzplotlib_fix_ncols(obj):
+    """
+    workaround for matplotlib 3.6 renamed legend's _ncol to _ncols, which breaks tikzplotlib
+    """
+    if hasattr(obj, "_ncols"):
+        try:
+            obj._ncol = obj._ncols
+        except: pass
+    for child in obj.get_children():
+        tikzplotlib_fix_ncols(child)
+
 
 class DataPoint:
     def __init__(self, x:float, y:float) -> None:
@@ -42,6 +55,7 @@ class DataKnowledge:
 class Dataset:
     def __init__(self) -> None:
         self.data = []
+        self.test = []
         self.xl = -1.
         self.xu = 1.
         self.yl = 0.
@@ -57,6 +71,11 @@ class Dataset:
     
     def load(self, filename:str):
         raise RuntimeError('Load from CSV file not supported.')
+
+    def split(self, train_size:float=0.7, seed:int=0):
+        train, test = train_test_split(self.data, train_size=train_size, random_state=seed)
+        self.data = list(train)
+        self.test = list(test)
     
     def func(self, x:float) -> float:
         pass
@@ -75,37 +94,55 @@ class Dataset:
         plt.figure(2, figsize=[10,8])
         plt.clf()
 
+        data_labeld = False
         for dp in self.data:
-            plt.plot(dp.x, dp.y, 'bo', markersize=1)
+            if data_labeld: plt.plot(dp.x, dp.y, 'bo', markersize=2)
+            else:
+                plt.plot(dp.x, dp.y, 'bo', markersize=2, label='Training data')
+                data_labeld = True
         
         self.knowledge.plot()
 
         x = np.linspace(self.xl, self.xu, 100)
-        plt.plot(x, self.func(x), linestyle='dashed', color='black')
+        plt.plot(x, self.func(x), linestyle='dashed', linewidth=2, color='black', label='Reference model')
         plt.ylim(self.yl, self.yu)
         plt.grid()
+        plt.legend(loc='upper right', fontsize=23)
+        plt.xlabel(self.get_xlabel())
+        plt.ylabel(self.get_ylabal())
+        #plt.xticks([self.xl, 0, -1.2, self.xu], [self.xl, 0, 'a', self.xu])
+        #plt.gca().get_xticklabels()[2].set_color('red') 
+        #plt.gca().get_xticklabels()[2].set_weight('bold') 
+        tikzplotlib_fix_ncols(plt.gca())  # fix for legend
+    
+    def get_xlabel(self) -> str:
+        return ''
+
+    def get_ylabal(self) -> str:
+        return ''
 
 
 class PolyDataset(Dataset):   
     def __init__(self) -> None:
         super().__init__()
-        self.xl = -1.
-        self.xu = 1.
-        self.yl = -1.
-        self.yu = 1.
+        self.xl = -2.5
+        self.xu = 2.5
+        self.yl = 0.
+        self.yu = 1.5
      
     def func(self, x: float) -> float:
-        return x**2
+        #return x**2
+        return 0.2*x**4 -1*x**2 + 1.3
 
 class TrigonDataset(Dataset):   
     def __init__(self) -> None:
         super().__init__()
-        self.xl = -20.
-        self.xu = 20.
+        self.xl = -5.
+        self.xu = 5.
         self.yl = -1.
         self.yu = 1.
 
-        self.knowledge.add_deriv(0, DataPoint( 0., 0.))
+        """self.knowledge.add_deriv(0, DataPoint( 0., 0.))
         self.knowledge.add_deriv(0, DataPoint(  .5*math.pi,  1.))
         self.knowledge.add_deriv(0, DataPoint( -.5*math.pi, -1.))
         self.knowledge.add_deriv(0, DataPoint( 1.5*math.pi, -1.))
@@ -114,10 +151,10 @@ class TrigonDataset(Dataset):
         self.knowledge.add_deriv(1, DataPoint(  .5*math.pi,  0.))
         self.knowledge.add_deriv(1, DataPoint( -.5*math.pi,  0.))
         self.knowledge.add_deriv(1, DataPoint( 1.5*math.pi,  0.))
-        self.knowledge.add_deriv(1, DataPoint(-1.5*math.pi,  0.))
+        self.knowledge.add_deriv(1, DataPoint(-1.5*math.pi,  0.))"""
      
     def func(self, x: float) -> float:
-        return math.sin(x)
+        return np.sin(x)
 
 
 class MagmanDataset(Dataset):
@@ -195,7 +232,7 @@ class MagmanDatasetScaled(Dataset):
         self.i = .000004
         #peak_x = 0.00788845
         peak_x = 0.208
-
+        
         # intersection points
         self.knowledge.add_deriv(0, DataPoint( 0., 0.))
         self.knowledge.add_deriv(0, DataPoint(-peak_x, self.func(-peak_x)))
@@ -217,7 +254,7 @@ class MagmanDatasetScaled(Dataset):
     
         # monotonically increasing/decreasing
         self.knowledge.add_sign(1, self.xl, -0.81, '+')
-        #self.knowledge.add_sign(1, -peak_x+0.1, peak_x-0.1, '-')
+        self.knowledge.add_sign(1, -peak_x+0.1, peak_x-0.1, '-')
         self.knowledge.add_sign(1, 0.81, self.xu, '+')
 
         # concavity/convexity
@@ -242,6 +279,12 @@ class MagmanDatasetScaled(Dataset):
     
     def __ymap(self, y:float) -> float:
         return self.yl + (((y - self.__yl) / (self.__yu - self.__yl)) * (self.yu - self.yl)) 
+    
+    def get_xlabel(self) -> str:
+        return 'distance [m] (x)'
+
+    def get_ylabal(self) -> str:
+        return 'force [N] (y)'
 
 
 """        
@@ -288,3 +331,39 @@ class MagmanDataset(Dataset):
     def func(self, x: float) -> float:
         return -self.i*self.c1*x / (x**2 + self.c2)**3
 """
+
+class HEADataset(Dataset):
+    def __init__(self) -> None:
+        super().__init__()
+        self.xl = 0.
+        self.xu = 10.
+        self.yl = -1.
+        self.yu = 1.
+    
+    def func(self, x: float) -> float:
+        if type(x) == float: return self.__func(x)
+        y = []
+        for _x in x: y.append(self.__func(_x))
+        return y
+
+    def __func(self, x: float) -> float:
+        return math.e**(-x) * x**3 * math.cos(x) * math.sin(x) * (math.cos(x) * math.sin(x)**2 - 1)
+
+
+class ABSDataset(Dataset):
+    def __init__(self) -> None:
+        super().__init__()
+        self.xl = 0.
+        self.xu = 1.
+        self.yl = 0.
+        self.yu = 0.4
+    
+    def func(self, x: float) -> float:
+        m = 6.67 #407.75
+        g = 0.15 #9.81
+        b = 55.56
+        c = 1.35
+        d = 0.4
+        e = 0.52
+        return m * g * d * np.sin(c * np.arctan(b * (1 - e) * x + e * np.arctan(b * x)))
+
