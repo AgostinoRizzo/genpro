@@ -90,16 +90,17 @@ class Dataset:
     def inrange_xy(self, x:float, y:float, scale:float=1.5) -> bool:
         return self.inrange(DataPoint(x, y), scale)
     
-    def plot(self):
+    def plot(self, plot_data: bool=True):
         plt.figure(2, figsize=[10,8])
         plt.clf()
 
-        data_labeld = False
-        for dp in self.data:
-            if data_labeld: plt.plot(dp.x, dp.y, 'bo', markersize=2)
-            else:
-                plt.plot(dp.x, dp.y, 'bo', markersize=2, label='Training data')
-                data_labeld = True
+        if plot_data:
+            data_labeld = False
+            for dp in self.data:
+                if data_labeld: plt.plot(dp.x, dp.y, 'bo', markersize=2)
+                else:
+                    plt.plot(dp.x, dp.y, 'bo', markersize=2, label='Training data')
+                    data_labeld = True
         
         self.knowledge.plot()
 
