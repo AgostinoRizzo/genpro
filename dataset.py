@@ -5,17 +5,6 @@ import csv
 from sklearn.model_selection import train_test_split
 import matplotlib.pyplot as plt
 
-def tikzplotlib_fix_ncols(obj):
-    """
-    workaround for matplotlib 3.6 renamed legend's _ncol to _ncols, which breaks tikzplotlib
-    """
-    if hasattr(obj, "_ncols"):
-        try:
-            obj._ncol = obj._ncols
-        except: pass
-    for child in obj.get_children():
-        tikzplotlib_fix_ncols(child)
-
 
 class DataPoint:
     def __init__(self, x:float, y:float) -> None:
@@ -71,6 +60,13 @@ class Dataset:
     
     def load(self, filename:str):
         raise RuntimeError('Load from CSV file not supported.')
+    
+    def erase(self, x_from, x_to):
+        self.test = []
+        new_data = []
+        for dp in self.data:
+            if dp.x < x_from or dp.x > x_to: new_data.append(dp)
+        self.data = new_data 
 
     def split(self, train_size:float=0.7, seed:int=0):
         train, test = train_test_split(self.data, train_size=train_size, random_state=seed)
@@ -104,16 +100,12 @@ class Dataset:
         self.knowledge.plot()
 
         x = np.linspace(self.xl, self.xu, 100)
-        plt.plot(x, self.func(x), linestyle='dashed', linewidth=2, color='black', label='Reference model')
+        #plt.plot(x, self.func(x), linestyle='dashed', linewidth=2, color='black', label='Reference model')
         plt.ylim(self.yl, self.yu)
         plt.grid()
-        plt.legend(loc='upper right', fontsize=23)
+        plt.legend(loc='upper right', fontsize=14)
         plt.xlabel(self.get_xlabel())
         plt.ylabel(self.get_ylabal())
-        #plt.xticks([self.xl, 0, -1.2, self.xu], [self.xl, 0, 'a', self.xu])
-        #plt.gca().get_xticklabels()[2].set_color('red') 
-        #plt.gca().get_xticklabels()[2].set_weight('bold') 
-        tikzplotlib_fix_ncols(plt.gca())  # fix for legend
     
     def get_xlabel(self) -> str:
         return ''
@@ -233,7 +225,7 @@ class MagmanDatasetScaled(Dataset):
         #peak_x = 0.00788845
         peak_x = 0.208
         
-        # intersection points
+        """# intersection points
         self.knowledge.add_deriv(0, DataPoint( 0., 0.))
         self.knowledge.add_deriv(0, DataPoint(-peak_x, self.func(-peak_x)))
         self.knowledge.add_deriv(0, DataPoint( peak_x, self.func( peak_x)))
@@ -259,7 +251,7 @@ class MagmanDatasetScaled(Dataset):
 
         # concavity/convexity
         self.knowledge.add_sign(2, self.xl, -0.81, '+')
-        self.knowledge.add_sign(2, 0.81, self.xu, '-')
+        self.knowledge.add_sign(2, 0.81, self.xu, '-')"""
 
     def func(self, x: float) -> float:
         x = self.__xmap(x, toorigin=True)

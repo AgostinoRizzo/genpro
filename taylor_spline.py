@@ -8,6 +8,7 @@ import sympy
 from qpsolvers import solve_qp
 
 import dataset
+import utils
 
 _INF = 100000.0
 
@@ -242,12 +243,13 @@ class TaylorSpline:
         return npts
 
     def plot(self, show:bool=True):
-        xl = 0#-1 if self.xl is None else self.xl  # TODO: fix it (default)
-        xu = 10#1 if self.xu is None else self.xu  # TODO: fix it (default)
+        xl = -1 if self.xl is None else self.xl  # TODO: fix it (default)
+        xu =  1 if self.xu is None else self.xu  # TODO: fix it (default)
         x = np.linspace(xl, xu, 200)
-        plt.plot(x, self.y(x), color='red', linewidth=2.5)
-        plt.plot(self.x0, self.y(self.x0), 'ro', markersize=10)
+        plt_curve, = plt.plot(x, self.y(x), color='red', linewidth=2.5)
+        plt_dot, = plt.plot(self.x0, self.y(self.x0), 'ro', markersize=10)
         if show: plt.show()
+        return [plt_curve, plt_dot]
 
 
 class TaylorSplineSolver:
@@ -527,14 +529,15 @@ class TaylorSplineSolver:
         b = []
 
         for dp in self.S.data:
-            if dp.x < self.tspline.xl or dp.x > self.tspline.xu: continue
+            kernel_scale = TaylorSplineSolver.Kernel(dp, self.tspline)
+            if kernel_scale == 0.: continue
             
             M_row = []
             for n in range(degree):
-                M_row.append( (1. / math.factorial(n)) * ((dp.x - self.tspline.x0) ** n) )
+                M_row.append( (1. / math.factorial(n)) * ((dp.x - self.tspline.x0) ** n) * kernel_scale)
             M.append(M_row)
 
-            b.append(dp.y)
+            b.append(dp.y * kernel_scale)
 
         # TODO: revise (when no data points some default shape (here minimize all derivs (0.0001 as weight)))
         for i in range(degree):
@@ -548,17 +551,34 @@ class TaylorSplineSolver:
         P = np.dot(M.T, M)
         q = -np.dot(M.T, np.array(b, dtype=np.double))
         
-        return P, q        
+        return P, q
+
+    def Kernel(dp: dataset.DataPoint, tspline: TaylorSpline) -> float:
+        assert (tspline.xu - tspline.x0) - (tspline.x0 - tspline.xl) < 1e-9
+        if dp.x < tspline.xl or dp.x > tspline.xu: return 0.
+        
+        h = tspline.xu - tspline.x0
+        u = (dp.x - tspline.x0) / h
+        u_abs = abs(u)
+
+        # Tukey's tri-weight kernel function
+        if u_abs > 1: return 0.
+        return (1- (u_abs ** 3)) ** 3
+        
+        # Gaussian kernel function
+        #dp_dist = dp.x - self.tspline.x0
+        #kernel_scale = utils.normval(dp_dist, 0, (self.tspline.xu - self.tspline.xl) / 6)  
             
 
 class TaylorSplineConnector:
     
-    def fit(self, S:dataset.Dataset, spline_degree:int, silent:bool=True, x0_in:float=0.) -> list:
-        exp_radius = (S.xu - S.xl) * 0.1 #0.05  # TODO: fix it or as hyper-parameter
-        exp_span = 0.4
+    def fit(self, S:dataset.Dataset, spline_degree:int, silent:bool=True,
+            x0_in:float=None, exp_radius_in:float=None) -> list:
+        exp_radius = (S.xu - S.xl) * (0.2 if exp_radius_in is None else exp_radius_in) # TODO: fix it or as hyper-parameter
+        exp_span = 1.0
         #print(f"ExpRadius = {exp_radius}")
 
-        x0 = x0_in #(S.xu + S.xl) / 2. # TODO: fix it or as hyper-parameter
+        x0 = (S.xu + S.xl) / 2. if x0_in is None else x0_in #(S.xu + S.xl) / 2. # TODO: fix it or as hyper-parameter
         tsplines = []
 
         #
@@ -567,7 +587,8 @@ class TaylorSplineConnector:
         tspline_root, exp_radius_actual_root = TaylorSplineConnector.__fit_tspline(spline_degree+1, x0, exp_radius, exp_span, S, side='all', silent=silent)
         tspline_root.xl = x0 - exp_radius_actual_root * exp_span  # TODO: remove it (redundant, alreadt in __fit_tspline)
         tspline_root.xu = x0 + exp_radius_actual_root * exp_span  # TODO: remove it (redundant, alreadt in __fit_tspline)
-
+        
+    
         #
         # expand to the right
         #
@@ -577,7 +598,6 @@ class TaylorSplineConnector:
         join_deriv = tspline_root.y_prime(x0)
         tsplines.append(tspline_root)
 
-        return tsplines
 
         while x0 < S.xu:
             tspline, exp_radius_actual = TaylorSplineConnector.__fit_tspline(spline_degree, x0, exp_radius, exp_span, 
@@ -676,3 +696,58 @@ class TaylorSplineConnector:
         tspline.xu = x0 + exp_radius_actual * exp_span
 
         return tspline, exp_radius_actual
+
+
+class TaylorSplineEstimator:
+
+    def fit(self, S:dataset.Dataset, spline_degree:int, silent:bool=True,
+            x0:float=0.0, exp_cov:float=0.2) -> TaylorSpline:  # TODO: fix exp_cov (default) as hyper-parameter
+        
+        exp_radius = self.__get_exp_radius(S, x0, exp_cov)
+
+        #
+        # fit spline
+        # TODO: spline_degree+1 (check it!)
+        tspline = TaylorSpline(x0, spline_degree, x0-exp_radius, x0+exp_radius)
+        tspline.intersect(S.knowledge.derivs, side='all')
+        tspline.fit(S, silent=silent)
+        
+        #tspline.xl = x0 - exp_span * exp_span
+        #tspline.xu = x0 + exp_span * exp_span
+        
+        return tspline
+    
+    def get_bounds(self, S:dataset.Dataset, tspline: TaylorSpline):
+        mse = 0.
+        n = 0.
+        for dp in S.data:
+            kernel_weight = TaylorSplineSolver.Kernel(dp, tspline)
+            if kernel_weight == 0.: continue
+
+            mse += ((tspline.y(dp.x) - dp.y) ** 2) * kernel_weight
+            n += 1
+        
+        y0 = tspline.y(tspline.x0)
+        sqrt_mse = 0.
+        if n > 0:
+            mse /= n
+            sqrt_mse = math.sqrt(mse)
+        #sqrt_mse = ((S.yu - S.yl) / 2) - sqrt_mse
+        return (y0 - sqrt_mse, y0 + sqrt_mse)
+    
+    def __get_exp_radius(self, S:dataset.Dataset, x0:float, exp_cov:float) -> float:
+        assert exp_cov > 0.0
+        step = (S.xu - S.xl) * 0.01
+        radius = 0.0
+        cov = 0.0
+
+        while cov < exp_cov:
+            radius += step
+            dp_count = 0
+            for dp in S.data:
+                if dp.x >= x0 - radius and dp.x <= x0 + radius:
+                    dp_count += 1
+            cov = dp_count / len(S.data)
+
+        #print(f"Coverage: {cov} - Radius: {radius}")
+        return radius
