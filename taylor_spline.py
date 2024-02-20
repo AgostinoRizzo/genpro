@@ -554,10 +554,9 @@ class TaylorSplineSolver:
         return P, q
 
     def Kernel(dp: dataset.DataPoint, tspline: TaylorSpline) -> float:
-        assert (tspline.xu - tspline.x0) - (tspline.x0 - tspline.xl) < 1e-9
         if dp.x < tspline.xl or dp.x > tspline.xu: return 0.
         
-        h = tspline.xu - tspline.x0
+        h = (tspline.xu - tspline.x0) if dp.x >= tspline.x0 else (tspline.x0 - tspline.xl)
         u = (dp.x - tspline.x0) / h
         u_abs = abs(u)
 
@@ -703,12 +702,13 @@ class TaylorSplineEstimator:
     def fit(self, S:dataset.Dataset, spline_degree:int, silent:bool=True,
             x0:float=0.0, exp_cov:float=0.2) -> TaylorSpline:  # TODO: fix exp_cov (default) as hyper-parameter
         
-        exp_radius = self.__get_exp_radius(S, x0, exp_cov)
+        exp_radius_left  = self.__get_exp_radius(S, x0, exp_cov / 2, -1)
+        exp_radius_right = self.__get_exp_radius(S, x0, exp_cov / 2, +1)
 
         #
         # fit spline
         # TODO: spline_degree+1 (check it!)
-        tspline = TaylorSpline(x0, spline_degree, x0-exp_radius, x0+exp_radius)
+        tspline = TaylorSpline(x0, spline_degree, x0-exp_radius_left, x0+exp_radius_right)
         tspline.intersect(S.knowledge.derivs, side='all')
         tspline.fit(S, silent=silent)
         
@@ -732,22 +732,21 @@ class TaylorSplineEstimator:
         if n > 0:
             mse /= n
             sqrt_mse = math.sqrt(mse)
-        #sqrt_mse = ((S.yu - S.yl) / 2) - sqrt_mse
         return (y0 - sqrt_mse, y0 + sqrt_mse)
     
-    def __get_exp_radius(self, S:dataset.Dataset, x0:float, exp_cov:float) -> float:
+    def __get_exp_radius(self, S:dataset.Dataset, x0:float, exp_cov:float, step_sign: float=1) -> float:
         assert exp_cov > 0.0
         step = (S.xu - S.xl) * 0.01
         radius = 0.0
         cov = 0.0
 
-        while cov < exp_cov:
+        while cov < exp_cov and utils.is_in(x0 + (radius * step_sign), S.xl, S.xu):
             radius += step
             dp_count = 0
             for dp in S.data:
-                if dp.x >= x0 - radius and dp.x <= x0 + radius:
+                if utils.is_in(dp.x, x0, x0 + (radius * step_sign)):
                     dp_count += 1
             cov = dp_count / len(S.data)
 
-        #print(f"Coverage: {cov} - Radius: {radius}")
+        #print(f"Coverage: {cov} - Radius: {step_sign} {radius}")
         return radius
