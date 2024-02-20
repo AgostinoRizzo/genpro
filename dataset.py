@@ -73,6 +73,10 @@ class Dataset:
         self.data = list(train)
         self.test = list(test)
     
+    def clear(self):
+        self.data = []
+        self.test = []
+    
     def func(self, x:float) -> float:
         pass
 
@@ -100,7 +104,7 @@ class Dataset:
         self.knowledge.plot()
 
         x = np.linspace(self.xl, self.xu, 100)
-        #plt.plot(x, self.func(x), linestyle='dashed', linewidth=2, color='black', label='Reference model')
+        plt.plot(x, self.func(x), linestyle='dashed', linewidth=2, color='black', label='Reference model')
         plt.ylim(self.yl, self.yu)
         plt.grid()
         plt.legend(loc='upper right', fontsize=14)

@@ -702,8 +702,10 @@ class TaylorSplineEstimator:
     def fit(self, S:dataset.Dataset, spline_degree:int, silent:bool=True,
             x0:float=0.0, exp_cov:float=0.2) -> TaylorSpline:  # TODO: fix exp_cov (default) as hyper-parameter
         
-        exp_radius_left  = self.__get_exp_radius(S, x0, exp_cov / 2, -1)
-        exp_radius_right = self.__get_exp_radius(S, x0, exp_cov / 2, +1)
+        exp_radius_left , cov_left  = self.__get_exp_radius(S, x0, exp_cov / 2, -1)
+        exp_radius_right, cov_right = self.__get_exp_radius(S, x0, exp_cov / 2, +1)
+        if cov_left  < exp_cov / 2: exp_radius_right, cov_right = self.__get_exp_radius(S, x0, exp_cov - cov_left,  +1)
+        if cov_right < exp_cov / 2: exp_radius_left,  cov_left  = self.__get_exp_radius(S, x0, exp_cov - cov_right, -1)
 
         #
         # fit spline
@@ -749,4 +751,4 @@ class TaylorSplineEstimator:
             cov = dp_count / len(S.data)
 
         #print(f"Coverage: {cov} - Radius: {step_sign} {radius}")
-        return radius
+        return radius, cov
