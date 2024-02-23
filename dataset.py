@@ -230,8 +230,8 @@ class MagmanDatasetScaled(Dataset):
         #peak_x = 0.00788845
         peak_x = 0.208
         
-        """# intersection points
-        self.knowledge.add_deriv(0, DataPoint( 0., 0.))
+        # intersection points
+        """self.knowledge.add_deriv(0, DataPoint( 0., 0.))
         self.knowledge.add_deriv(0, DataPoint(-peak_x, self.func(-peak_x)))
         self.knowledge.add_deriv(0, DataPoint( peak_x, self.func( peak_x)))
         self.knowledge.add_deriv(0, DataPoint(self.xl, self.func(self.xl)))

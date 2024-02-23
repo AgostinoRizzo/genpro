@@ -738,7 +738,7 @@ class TaylorSplineEstimator:
     
     def __get_exp_radius(self, S:dataset.Dataset, x0:float, exp_cov:float, step_sign: float=1) -> float:
         assert exp_cov > 0.0
-        step = (S.xu - S.xl) * 0.01
+        step = (S.xu - S.xl) * 0.001  # TODO: implement appropriately
         radius = 0.0
         cov = 0.0
 
