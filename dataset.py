@@ -51,10 +51,15 @@ class Dataset:
         self.yu = 1.
         self.knowledge = DataKnowledge(self)
     
-    def sample(self, size:int=100, noise:float=0.):
+    def sample(self, size:int=100, noise:float=0., mesh:bool=False):
         y_noise = (self.yu - self.yl) * noise * 0.5
-        for _ in range(size):
-            x = random.uniform(self.xl, self.xu)
+        
+        X = []
+        if mesh: X = np.linspace(self.xl, self.xu, size).tolist()
+        else:
+            for _ in range(size): x = random.uniform(self.xl, self.xu)
+        
+        for x in X:
             y = self.func(x) + (0. if noise == 0. else random.gauss(sigma=y_noise))
             self.data.append(DataPoint(x, y))
     
@@ -122,14 +127,18 @@ class Dataset:
 class PolyDataset(Dataset):   
     def __init__(self) -> None:
         super().__init__()
-        self.xl = -2.5
+        """self.xl = -2.5
         self.xu = 2.5
         self.yl = 0.
-        self.yu = 1.5
+        self.yu = 1.5"""
+        self.xl = 0.01
+        self.xu =  4
+        self.yl =  0.01
+        self.yu =  16
      
     def func(self, x: float) -> float:
-        #return x**2
-        return 0.2*x**4 -1*x**2 + 1.3
+        return x **2
+        #return 0.2*x**4 -1*x**2 + 1.3
 
 class TrigonDataset(Dataset):   
     def __init__(self) -> None:
