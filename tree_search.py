@@ -360,28 +360,101 @@ def infer_operator_slq_optimz(S:dataset.Dataset, opt:str='sum'):
 
 
 """
-infer_poly
+infer_syntaxtree + infer_poly
 requires S.data as mesh
 """
-def get_system(coeffs, max_degree:int, interc_dp:list, comb_func:lambda a,b : a+b):
-    n_coeffs = max_degree+1
-    eqs = []
+class SyntaxTree:
+    OPERATORS = ['*', '/', 'sqrt', 'log', 'exp', 'sin', 'cos']
 
-    for dp in interc_dp:
-        poly_a = 0.
-        poly_b = 0.
+    def __init__(self) -> None:
+        self.children = []
+    
+    def append(self, subtree):
+        self.children.append(subtree)
+    
+    def evaluate(self, x, poly_coeffs) -> float:
+        raise RuntimeError('Operation not defined.')
 
-        for deg in range(n_coeffs):
-            poly_a += coeffs[deg] * (dp.x ** deg)
-            poly_b += coeffs[n_coeffs + deg] * (dp.x ** deg)
+    def tostring(self, id:str=''):
+        ans = ''
+        for c in self.children:
+            ans += f"\t{c.tostring()}\n"
+        return ans
+    
+    @staticmethod
+    def get_operator_lambda(operator:str):
+        if   operator == '*':    return lambda a, b : a * b,    2
+        elif operator == '/':    return lambda a, b : a / b,    2
+        elif operator == 'sqrt': return lambda a: math.sqrt(a), 1
+        elif operator == 'log':  return lambda a: math.log(a),  1
+        elif operator == 'exp':  return lambda a: math.exp(a),  1
+        elif operator == 'sin':  return lambda a: math.sin(a),  1
+        elif operator == 'cos':  return lambda a: math.cos(a),  1
+        raise RuntimeError(f"Operator {operator} not supported. Please choose from {SyntaxTree.OPERATORS}.")
+
+    @staticmethod
+    def create_random(curr_depth:int, n_coeffs:int, max_depth:int=2):
+        if curr_depth >= max_depth:
+            return PolySyntaxTree(n_coeffs)
         
-        eq = comb_func(poly_a, poly_b)
+        operator = random.choice(SyntaxTree.OPERATORS + ['poly'])
+        if operator == 'poly': return PolySyntaxTree(n_coeffs)
+
+        stree = OperatorSyntaxTree(operator)
+        for _ in range(stree.arity):
+            stree.append( SyntaxTree.create_random(curr_depth+1, n_coeffs, max_depth) )
+        
+        return stree
+        
+    
+class OperatorSyntaxTree(SyntaxTree):
+    def __init__(self, operator:str='*') -> None:
+        super().__init__()
+        self.operator_str = operator
+        self.operator, self.arity = SyntaxTree.get_operator_lambda(operator)
+    
+    def append(self, subtree):
+        self.children.append(subtree)
+    
+    def evaluate(self, x, poly_coeffs) -> float:
+        if len(self.children) != self.arity: raise RuntimeError('Mismatch with arity.')
+        ch_evals = [c.evaluate(x, poly_coeffs) for c in self.children]
+        return self.operator(*ch_evals)
+    
+    def tostring(self, id:str=''):
+        if   self.operator_str == '*': return f"{self.children[0].tostring(id='a')}*{self.children[1].tostring(id='b')}"
+        elif self.operator_str == '/': return f"{self.children[0].tostring(id='a')}/{self.children[1].tostring(id='b')}"
+        return f"{self.operator_str}({self.children[0].tostring()})"
+
+class PolySyntaxTree(SyntaxTree):
+    def __init__(self, n_coeffs) -> None:
+        super().__init__()
+        self.n_coeffs = n_coeffs
+    
+    def append(self, subtree):
+        raise RuntimeError('Append not supported on PolySystaxTree')
+    
+    def evaluate(self, x, poly_coeffs) -> float:
+        y = 0.
+        for deg in range(self.n_coeffs):
+            y += poly_coeffs[0] * (x ** deg)
+            poly_coeffs.pop(0)
+        return y
+    
+    def tostring(self, id:str=''):
+        return 'P' + ('' if id == '' else '_' + id) + '(x)'
+
+
+def get_system(coeffs, stree:SyntaxTree, interc_dp:list):
+    eqs = []
+    for dp in interc_dp:
+        coeffs_pop = list(coeffs)
+        eq = stree.evaluate(dp.x, coeffs_pop)
         eq -= dp.y
         eqs.append(eq)
-    
     return eqs
 
-def infer_poly(S:dataset.Dataset, max_degree:int=2, comb_func=lambda a,b : a+b):
+def infer_poly(S:dataset.Dataset, stree:SyntaxTree, max_degree:int, verbose:bool=True):
     n_coeffs = max_degree+1
 
     interc_dp = [S.data[0], S.data[-1]]
@@ -389,26 +462,53 @@ def infer_poly(S:dataset.Dataset, max_degree:int=2, comb_func=lambda a,b : a+b):
         interc_dp.append( random.choice(S.data[0:100]) )
     
     coeffs_0 = [random.uniform(1., 5.) for _ in range(n_coeffs*2)]
-    res = fsolve( get_system, coeffs_0, args=(max_degree, interc_dp, comb_func) )
-    print(f"Result: {res}")
-    print(np.isclose(get_system(res, max_degree, interc_dp, comb_func), [0. for _ in range(n_coeffs*2)]))
+    res = fsolve( get_system, coeffs_0, args=(stree, interc_dp) )
+    close_res = np.isclose(get_system(res, stree, interc_dp), [0. for _ in range(n_coeffs*2)])
+    root_found = np.all(close_res == True)
 
-    def poly(coeffs, x:float) -> float:
-        y = 0.
-        for deg in range(len(coeffs)):
-            y += coeffs[deg] * (x**deg)
-        return y
+    if verbose:
+        print(f"Result: {res}")
+        print(f"Close: {close_res}")
 
-    alphas = []
-    betas  = []
-    mse    = 0.
+    Y   = []
+    mse = 0.
     for dp in S.data:
-        alphas.append( poly(res[0:n_coeffs], dp.x) )
-        betas .append( poly(res[n_coeffs:n_coeffs*2], dp.x) )
-        mse += ( comb_func(alphas[-1], betas[-1]) - dp.y ) ** 2
+        res_pop = list(res)
+        y = stree.evaluate(dp.x, res_pop)
+        Y.append(y)
+        mse += ( y - dp.y ) ** 2
     mse /= len(S.data)
     
-    return alphas, betas, interc_dp, mse
+    return Y, interc_dp, mse, root_found
+
+
+def infer_syntaxtree(S:dataset.Dataset, max_degree:int=2, max_depth:int=2, trials:int=10):
+    n_coeffs = max_degree+1
+
+    """stree = OperatorSyntaxTree(operator='/')
+    stree.append(PolySyntaxTree(n_coeffs=n_coeffs))
+    stree.append(PolySyntaxTree(n_coeffs=n_coeffs))"""
+
+    best_stree = None
+    best_Y = None
+    best_inter_points = None
+    best_mse = None
+    for _ in range(trials):
+        try:
+            stree = SyntaxTree.create_random(1, n_coeffs, max_depth)
+            for _ in range(10):
+                Y, inter_points, mse, root_found = infer_poly(S, stree, max_degree, verbose=False)
+                if best_mse is None or mse < best_mse:
+                    best_stree = stree
+                    best_Y = Y
+                    best_inter_points = inter_points
+                    best_mse = mse
+                if root_found:
+                    break
+        except Exception:  # domain error
+            pass
+    return best_stree, best_Y, best_inter_points, best_mse
+
 
 """def infer_poly(S:dataset.Dataset, max_degree:int=2, comb_func=lambda a,b : a+b):
     n_coeffs = max_degree+1
