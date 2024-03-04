@@ -124,6 +124,18 @@ class Dataset:
         return ''
 
 
+class MockDataset(Dataset):   
+    def __init__(self) -> None:
+        super().__init__()
+        self.xl = 0.8
+        self.xu = 10
+        self.yl = -1
+        self.yu = 9
+     
+    def func(self, x: float) -> float:
+        return x / (x**2)#(x+2) / (x**2 + x + 1)
+
+
 class PolyDataset(Dataset):   
     def __init__(self) -> None:
         super().__init__()

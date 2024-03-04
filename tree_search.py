@@ -1,5 +1,9 @@
 import numpy as np
+from scipy.optimize import minimize, Bounds, fsolve
+#import tensorflow as tf
+import sympy
 import math
+import random
 import dataset
 
 def __get_slope(dp_i: dataset.DataPoint, dp_j: dataset.DataPoint) -> float:
@@ -67,49 +71,63 @@ def infer_operator(S:dataset.Dataset, opt:str='sum'):
     else: raise RuntimeError('Invalid operator.')
 
     n = len(S.data)
+    eps = 0.001
+    y_radius = 0.001
     i = 0
-    eps = 0.0001
-    y_radius = 0.2
-
     alphas = []
     betas  = []
-    n_iters = 0
 
-    while i < n and n_iters < 100:
-        k = S.data[i].y
+    trial = 0
 
-        if i == 0:
-            alphas.append(S.yl)# + eps
-            betas  = [__opt_beta(k, alphas[0])]
-            if alphas[0] > S.yu:
-                break
-        
-        else:
-            l = max(alphas[i-1] - y_radius, S.yl)
-            u = min(alphas[i-1] + y_radius, S.yu)
+    while i < n and trial < 100:
+        i = 0
+        iter = 0
+        alpha_origin = random.uniform(S.yl, S.yu)
 
-            a_best = None
-            b_best = None
-            diff_min = y_radius
-            for a in np.linspace(l, u, int((u - l) / eps)):
-                b = __opt_beta(k, a)
-                diff = abs(b - betas[i-1]) #+ abs(a - alphas[i-1])) / 2
-                if diff < diff_min:
-                    a_best = a
-                    b_best = b
-                    diff_min = diff
-            
-            if diff_min == y_radius:
-                i = -1
-                n_iters += 1
-                alphas = []
-                betas = []
+        while i < n and iter < 10000:
+            k = S.data[i].y
+
+            if i == 0:
+                step = 0
+                if iter > 0:
+                    step = (eps * (iter/2)) if iter % 2 == 0 else (-eps * ((iter+1)/2))
+                alphas = [alpha_origin + step]
+                try: betas  = [__opt_beta(k, alphas[0])]
+                except:
+                    i = -1
+                    iter += 1
             else:
-                alphas.append(a_best)
-                betas.append(b_best)
+                l = alphas[i-1] - y_radius
+                u = alphas[i-1] + y_radius
 
-        i += 1
+                a_best = None
+                b_best = None
+                diff_min = y_radius
+
+                if l <= u:
+                    for a in np.linspace(l, u, int((u - l) / eps)):
+                        try: b = __opt_beta(k, a)
+                        except: continue
+                        diff = abs(b - betas[i-1]) #+ abs(a - alphas[i-1])) / 2
+                        if diff < diff_min:
+                            a_best = a
+                            b_best = b
+                            diff_min = diff
+                
+                if diff_min == y_radius:
+                    i = -1
+                    iter += 1
+                else:
+                    alphas.append(a_best)
+                    betas.append(b_best)
+
+            i += 1
+        
+        trial += 1
     
+    print(f"Stop at: {alphas[0]}")
+    print(f"Trials: {trial}, Last iterations: {iter}")
+
     S_alphas = dataset.Dataset()
     S_betas  = dataset.Dataset()
     
@@ -122,4 +140,329 @@ def infer_operator(S:dataset.Dataset, opt:str='sum'):
         betas  = []
         print('No solution found.')
 
-    return alphas, betas, S_alphas, S_betas
+    return alphas, betas#, S_alphas, S_betas
+
+
+"""
+requires S.data as mesh
+"""
+def infer_operator_optimz(S:dataset.Dataset, opt:str='sum'):
+    __opt_beta = __sum_opt_beta
+    if   opt == 'sum' : pass
+    elif opt == 'prod': __opt_beta = __prod_opt_beta
+    elif opt == 'pow' : __opt_beta = __pow_opt_beta
+    elif opt == 'div' : __opt_beta = __div_opt_beta
+    else: raise RuntimeError('Invalid operator.')
+
+    n = len(S.data)
+    alphas0 = np.array([random.uniform(1, 10) for i in range(n)])
+    bounds = Bounds(lb=-np.inf) #1e-10
+
+    def target(alphas:np.array) -> float:
+        val = 0.
+        slopes = []
+        for i in range(2, n):
+            alpha_slope_prev = alphas[i-1] - alphas[i-2]
+            alpha_slope_curr = alphas[i] - alphas[i-1]
+            val += (alpha_slope_curr - alpha_slope_prev) ** 2
+
+            beta_slope_prev = __opt_beta(S.data[i-1].y, alphas[i-1]) - __opt_beta(S.data[i-2].y, alphas[i-2])
+            beta_slope_curr = __opt_beta(S.data[i].y, alphas[i]) - __opt_beta(S.data[i-1].y, alphas[i-1])
+            val += (beta_slope_curr - beta_slope_prev) ** 2
+
+            slopes.append(alpha_slope_curr)
+            slopes.append(beta_slope_curr)
+
+        return val
+    
+    res = minimize(target, alphas0, method='nelder-mead',
+                   options={'xatol': 1e-8, 'disp': True, 'maxiter': n*800},
+                   bounds=bounds)
+    
+    alphas = res.x
+    betas = []
+    for i in range(n): betas.append(__opt_beta(S.data[i].y, alphas[i]))
+    betas = np.array(betas)
+
+    print(res)
+    return alphas, betas
+
+
+"""
+requires S.data as mesh
+"""
+def infer_operator_gradoptimz(S:dataset.Dataset, opt:str='sum'):
+    __opt_beta = __sum_opt_beta
+    if   opt == 'sum' : pass
+    elif opt == 'prod': __opt_beta = __prod_opt_beta
+    elif opt == 'pow' : __opt_beta = __pow_opt_beta
+    elif opt == 'div' : __opt_beta = __div_opt_beta
+    else: raise RuntimeError('Invalid operator.')
+
+    n = len(S.data)
+
+    def target(alphas:np.array) -> float:
+        val = 0.
+        slopes = []
+        for i in range(2, n):
+            alpha_slope_prev = alphas[i-1] - alphas[i-2]
+            alpha_slope_curr = alphas[i] - alphas[i-1]
+            val += (alpha_slope_curr - alpha_slope_prev) ** 2
+
+            beta_slope_prev = __opt_beta(S.data[i-1].y, alphas[i-1]) - __opt_beta(S.data[i-2].y, alphas[i-2])
+            beta_slope_curr = __opt_beta(S.data[i].y, alphas[i]) - __opt_beta(S.data[i-1].y, alphas[i-1])
+            #val += (beta_slope_curr - beta_slope_prev) ** 2
+
+            slopes.append(alpha_slope_curr)
+            slopes.append(beta_slope_curr)
+
+        return val
+    
+    #optimizer = tf.keras.optimizers.Adam(learning_rate=0.05,  epsilon=1e-07,)
+    alphas_curr = np.array([random.uniform(S.yl, S.yu) for i in range(n)])
+
+    num_steps = 5000
+    h = 1e-5
+    learning_rate = 0.05
+    gradient = None
+
+    for i in range(num_steps):
+        
+        gradient = []
+        for vidx in range(n):
+            target_curr = target(alphas_curr)
+            alphas_curr[vidx] += h
+            target_next = target(alphas_curr)
+            alphas_curr[vidx] -= h
+            
+            gradient.append( (target_next-target_curr) / h )
+
+        gradient = np.array(gradient)
+        #print(gradient)
+        
+        #optimizer.apply_gradients([(gradient, alphas_curr)])
+        alphas_curr += - learning_rate * gradient
+    
+    alphas = alphas_curr
+    betas = []
+    for i in range(n): betas.append(__opt_beta(S.data[i].y, alphas[i]))
+    betas = np.array(betas)
+
+    print(f"Last gradient {gradient}")
+
+    return alphas, betas
+
+
+"""
+requires S.data as mesh
+"""
+def infer_operator_slq_optimz(S:dataset.Dataset, opt:str='sum'):
+    __opt_beta = __sum_opt_beta
+    if   opt == 'sum' : pass
+    elif opt == 'prod': __opt_beta = __prod_opt_beta
+    elif opt == 'pow' : __opt_beta = __pow_opt_beta
+    elif opt == 'div' : __opt_beta = __div_opt_beta
+    else: raise RuntimeError('Invalid operator.')
+
+    n = len(S.data)
+
+    def get_target(alphas):
+        target_expr = 0.
+        slopes = []
+        slopes_avg = 0.
+
+        for i in range(2, n):
+            alpha_slope_prev = alphas[i-1] - alphas[i-2]
+            alpha_slope_curr = alphas[i] - alphas[i-1]
+            #target_expr += 0.5 * (alpha_slope_curr**2 - alpha_slope_prev**2) ** 2
+            target_expr += (alpha_slope_curr - alpha_slope_prev) ** 2
+
+            beta_slope_prev = __opt_beta(S.data[i-1].y, alphas[i-1]) - __opt_beta(S.data[i-2].y, alphas[i-2])
+            beta_slope_curr = __opt_beta(S.data[i].y, alphas[i]) - __opt_beta(S.data[i-1].y, alphas[i-1])
+            #target_expr += 0.5 * (beta_slope_curr**2 - beta_slope_prev**2) ** 2
+            #target_expr += beta_slope_curr ** 2
+
+            #slopes.append(alpha_slope_curr)
+            slopes.append(beta_slope_curr)
+            slopes_avg += alpha_slope_curr
+            slopes_avg += beta_slope_curr
+        
+        #for s in slopes:
+        #    target_expr += (s - slopes_avg) ** 2
+        #target_expr /= n-1
+
+        #target_expr = sympy.simplify(target_expr)
+        return target_expr
+    
+    alphas = sympy.symbols(f"a0:{n}")
+    target_expr = get_target(alphas)
+    print(f"TargetExp: {target_expr}")
+
+    gradient = []
+    gradient_lamb = []
+    for i in range(n):
+        g_i = sympy.diff(target_expr, alphas[i])
+        gradient.append(g_i)
+        gradient_lamb.append(sympy.lambdify(list(g_i.free_symbols), g_i))
+    print(f"Gradient: {gradient}")
+
+    ## solve/nsolve
+    #nres = sympy.solvers.solvers.nsolve(gradient, alphas, [1. for _ in range(n)], maxsteps=10)
+    #res = {}
+    #for i in range(n): res[alphas[i]] = nres[i]
+    ##res = sympy.solve(gradient)
+    #print(f"Result: {res}")
+
+    ## gradient descent
+    n_steps = 2000
+    learning_rate = 0.01
+    curr_alphas = [random.uniform(S.yl, S.yu) for _ in range(n)]
+    curr_gradient = [1. for _ in range(n)]
+    alphas_idx_map = {}
+    for i in range(n): alphas_idx_map[alphas[i]] = i
+    res = {}
+
+    for curr_iter in range(n_steps):
+
+        for i in range(n):
+            alphas_subs = []
+            for s in gradient[i].free_symbols:
+                sidx = alphas_idx_map[s]
+                alphas_subs.append(curr_alphas[sidx])
+            #print( *alphas_subs )
+            curr_gradient[i] = float(gradient_lamb[i]( *alphas_subs ))
+        
+        #print(f"[{curr_iter}] Current gradient: {np.linalg.norm(np.array(curr_gradient))}")
+
+        for i in range(n):
+            curr_alphas[i] += -learning_rate * curr_gradient[i]
+        
+    for i in range(n):
+        res[alphas[i]] = curr_alphas[i]
+    print(f"Result: {res}")
+    print(f"Final gradient: {np.linalg.norm(np.array(curr_gradient))}")
+
+
+    alphas_sol = []
+    betas_sol = []
+    for i in range(n):
+        
+        ai_sol = res[alphas[i]] if alphas[i] in res.keys() else 0.
+        free_ai:set = set() if type(ai_sol) == float else ai_sol.free_symbols
+        #print("Free symbs: " + str(free_ai))
+        for fai in free_ai: ai_sol = ai_sol.subs(fai, 0)
+        #print("ai_sol: " + str(ai_sol))
+
+        alphas_sol.append( ai_sol )
+        betas_sol.append( __opt_beta(S.data[i].y, alphas_sol[i]) )
+    
+    return np.array(alphas_sol), np.array(betas_sol)
+
+
+"""
+infer_poly
+requires S.data as mesh
+"""
+def get_system(coeffs, max_degree:int, interc_dp:list, comb_func:lambda a,b : a+b):
+    n_coeffs = max_degree+1
+    eqs = []
+
+    for dp in interc_dp:
+        poly_a = 0.
+        poly_b = 0.
+
+        for deg in range(n_coeffs):
+            poly_a += coeffs[deg] * (dp.x ** deg)
+            poly_b += coeffs[n_coeffs + deg] * (dp.x ** deg)
+        
+        eq = comb_func(poly_a, poly_b)
+        eq -= dp.y
+        eqs.append(eq)
+    
+    return eqs
+
+def infer_poly(S:dataset.Dataset, max_degree:int=2, comb_func=lambda a,b : a+b):
+    n_coeffs = max_degree+1
+
+    interc_dp = [S.data[0], S.data[-1]]
+    for _ in range(n_coeffs*2 - 2):
+        interc_dp.append( random.choice(S.data[0:100]) )
+    
+    coeffs_0 = [random.uniform(1., 5.) for _ in range(n_coeffs*2)]
+    res = fsolve( get_system, coeffs_0, args=(max_degree, interc_dp, comb_func) )
+    print(f"Result: {res}")
+    print(np.isclose(get_system(res, max_degree, interc_dp, comb_func), [0. for _ in range(n_coeffs*2)]))
+
+    def poly(coeffs, x:float) -> float:
+        y = 0.
+        for deg in range(len(coeffs)):
+            y += coeffs[deg] * (x**deg)
+        return y
+
+    alphas = []
+    betas  = []
+    mse    = 0.
+    for dp in S.data:
+        alphas.append( poly(res[0:n_coeffs], dp.x) )
+        betas .append( poly(res[n_coeffs:n_coeffs*2], dp.x) )
+        mse += ( comb_func(alphas[-1], betas[-1]) - dp.y ) ** 2
+    mse /= len(S.data)
+    
+    return alphas, betas, interc_dp, mse
+
+"""def infer_poly(S:dataset.Dataset, max_degree:int=2, comb_func=lambda a,b : a+b):
+    n_coeffs = max_degree+1
+    coeffs_a = sympy.symbols(f"a0:{n_coeffs}")
+    coeffs_b = sympy.symbols(f"b0:{n_coeffs}")
+    coeffs = coeffs_a + coeffs_b
+
+    eqs = []
+    inter_points = []
+    for _ in range(n_coeffs*2):
+        
+        dp = random.choice(S.data[30:70])
+        inter_points.append(dp)
+        poly_a = 0.
+        poly_b = 0.
+
+        for deg in range(n_coeffs):
+            poly_a += coeffs_a[deg] * (dp.x ** deg)
+            poly_b += coeffs_b[deg] * (dp.x ** deg)
+        
+        eq = comb_func(poly_a, poly_b)
+        eq -= dp.y
+        eqs.append(eq)
+    
+    for _ in range(10):
+        coeffs_0 = tuple( [random.uniform(1., 5.) for _ in range(n_coeffs*2)] )
+        print(f"EQS: {eqs}\nCOEFFS: {coeffs}\nCOEFFS0: {coeffs_0}")
+        #res = sympy.nsolve(eqs, coeffs_a + coeffs_b, coeffs_0, verify=True)
+        res = sympy.solve(eqs, *(coeffs))
+        print(f"Result: {res}")
+        if len(res) > 0: break
+
+    def poly(coeffs, x:float) -> float:
+        y = 0.
+        for deg in range(len(coeffs)):
+            y += coeffs[deg] * (x**deg)
+        return y
+
+    #res_coeffs = [c for c in res]
+    res_coeffs = []
+    for c in coeffs:
+        c_val = 1.
+
+        if c in res.keys():
+            fcs_val = [(fcs, 1.) for fcs in res[c].free_symbols]
+            c_val = res[c].subs(fcs_val)
+
+        res_coeffs.append(c_val)
+    
+    alphas = []
+    betas  = []
+    for dp in S.data:
+        alphas.append( poly(res_coeffs[0:n_coeffs], dp.x) )
+        betas .append( poly(res_coeffs[n_coeffs:n_coeffs*2], dp.x) )
+    
+    return alphas, betas, inter_points
+"""
