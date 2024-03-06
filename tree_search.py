@@ -382,6 +382,13 @@ class SyntaxTree:
             ans += f"\t{c.tostring()}\n"
         return ans
     
+    def get_depth(self) -> int:
+        max_ch_depth = 0
+        for c in self.children:
+            c_depth = c.get_depth()
+            if c_depth > max_ch_depth: max_ch_depth = c_depth
+        return max_ch_depth + 1
+    
     @staticmethod
     def get_operator_lambda(operator:str):
         if   operator == '*':    return lambda a, b : a * b,    2
@@ -515,9 +522,11 @@ def infer_syntaxtree(S:dataset.Dataset, max_degree:int=2, max_depth:int=2, trial
 
     for _ in range(trials):
         try:
-            stree = SyntaxTree.create_random(1, n_coeffs, max_depth)
+            stree = SyntaxTree.create_random(1, n_coeffs, random.randint(1, max_depth))
             #if stree.operator_str == '/' and stree.arity == 2 and type(stree.children[0]) is PolySyntaxTree and type(stree.children[1]) is PolySyntaxTree:
             #    print("FOUND")
+            #print(f"Tree depth: {stree.get_depth()}")
+
             for _ in range(1):
 
                 start_time = time.time()
