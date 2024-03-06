@@ -4,6 +4,7 @@ from scipy.optimize import minimize, Bounds, fsolve
 import sympy
 import math
 import random
+import time
 import dataset
 
 def __get_slope(dp_i: dataset.DataPoint, dp_j: dataset.DataPoint) -> float:
@@ -430,11 +431,13 @@ class PolySyntaxTree(SyntaxTree):
     def __init__(self, n_coeffs) -> None:
         super().__init__()
         self.n_coeffs = n_coeffs
+        self.curr_coeffs = []
     
     def append(self, subtree):
         raise RuntimeError('Append not supported on PolySystaxTree')
     
     def evaluate(self, x, poly_coeffs) -> float:
+        self.curr_coeffs = poly_coeffs[0:self.n_coeffs]
         y = 0.
         for deg in range(self.n_coeffs):
             y += poly_coeffs[0] * (x ** deg)
@@ -442,7 +445,16 @@ class PolySyntaxTree(SyntaxTree):
         return y
     
     def tostring(self, id:str=''):
-        return 'P' + ('' if id == '' else '_' + id) + '(x)'
+        if len(self.curr_coeffs) == 0:
+            return 'P' + ('' if id == '' else '_' + id) + '(x)'
+        epsilon = 1e-8
+        ans = ''
+        for deg in range(self.n_coeffs):
+            c = self.curr_coeffs[deg]
+            if abs(c) < epsilon: continue
+            if deg > 0: ans += '+' + f"{c}*x{'**' + str(deg) if deg > 1 else ''}" if abs(1-c) >= epsilon else f"x**{deg}"
+            else: ans += f"{c}"
+        return ans
 
 
 def get_system(coeffs, stree:SyntaxTree, interc_dp:list):
@@ -462,11 +474,12 @@ def infer_poly(S:dataset.Dataset, stree:SyntaxTree, max_degree:int, verbose:bool
         interc_dp.append( random.choice(S.data[0:100]) )
     
     coeffs_0 = [random.uniform(1., 5.) for _ in range(n_coeffs*2)]
-    res = fsolve( get_system, coeffs_0, args=(stree, interc_dp) )
+    res, _, _, msg = fsolve( get_system, coeffs_0, args=(stree, interc_dp), full_output=True )
     close_res = np.isclose(get_system(res, stree, interc_dp), [0. for _ in range(n_coeffs*2)])
     root_found = np.all(close_res == True)
-
+    
     if verbose:
+        print(f"Message: {msg}")
         print(f"Result: {res}")
         print(f"Close: {close_res}")
 
@@ -493,21 +506,47 @@ def infer_syntaxtree(S:dataset.Dataset, max_degree:int=2, max_depth:int=2, trial
     best_Y = None
     best_inter_points = None
     best_mse = None
+    best_root_found = None
+
+    root_found_time = 0.
+    root_found_time_count = 0
+    noroot_found_time = 0.
+    noroot_found_time_count = 0
+
     for _ in range(trials):
         try:
             stree = SyntaxTree.create_random(1, n_coeffs, max_depth)
-            for _ in range(10):
+            #if stree.operator_str == '/' and stree.arity == 2 and type(stree.children[0]) is PolySyntaxTree and type(stree.children[1]) is PolySyntaxTree:
+            #    print("FOUND")
+            for _ in range(1):
+
+                start_time = time.time()
                 Y, inter_points, mse, root_found = infer_poly(S, stree, max_degree, verbose=False)
+                elapsed_time = time.time() - start_time
+
                 if best_mse is None or mse < best_mse:
                     best_stree = stree
                     best_Y = Y
                     best_inter_points = inter_points
                     best_mse = mse
+                    best_root_found = root_found
+                
                 if root_found:
+                    root_found_time += elapsed_time
+                    root_found_time_count += 1
                     break
+                else:
+                    noroot_found_time += elapsed_time
+                    noroot_found_time_count += 1
         except Exception:  # domain error
             pass
-    return best_stree, best_Y, best_inter_points, best_mse
+    
+    if root_found_time_count > 0.: print(f"Root found time (avg): {int((root_found_time / root_found_time_count) * 1e3)} ms")
+    print(f"Root found total time (avg): {int(root_found_time * 1e3)} ms")
+    if noroot_found_time_count > 0.: print(f"Root not found time (avg): {int((noroot_found_time / noroot_found_time_count) * 1e3)} ms")
+    print(f"Root not found total time (avg): {int(noroot_found_time * 1e3)} ms")
+
+    return best_stree, best_Y, best_inter_points, best_mse, best_root_found
 
 
 """def infer_poly(S:dataset.Dataset, max_degree:int=2, comb_func=lambda a,b : a+b):
