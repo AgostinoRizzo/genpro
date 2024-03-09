@@ -133,7 +133,7 @@ class MockDataset(Dataset):
         self.yu = 9
      
     def func(self, x: float) -> float:
-        return x / (x**2)#(x+2) / (x**2 + x + 1)
+        return np.sin(x) + 1  #x / (x**2)#(x+2) / (x**2 + x + 1)
 
 
 class PolyDataset(Dataset):   

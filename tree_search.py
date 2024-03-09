@@ -364,6 +364,9 @@ def infer_operator_slq_optimz(S:dataset.Dataset, opt:str='sum'):
 infer_syntaxtree + infer_poly
 requires S.data as mesh
 """
+class OperationDomainError(RuntimeError):
+    pass
+
 class SyntaxTree:
     OPERATORS = ['*', '/', 'sqrt', 'log', 'exp', 'sin', 'cos']
 
@@ -388,6 +391,9 @@ class SyntaxTree:
             c_depth = c.get_depth()
             if c_depth > max_ch_depth: max_ch_depth = c_depth
         return max_ch_depth + 1
+
+    def get_poly_coeffs(self) -> int:
+        raise RuntimeError('Operation not supported.')
     
     @staticmethod
     def get_operator_lambda(operator:str):
@@ -401,16 +407,21 @@ class SyntaxTree:
         raise RuntimeError(f"Operator {operator} not supported. Please choose from {SyntaxTree.OPERATORS}.")
 
     @staticmethod
-    def create_random(curr_depth:int, n_coeffs:int, max_depth:int=2):
+    def create_random(curr_depth:int, n_coeffs:int, n_coeffs_inner:int, max_depth:int=2):
         if curr_depth >= max_depth:
             return PolySyntaxTree(n_coeffs)
         
-        operator = random.choice(SyntaxTree.OPERATORS + ['poly'])
-        if operator == 'poly': return PolySyntaxTree(n_coeffs)
+        operator = random.choice(SyntaxTree.OPERATORS + ['inner_poly'])
+        
+        stree = None
+        if operator == 'inner_poly':
+            stree = InnerPolySyntaxTree(n_coeffs_inner)
+            stree.append( SyntaxTree.create_random(curr_depth+1, n_coeffs, n_coeffs_inner, max_depth) )
 
-        stree = OperatorSyntaxTree(operator)
-        for _ in range(stree.arity):
-            stree.append( SyntaxTree.create_random(curr_depth+1, n_coeffs, max_depth) )
+        else:
+            stree = OperatorSyntaxTree(operator)
+            for _ in range(stree.arity):
+                stree.append( SyntaxTree.create_random(curr_depth+1, n_coeffs, n_coeffs_inner, max_depth) )
         
         return stree
         
@@ -427,7 +438,13 @@ class OperatorSyntaxTree(SyntaxTree):
     def evaluate(self, x, poly_coeffs) -> float:
         if len(self.children) != self.arity: raise RuntimeError('Mismatch with arity.')
         ch_evals = [c.evaluate(x, poly_coeffs) for c in self.children]
-        return self.operator(*ch_evals)
+        try: return self.operator(*ch_evals)
+        except Exception: raise OperationDomainError
+
+    def get_poly_coeffs(self) -> int:
+        n = 0
+        for c in self.children: n += c.get_poly_coeffs()
+        return n
     
     def tostring(self, id:str=''):
         if   self.operator_str == '*': return f"{self.children[0].tostring(id='a')}*{self.children[1].tostring(id='b')}"
@@ -435,7 +452,7 @@ class OperatorSyntaxTree(SyntaxTree):
         return f"{self.operator_str}({self.children[0].tostring()})"
 
 class PolySyntaxTree(SyntaxTree):
-    def __init__(self, n_coeffs) -> None:
+    def __init__(self, n_coeffs:int) -> None:
         super().__init__()
         self.n_coeffs = n_coeffs
         self.curr_coeffs = []
@@ -451,8 +468,11 @@ class PolySyntaxTree(SyntaxTree):
             poly_coeffs.pop(0)
         return y
     
+    def get_poly_coeffs(self) -> int:
+        return self.n_coeffs
+    
     def tostring(self, id:str=''):
-        if len(self.curr_coeffs) == 0:
+        if len(self.curr_coeffs) == 0 or True:
             return 'P' + ('' if id == '' else '_' + id) + '(x)'
         epsilon = 1e-8
         ans = ''
@@ -464,6 +484,46 @@ class PolySyntaxTree(SyntaxTree):
         return ans
 
 
+class InnerPolySyntaxTree(PolySyntaxTree):
+    def __init__(self, n_coeffs:int) -> None:
+        super().__init__(n_coeffs)
+        self.arity = 1
+    
+    def append(self, subtree):
+        self.children.append(subtree)
+    
+    def evaluate(self, x, poly_coeffs) -> float:
+        if len(self.children) != self.arity: raise RuntimeError('Mismatch with arity.')
+        self.curr_coeffs = []
+        y = 0.
+        ch_eval = self.children[0].evaluate(x, poly_coeffs)
+        for deg in range(self.n_coeffs):
+            y += poly_coeffs[0] * (ch_eval ** deg)
+            self.curr_coeffs.append(poly_coeffs[0])
+            poly_coeffs.pop(0)
+        return y
+    
+    def get_poly_coeffs(self) -> int:
+        n = self.n_coeffs
+        for c in self.children: n += c.get_poly_coeffs()
+        return n
+    
+    def tostring(self, id:str=''):
+        child_str = self.children[0].tostring()
+
+        if len(self.curr_coeffs) == 0 or True:
+            return 'P' + ('' if id == '' else '_' + id) + f"({child_str})"
+        
+        epsilon = 1e-8
+        ans = ''
+        for deg in range(self.n_coeffs):
+            c = self.curr_coeffs[deg]
+            if abs(c) < epsilon: continue
+            if deg > 0: ans += '+' + f"{c}*{child_str}{'**' + str(deg) if deg > 1 else ''}" if abs(1-c) >= epsilon else f"{child_str}**{deg}"
+            else: ans += f"{c}"
+        return ans
+    
+
 def get_system(coeffs, stree:SyntaxTree, interc_dp:list):
     eqs = []
     for dp in interc_dp:
@@ -473,16 +533,16 @@ def get_system(coeffs, stree:SyntaxTree, interc_dp:list):
         eqs.append(eq)
     return eqs
 
-def infer_poly(S:dataset.Dataset, stree:SyntaxTree, max_degree:int, verbose:bool=True):
-    n_coeffs = max_degree+1
+def infer_poly(S:dataset.Dataset, stree:SyntaxTree, verbose:bool=True):
+    tot_coeffs = stree.get_poly_coeffs()
 
     interc_dp = [S.data[0], S.data[-1]]
-    for _ in range(n_coeffs*2 - 2):
+    for _ in range(tot_coeffs - 2):
         interc_dp.append( random.choice(S.data[0:100]) )
     
-    coeffs_0 = [random.uniform(1., 5.) for _ in range(n_coeffs*2)]
+    coeffs_0 = [random.uniform(1., 5.) for _ in range(tot_coeffs)]
     res, _, _, msg = fsolve( get_system, coeffs_0, args=(stree, interc_dp), full_output=True )
-    close_res = np.isclose(get_system(res, stree, interc_dp), [0. for _ in range(n_coeffs*2)])
+    close_res = np.isclose(get_system(res, stree, interc_dp), [0. for _ in range(tot_coeffs)])
     root_found = np.all(close_res == True)
     
     if verbose:
@@ -502,8 +562,9 @@ def infer_poly(S:dataset.Dataset, stree:SyntaxTree, max_degree:int, verbose:bool
     return Y, interc_dp, mse, root_found
 
 
-def infer_syntaxtree(S:dataset.Dataset, max_degree:int=2, max_depth:int=2, trials:int=10):
+def infer_syntaxtree(S:dataset.Dataset, max_degree:int=2, max_degree_inner:int=1, max_depth:int=2, trials:int=10):
     n_coeffs = max_degree+1
+    n_coeffs_inner = max_degree_inner+1
 
     """stree = OperatorSyntaxTree(operator='/')
     stree.append(PolySyntaxTree(n_coeffs=n_coeffs))
@@ -522,18 +583,27 @@ def infer_syntaxtree(S:dataset.Dataset, max_degree:int=2, max_depth:int=2, trial
 
     for _ in range(trials):
         try:
-            stree = SyntaxTree.create_random(1, n_coeffs, random.randint(1, max_depth))
+            depth = random.randint(1, max_depth)
+            stree = SyntaxTree.create_random(1, n_coeffs, n_coeffs_inner, depth)
             #if stree.operator_str == '/' and stree.arity == 2 and type(stree.children[0]) is PolySyntaxTree and type(stree.children[1]) is PolySyntaxTree:
             #    print("FOUND")
             #print(f"Tree depth: {stree.get_depth()}")
 
-            for _ in range(1):
+            target_found = False
+            if type(stree) is InnerPolySyntaxTree and type(stree.children[0]) is OperatorSyntaxTree and stree.children[0].operator_str == 'sin' and \
+                type(stree.children[0].children[0]) is PolySyntaxTree:
+                target_found = True
+                print("TARGET FOUND")
 
+            #if not target_found: continue
+            #print(stree.tostring() + " " + str(depth))
+
+            for _ in range(10):
                 start_time = time.time()
-                Y, inter_points, mse, root_found = infer_poly(S, stree, max_degree, verbose=False)
+                Y, inter_points, mse, root_found = infer_poly(S, stree, verbose=False)
                 elapsed_time = time.time() - start_time
 
-                if best_mse is None or mse < best_mse:
+                if best_mse is None or (not best_root_found and root_found) or (mse < best_mse and root_found == best_root_found):
                     best_stree = stree
                     best_Y = Y
                     best_inter_points = inter_points
@@ -543,11 +613,12 @@ def infer_syntaxtree(S:dataset.Dataset, max_degree:int=2, max_depth:int=2, trial
                 if root_found:
                     root_found_time += elapsed_time
                     root_found_time_count += 1
+                    if target_found: print("TARGET ROOT FOUND")
                     break
                 else:
                     noroot_found_time += elapsed_time
                     noroot_found_time_count += 1
-        except Exception:  # domain error
+        except OperationDomainError:  # domain error
             pass
     
     if root_found_time_count > 0.: print(f"Root found time (avg): {int((root_found_time / root_found_time_count) * 1e3)} ms")
