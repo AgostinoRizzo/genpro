@@ -1,5 +1,5 @@
 import numpy as np
-from scipy.optimize import minimize, Bounds, fsolve
+from scipy.optimize import minimize, Bounds, root
 #import tensorflow as tf
 import sympy
 import math
@@ -535,18 +535,19 @@ def get_system(coeffs, stree:SyntaxTree, interc_dp:list):
 
 def infer_poly(S:dataset.Dataset, stree:SyntaxTree, verbose:bool=True):
     tot_coeffs = stree.get_poly_coeffs()
-
-    interc_dp = [S.data[0], S.data[-1]]
-    for _ in range(tot_coeffs - 2):
-        interc_dp.append( random.choice(S.data[0:100]) )
+    interc_dp = [dp for dp in S.data]
     
     coeffs_0 = [random.uniform(1., 5.) for _ in range(tot_coeffs)]
-    res, _, _, msg = fsolve( get_system, coeffs_0, args=(stree, interc_dp), full_output=True )
-    close_res = np.isclose(get_system(res, stree, interc_dp), [0. for _ in range(tot_coeffs)])
+    #res, _, _, msg = fsolve( get_system, coeffs_0, args=(stree, interc_dp), full_output=True )
+    res = root( get_system, coeffs_0, args=(stree, interc_dp), method='lm', options={'maxiter':100} )
+    #print(res)
+    res = res.x
+    #close_res = np.isclose(get_system(res, stree, interc_dp), [0. for _ in range(tot_coeffs)])
+    close_res = np.isclose(get_system(res, stree, interc_dp), [0. for _ in range(len(interc_dp))])
     root_found = np.all(close_res == True)
     
     if verbose:
-        print(f"Message: {msg}")
+        #print(f"Message: {msg}")
         print(f"Result: {res}")
         print(f"Close: {close_res}")
 
@@ -559,18 +560,19 @@ def infer_poly(S:dataset.Dataset, stree:SyntaxTree, verbose:bool=True):
         mse += ( y - dp.y ) ** 2
     mse /= len(S.data)
     
-    return Y, interc_dp, mse, root_found
+    return res, Y, interc_dp, mse, root_found
 
 
 def infer_syntaxtree(S:dataset.Dataset, max_degree:int=2, max_degree_inner:int=1, max_depth:int=2, trials:int=10):
-    n_coeffs = max_degree+1
-    n_coeffs_inner = max_degree_inner+1
+    n_coeffs = max_degree + 1
+    n_coeffs_inner = max_degree_inner + 1
 
     """stree = OperatorSyntaxTree(operator='/')
     stree.append(PolySyntaxTree(n_coeffs=n_coeffs))
     stree.append(PolySyntaxTree(n_coeffs=n_coeffs))"""
 
     best_stree = None
+    best_res = None
     best_Y = None
     best_inter_points = None
     best_mse = None
@@ -598,13 +600,14 @@ def infer_syntaxtree(S:dataset.Dataset, max_degree:int=2, max_degree_inner:int=1
             #if not target_found: continue
             #print(stree.tostring() + " " + str(depth))
 
-            for _ in range(10):
+            for _ in range(5):
                 start_time = time.time()
-                Y, inter_points, mse, root_found = infer_poly(S, stree, verbose=False)
+                res, Y, inter_points, mse, root_found = infer_poly(S, stree, verbose=False)
                 elapsed_time = time.time() - start_time
 
                 if best_mse is None or (not best_root_found and root_found) or (mse < best_mse and root_found == best_root_found):
                     best_stree = stree
+                    best_res = res
                     best_Y = Y
                     best_inter_points = inter_points
                     best_mse = mse
@@ -626,7 +629,7 @@ def infer_syntaxtree(S:dataset.Dataset, max_degree:int=2, max_degree_inner:int=1
     if noroot_found_time_count > 0.: print(f"Root not found time (avg): {int((noroot_found_time / noroot_found_time_count) * 1e3)} ms")
     print(f"Root not found total time (avg): {int(noroot_found_time * 1e3)} ms")
 
-    return best_stree, best_Y, best_inter_points, best_mse, best_root_found
+    return best_stree, best_res, best_Y, best_inter_points, best_mse, best_root_found
 
 
 """def infer_poly(S:dataset.Dataset, max_degree:int=2, comb_func=lambda a,b : a+b):
