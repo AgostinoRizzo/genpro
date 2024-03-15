@@ -533,102 +533,89 @@ def get_system(coeffs, stree:SyntaxTree, interc_dp:list):
         eqs.append(eq)
     return eqs
 
-def infer_poly(S:dataset.Dataset, stree:SyntaxTree, verbose:bool=True):
+def tune_syntax_tree(S:dataset.Dataset, stree:SyntaxTree, interc_dp:list, verbose:bool=True) -> dict:
+
+    start_time = time.time()
     tot_coeffs = stree.get_poly_coeffs()
-    interc_dp = [dp for dp in S.data]
     
     coeffs_0 = [random.uniform(1., 5.) for _ in range(tot_coeffs)]
     #res, _, _, msg = fsolve( get_system, coeffs_0, args=(stree, interc_dp), full_output=True )
     res = root( get_system, coeffs_0, args=(stree, interc_dp), method='lm', options={'maxiter':100} )
     #print(res)
-    res = res.x
+    sol = res.x
     #close_res = np.isclose(get_system(res, stree, interc_dp), [0. for _ in range(tot_coeffs)])
-    close_res = np.isclose(get_system(res, stree, interc_dp), [0. for _ in range(len(interc_dp))])
-    root_found = np.all(close_res == True)
+    close_sol = np.isclose(get_system(sol, stree, interc_dp), [0. for _ in range(len(interc_dp))])
+    root_found = np.all(close_sol == True)
     
     if verbose:
         #print(f"Message: {msg}")
-        print(f"Result: {res}")
-        print(f"Close: {close_res}")
+        print(f"Solution: {sol}")
+        print(f"Is close: {close_sol}")
 
     Y   = []
     sse = 0.
-    for dp in S.data:
-        res_pop = list(res)
-        y = stree.evaluate(dp.x, res_pop)
+    for dp in interc_dp:
+        sol_pop = list(sol)
+        y = stree.evaluate(dp.x, sol_pop)
         Y.append(y)
         sse += ( y - dp.y ) ** 2
+    mse = sse / len(interc_dp)
     
-    return res, Y, interc_dp, sse, root_found
+    elapsed_time = time.time() - start_time
+
+    return { 'sol': sol, 'sse': sse, 'mse': mse, 'root_found': root_found, 'elapsed_time': elapsed_time }
 
 
 def infer_syntaxtree(S:dataset.Dataset, max_degree:int=2, max_degree_inner:int=1, max_depth:int=2, trials:int=10):
+    
     n_coeffs = max_degree + 1
     n_coeffs_inner = max_degree_inner + 1
-
-    """stree = OperatorSyntaxTree(operator='/')
-    stree.append(PolySyntaxTree(n_coeffs=n_coeffs))
-    stree.append(PolySyntaxTree(n_coeffs=n_coeffs))"""
+    data_interc_dp      = [dp for dp in S.data]
+    knowledge_interc_dp = [dataset.DataPoint(x, S.func(x)) for x in np.linspace(S.xl, S.xu, 50).tolist()]
 
     best_stree = None
-    best_res = None
-    best_Y = None
-    best_inter_points = None
-    best_sse = None
-    best_root_found = None
+    best_data_tuning_report = None
+    best_knowledge_tuning_report = None
+    best_fitness = None
 
-    root_found_time = 0.
-    root_found_time_count = 0
-    noroot_found_time = 0.
-    noroot_found_time_count = 0
+    data_elapsed_time = 0.
+    knowledge_elapsed_time = 0.
+
+    n_restarts = 5
+    n_actual_restarts = 0
 
     for _ in range(trials):
         try:
             depth = random.randint(1, max_depth)
             stree = SyntaxTree.create_random(1, n_coeffs, n_coeffs_inner, depth)
-            #if stree.operator_str == '/' and stree.arity == 2 and type(stree.children[0]) is PolySyntaxTree and type(stree.children[1]) is PolySyntaxTree:
-            #    print("FOUND")
-            #print(f"Tree depth: {stree.get_depth()}")
 
-            target_found = False
-            if type(stree) is InnerPolySyntaxTree and type(stree.children[0]) is OperatorSyntaxTree and stree.children[0].operator_str == 'sin' and \
-                type(stree.children[0].children[0]) is PolySyntaxTree:
-                target_found = True
-                print("TARGET FOUND")
-
-            #if not target_found: continue
-            #print(stree.tostring() + " " + str(depth))
-
-            for _ in range(5):
-                start_time = time.time()
-                res, Y, inter_points, sse, root_found = infer_poly(S, stree, verbose=False)
-                elapsed_time = time.time() - start_time
-
-                if best_sse is None or (not best_root_found and root_found) or (sse < best_sse and root_found == best_root_found):
-                    best_stree = stree
-                    best_res = res
-                    best_Y = Y
-                    best_inter_points = inter_points
-                    best_sse = sse
-                    best_root_found = root_found
+            for _ in range(n_restarts):
                 
-                if root_found:
-                    root_found_time += elapsed_time
-                    root_found_time_count += 1
-                    if target_found: print("TARGET ROOT FOUND")
-                    break
-                else:
-                    noroot_found_time += elapsed_time
-                    noroot_found_time_count += 1
+                data_tuning_report      = tune_syntax_tree(S, stree, data_interc_dp,      verbose=False)
+                knowledge_tuning_report = tune_syntax_tree(S, stree, knowledge_interc_dp, verbose=False)
+                fitness = .2 * data_tuning_report['mse'] + .8 * knowledge_tuning_report['mse']
+
+                if best_stree is None or fitness < best_fitness:
+                    best_stree = stree
+                    best_data_tuning_report = data_tuning_report
+                    best_knowledge_tuning_report = knowledge_tuning_report
+                    best_fitness = fitness
+                
+                data_elapsed_time += data_tuning_report['elapsed_time']
+                knowledge_elapsed_time += knowledge_tuning_report['elapsed_time']
+
+                n_actual_restarts += 1
+                if fitness <= 0.01: break
+
         except OperationDomainError:  # domain error
             pass
     
-    if root_found_time_count > 0.: print(f"Root found time (avg): {int((root_found_time / root_found_time_count) * 1e3)} ms")
-    print(f"Root found total time: {int(root_found_time * 1e3)} ms")
-    if noroot_found_time_count > 0.: print(f"Root not found time (avg): {int((noroot_found_time / noroot_found_time_count) * 1e3)} ms")
-    print(f"Root not found total time: {int(noroot_found_time * 1e3)} ms")
+    print(f"Data tuning (avg time):        {int((data_elapsed_time / (trials*n_actual_restarts)) * 1e3)} ms")
+    print(f"Knowledge tuning (avg time):   {int((knowledge_elapsed_time / (trials*n_actual_restarts)) * 1e3)} ms")
+    print(f"Data tuning (total time):      {int(data_elapsed_time * 1e3)} ms")
+    print(f"Knowledge tuning (total time): {int(knowledge_elapsed_time * 1e3)} ms")
 
-    return best_stree, best_res, best_Y, best_inter_points, best_sse, best_root_found
+    return best_stree, best_data_tuning_report, best_knowledge_tuning_report
 
 
 """def infer_poly(S:dataset.Dataset, max_degree:int=2, comb_func=lambda a,b : a+b):
