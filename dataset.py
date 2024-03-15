@@ -57,7 +57,7 @@ class Dataset:
         X = []
         if mesh: X = np.linspace(self.xl, self.xu, size).tolist()
         else:
-            for _ in range(size): x = random.uniform(self.xl, self.xu)
+            for _ in range(size): X.append( random.uniform(self.xl, self.xu) )
         
         for x in X:
             y = self.func(x) + (0. if noise == 0. else random.gauss(sigma=y_noise))
@@ -252,7 +252,7 @@ class MagmanDatasetScaled(Dataset):
         peak_x = 0.208
         
         # intersection points
-        """self.knowledge.add_deriv(0, DataPoint( 0., 0.))
+        self.knowledge.add_deriv(0, DataPoint( 0., 0.))
         self.knowledge.add_deriv(0, DataPoint(-peak_x, self.func(-peak_x)))
         self.knowledge.add_deriv(0, DataPoint( peak_x, self.func( peak_x)))
         self.knowledge.add_deriv(0, DataPoint(self.xl, self.func(self.xl)))
@@ -277,7 +277,7 @@ class MagmanDatasetScaled(Dataset):
 
         # concavity/convexity
         self.knowledge.add_sign(2, self.xl, -0.81, '+')
-        self.knowledge.add_sign(2, 0.81, self.xu, '-')"""
+        self.knowledge.add_sign(2, 0.81, self.xu, '-')
 
     def func(self, x: float) -> float:
         x = self.__xmap(x, toorigin=True)
@@ -374,7 +374,7 @@ class ABSDataset(Dataset):
         self.xl = 0.
         self.xu = 1.
         self.yl = 0.
-        self.yu = 0.4
+        self.yu = 0.45
     
     def func(self, x: float) -> float:
         m = 6.67 #407.75
