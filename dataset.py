@@ -50,18 +50,20 @@ class Dataset:
         self.yl = 0.
         self.yu = 1.
         self.knowledge = DataKnowledge(self)
+        self.sst = 0.
     
     def sample(self, size:int=100, noise:float=0., mesh:bool=False):
         y_noise = (self.yu - self.yl) * noise * 0.5
         
-        X = []
-        if mesh: X = np.linspace(self.xl, self.xu, size).tolist()
-        else:
-            for _ in range(size): X.append( random.uniform(self.xl, self.xu) )
+        X = \
+            np.linspace(self.xl, self.xu, size).tolist() if mesh else \
+            [random.uniform(self.xl, self.xu) for _ in range(size)]
         
         for x in X:
             y = self.func(x) + (0. if noise == 0. else random.gauss(sigma=y_noise))
             self.data.append(DataPoint(x, y))
+        
+        self._on_data_changed()
     
     def load(self, filename:str):
         raise RuntimeError('Load from CSV file not supported.')
@@ -71,16 +73,27 @@ class Dataset:
         new_data = []
         for dp in self.data:
             if dp.x < x_from or dp.x > x_to: new_data.append(dp)
-        self.data = new_data 
+        self.data = new_data
+        self._on_data_changed()
 
     def split(self, train_size:float=0.7, seed:int=0):
         train, test = train_test_split(self.data, train_size=train_size, random_state=seed)
         self.data = list(train)
         self.test = list(test)
+        self._on_data_changed()
     
     def clear(self):
         self.data = []
         self.test = []
+        self._on_data_changed()
+    
+    def _on_data_changed(self):
+        y_mean = 0.
+        for dp in self.data: y_mean += dp.y
+        y_mean /= len(self.data)
+
+        self.sst = 0.
+        for dp in self.data: self.sst += (dp.y - y_mean) ** 2
     
     def func(self, x:float) -> float:
         pass
@@ -225,6 +238,7 @@ class MagmanDataset(Dataset):
         for entry in csvreader:
             self.data.append(DataPoint(float(entry[0]), float(entry[1])))
         csvfile.close()
+        self._on_data_changed()
 
 
 class MagmanDatasetScaled(Dataset):
@@ -290,6 +304,7 @@ class MagmanDatasetScaled(Dataset):
         for entry in csvreader:
             self.data.append(DataPoint(self.__xmap(float(entry[0])), self.__ymap(float(entry[1]))))
         csvfile.close()
+        self._on_data_changed()
     
     def __xmap(self, x:float, toorigin:bool=False) -> float:
         if toorigin: return self.__xl + (((x - self.xl) / (self.xu - self.xl)) * (self.__xu - self.__xl))

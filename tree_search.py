@@ -399,11 +399,11 @@ class SyntaxTree:
     def get_operator_lambda(operator:str):
         if   operator == '*':    return lambda a, b : a * b,    2
         elif operator == '/':    return lambda a, b : a / b,    2
-        elif operator == 'sqrt': return lambda a: math.sqrt(a), 1
-        elif operator == 'log':  return lambda a: math.log(a),  1
-        elif operator == 'exp':  return lambda a: math.exp(a),  1
-        elif operator == 'sin':  return lambda a: math.sin(a),  1
-        elif operator == 'cos':  return lambda a: math.cos(a),  1
+        elif operator == 'sqrt': return lambda a: np.sqrt(a), 1
+        elif operator == 'log':  return lambda a: np.log(a),  1
+        elif operator == 'exp':  return lambda a: np.exp(a),  1
+        elif operator == 'sin':  return lambda a: np.sin(a),  1
+        elif operator == 'cos':  return lambda a: np.cos(a),  1
         raise RuntimeError(f"Operator {operator} not supported. Please choose from {SyntaxTree.OPERATORS}.")
 
     @staticmethod
@@ -552,15 +552,14 @@ def infer_poly(S:dataset.Dataset, stree:SyntaxTree, verbose:bool=True):
         print(f"Close: {close_res}")
 
     Y   = []
-    mse = 0.
+    sse = 0.
     for dp in S.data:
         res_pop = list(res)
         y = stree.evaluate(dp.x, res_pop)
         Y.append(y)
-        mse += ( y - dp.y ) ** 2
-    mse /= len(S.data)
+        sse += ( y - dp.y ) ** 2
     
-    return res, Y, interc_dp, mse, root_found
+    return res, Y, interc_dp, sse, root_found
 
 
 def infer_syntaxtree(S:dataset.Dataset, max_degree:int=2, max_degree_inner:int=1, max_depth:int=2, trials:int=10):
@@ -575,7 +574,7 @@ def infer_syntaxtree(S:dataset.Dataset, max_degree:int=2, max_degree_inner:int=1
     best_res = None
     best_Y = None
     best_inter_points = None
-    best_mse = None
+    best_sse = None
     best_root_found = None
 
     root_found_time = 0.
@@ -602,15 +601,15 @@ def infer_syntaxtree(S:dataset.Dataset, max_degree:int=2, max_degree_inner:int=1
 
             for _ in range(5):
                 start_time = time.time()
-                res, Y, inter_points, mse, root_found = infer_poly(S, stree, verbose=False)
+                res, Y, inter_points, sse, root_found = infer_poly(S, stree, verbose=False)
                 elapsed_time = time.time() - start_time
 
-                if best_mse is None or (not best_root_found and root_found) or (mse < best_mse and root_found == best_root_found):
+                if best_sse is None or (not best_root_found and root_found) or (sse < best_sse and root_found == best_root_found):
                     best_stree = stree
                     best_res = res
                     best_Y = Y
                     best_inter_points = inter_points
-                    best_mse = mse
+                    best_sse = sse
                     best_root_found = root_found
                 
                 if root_found:
@@ -625,11 +624,11 @@ def infer_syntaxtree(S:dataset.Dataset, max_degree:int=2, max_degree_inner:int=1
             pass
     
     if root_found_time_count > 0.: print(f"Root found time (avg): {int((root_found_time / root_found_time_count) * 1e3)} ms")
-    print(f"Root found total time (avg): {int(root_found_time * 1e3)} ms")
+    print(f"Root found total time: {int(root_found_time * 1e3)} ms")
     if noroot_found_time_count > 0.: print(f"Root not found time (avg): {int((noroot_found_time / noroot_found_time_count) * 1e3)} ms")
-    print(f"Root not found total time (avg): {int(noroot_found_time * 1e3)} ms")
+    print(f"Root not found total time: {int(noroot_found_time * 1e3)} ms")
 
-    return best_stree, best_res, best_Y, best_inter_points, best_mse, best_root_found
+    return best_stree, best_res, best_Y, best_inter_points, best_sse, best_root_found
 
 
 """def infer_poly(S:dataset.Dataset, max_degree:int=2, comb_func=lambda a,b : a+b):
