@@ -367,6 +367,36 @@ requires S.data as mesh
 class OperationDomainError(RuntimeError):
     pass
 
+
+class OperatorFactory:
+    def get_sqrt(self, x): raise RuntimeError('Operation not defined.')
+    def get_log (self, x): raise RuntimeError('Operation not defined.')
+    def get_exp (self, x): raise RuntimeError('Operation not defined.')
+    def get_sin (self, x): raise RuntimeError('Operation not defined.')
+    def get_cos (self, x): raise RuntimeError('Operation not defined.')
+
+class MathOperatorFactory:
+    def get_sqrt(self, x): return math.sqrt(x)
+    def get_log (self, x): return math.log(x)
+    def get_exp (self, x): return math.exp(x)
+    def get_sin (self, x): return math.sin(x)
+    def get_cos (self, x): return math.cos(x)
+
+class NumpyOperatorFactory:
+    def get_sqrt(self, x): return np.sqrt(x)
+    def get_log (self, x): return np.log(x)
+    def get_exp (self, x): return np.exp(x)
+    def get_sin (self, x): return np.sin(x)
+    def get_cos (self, x): return np.cos(x)
+
+class SympyOperatorFactory:
+    def get_sqrt(self, x): return sympy.sqrt(x)
+    def get_log (self, x): return sympy.log (x)
+    def get_exp (self, x): return sympy.exp (x)
+    def get_sin (self, x): return sympy.sin (x)
+    def get_cos (self, x): return sympy.cos (x)
+
+
 class SyntaxTree:
     OPERATORS = ['*', '/', 'sqrt', 'log', 'exp', 'sin', 'cos']
 
@@ -376,7 +406,13 @@ class SyntaxTree:
     def append(self, subtree):
         self.children.append(subtree)
     
-    def evaluate(self, x, poly_coeffs) -> float:
+    def set_coeffs(self, coeffs):
+        raise RuntimeError('Operation not defined.')
+    
+    def evaluate(self, x) -> float:
+        raise RuntimeError('Operation not defined.')
+    
+    def evaluate_deriv(self, x) -> float:
         raise RuntimeError('Operation not defined.')
 
     def tostring(self, id:str=''):
@@ -392,22 +428,44 @@ class SyntaxTree:
             if c_depth > max_ch_depth: max_ch_depth = c_depth
         return max_ch_depth + 1
 
-    def get_poly_coeffs(self) -> int:
+    def get_ncoeffs(self) -> int:
         raise RuntimeError('Operation not supported.')
     
     @staticmethod
-    def get_operator_lambda(operator:str):
-        if   operator == '*':    return lambda a, b : a * b,    2
-        elif operator == '/':    return lambda a, b : a / b,    2
-        elif operator == 'sqrt': return lambda a: np.sqrt(a), 1
-        elif operator == 'log':  return lambda a: np.log(a),  1
-        elif operator == 'exp':  return lambda a: np.exp(a),  1
-        elif operator == 'sin':  return lambda a: np.sin(a),  1
-        elif operator == 'cos':  return lambda a: np.cos(a),  1
+    def get_evaluate_operator_lambda(operator:str, optfact:OperatorFactory):
+        if   operator == '*':    return lambda f, g, x: f.evaluate(x) * g.evaluate(x), 2
+        elif operator == '/':    return lambda f, g, x: f.evaluate(x) / g.evaluate(x), 2
+        elif operator == 'sqrt': return lambda f, x: optfact.get_sqrt(f.evaluate(x)), 1
+        elif operator == 'log':  return lambda f, x: optfact.get_log (f.evaluate(x)),  1
+        elif operator == 'exp':  return lambda f, x: optfact.get_exp (f.evaluate(x)),  1
+        elif operator == 'sin':  return lambda f, x: optfact.get_sin (f.evaluate(x)),  1
+        elif operator == 'cos':  return lambda f, x: optfact.get_cos (f.evaluate(x)),  1
+        raise RuntimeError(f"Operator {operator} not supported. Please choose from {SyntaxTree.OPERATORS}.")
+    
+    @staticmethod
+    def get_deriv_operator_lambda(operator:str, optfact:OperatorFactory):
+        if   operator == '*':    return lambda f, g, x: \
+            (f.evaluate_deriv(x) * g.evaluate(x)) + (f.evaluate(x) * g.evaluate_deriv(x)), 2
+        
+        elif operator == '/':    return lambda f, g, x: \
+            ((f.evaluate_deriv(x) * g.evaluate(x)) - (f.evaluate(x) * g.evaluate_deriv(x))) / (g.evaluate(x)**2), 2
+        
+        elif operator == 'sqrt': return lambda f, x: \
+            f.evaluate_deriv(x) / (2 * optfact.get_sqrt(f.evaluate(x))), 1
+        
+        elif operator == 'log':  return lambda f, x: \
+            f.evaluate_deriv(x) / f.evaluate(x), 1
+        
+        elif operator == 'exp':  return lambda f, x: \
+            optfact.get_exp(f.evaluate(x)) * f.evaluate_deriv(x), 1
+        
+        elif operator == 'sin':  return lambda f, x: optfact.get_cos(f.evaluate(x)) * f.evaluate_deriv(x), 1
+        elif operator == 'cos':  return lambda f, x: -optfact.get_sin(f.evaluate(x)) * f.evaluate_deriv(x), 1
+
         raise RuntimeError(f"Operator {operator} not supported. Please choose from {SyntaxTree.OPERATORS}.")
 
     @staticmethod
-    def create_random(curr_depth:int, n_coeffs:int, n_coeffs_inner:int, max_depth:int=2):
+    def create_random(curr_depth:int, n_coeffs:int, n_coeffs_inner:int, max_depth:int=2, optfact:OperatorFactory=NumpyOperatorFactory()):
         if curr_depth >= max_depth:
             return PolySyntaxTree(n_coeffs)
         
@@ -416,40 +474,51 @@ class SyntaxTree:
         stree = None
         if operator == 'inner_poly':
             stree = InnerPolySyntaxTree(n_coeffs_inner)
-            stree.append( SyntaxTree.create_random(curr_depth+1, n_coeffs, n_coeffs_inner, max_depth) )
+            stree.append( SyntaxTree.create_random(curr_depth+1, n_coeffs, n_coeffs_inner, max_depth, optfact) )
 
         else:
-            stree = OperatorSyntaxTree(operator)
+            stree = OperatorSyntaxTree(operator, optfact)
             for _ in range(stree.arity):
-                stree.append( SyntaxTree.create_random(curr_depth+1, n_coeffs, n_coeffs_inner, max_depth) )
+                stree.append( SyntaxTree.create_random(curr_depth+1, n_coeffs, n_coeffs_inner, max_depth, optfact) )
         
         return stree
         
     
 class OperatorSyntaxTree(SyntaxTree):
-    def __init__(self, operator:str='*') -> None:
+    def __init__(self, operator:str, optfact:OperatorFactory) -> None:
         super().__init__()
         self.operator_str = operator
-        self.operator, self.arity = SyntaxTree.get_operator_lambda(operator)
+        self.operator, self.arity = SyntaxTree.get_evaluate_operator_lambda(operator, optfact)
+        self.deriv_operator, self.deriv_arity = SyntaxTree.get_deriv_operator_lambda(operator, optfact)
     
     def append(self, subtree):
         self.children.append(subtree)
     
-    def evaluate(self, x, poly_coeffs) -> float:
+    def set_coeffs(self, coeffs):
+        for c in self.children: c.set_coeffs(coeffs)
+    
+    def evaluate(self, x) -> float:
         if len(self.children) != self.arity: raise RuntimeError('Mismatch with arity.')
-        ch_evals = [c.evaluate(x, poly_coeffs) for c in self.children]
-        try: return self.operator(*ch_evals)
-        except Exception: raise OperationDomainError
+        #try:
+        return self.operator(*self.children, x)
+        #except Exception: raise OperationDomainError
+    
+    def evaluate_deriv(self, x) -> float:
+        if len(self.children) != self.deriv_arity: raise RuntimeError('Mismatch with arity.')
+        #try:
+        return self.deriv_operator(*self.children, x)
+        #except Exception: raise OperationDomainError
 
-    def get_poly_coeffs(self) -> int:
+    def get_ncoeffs(self) -> int:
         n = 0
-        for c in self.children: n += c.get_poly_coeffs()
+        for c in self.children: n += c.get_ncoeffs()
         return n
     
     def tostring(self, id:str=''):
         if   self.operator_str == '*': return f"{self.children[0].tostring(id='a')}*{self.children[1].tostring(id='b')}"
         elif self.operator_str == '/': return f"{self.children[0].tostring(id='a')}/{self.children[1].tostring(id='b')}"
         return f"{self.operator_str}({self.children[0].tostring()})"
+
 
 class PolySyntaxTree(SyntaxTree):
     def __init__(self, n_coeffs:int) -> None:
@@ -459,16 +528,24 @@ class PolySyntaxTree(SyntaxTree):
     
     def append(self, subtree):
         raise RuntimeError('Append not supported on PolySystaxTree')
+
+    def set_coeffs(self, coeffs):
+        self.curr_coeffs = coeffs[0:self.n_coeffs]
+        for _ in range(self.n_coeffs): coeffs.pop(0)
     
-    def evaluate(self, x, poly_coeffs) -> float:
-        self.curr_coeffs = poly_coeffs[0:self.n_coeffs]
+    def evaluate(self, x) -> float:
         y = 0.
         for deg in range(self.n_coeffs):
-            y += poly_coeffs[0] * (x ** deg)
-            poly_coeffs.pop(0)
+            y += self.curr_coeffs[deg] * (x ** deg)
+        return y
+
+    def evaluate_deriv(self, x) -> float:
+        y = 0.
+        for deg in range(1, self.n_coeffs):
+            y += self.curr_coeffs[deg] * deg * (x ** (deg-1))
         return y
     
-    def get_poly_coeffs(self) -> int:
+    def get_ncoeffs(self) -> int:
         return self.n_coeffs
     
     def tostring(self, id:str=''):
@@ -492,20 +569,31 @@ class InnerPolySyntaxTree(PolySyntaxTree):
     def append(self, subtree):
         self.children.append(subtree)
     
-    def evaluate(self, x, poly_coeffs) -> float:
+    def set_coeffs(self, coeffs):
+        for c in self.children: c.set_coeffs(coeffs)
+        self.curr_coeffs = coeffs[0:self.n_coeffs]
+        for _ in range(self.n_coeffs): coeffs.pop(0)
+    
+    def evaluate(self, x) -> float:
         if len(self.children) != self.arity: raise RuntimeError('Mismatch with arity.')
-        self.curr_coeffs = []
         y = 0.
-        ch_eval = self.children[0].evaluate(x, poly_coeffs)
+        ch_eval = self.children[0].evaluate(x)
         for deg in range(self.n_coeffs):
-            y += poly_coeffs[0] * (ch_eval ** deg)
-            self.curr_coeffs.append(poly_coeffs[0])
-            poly_coeffs.pop(0)
+            y += self.curr_coeffs[deg] * (ch_eval ** deg)
         return y
     
-    def get_poly_coeffs(self) -> int:
+    def evaluate_deriv(self, x) -> float:
+        if len(self.children) != self.arity: raise RuntimeError('Mismatch with arity.')
+        y = 0.
+        ch_eval = self.children[0].evaluate(x)
+        ch_eval_deriv = self.children[0].evaluate_deriv(x)
+        for deg in range(1, self.n_coeffs):
+            y += self.curr_coeffs[deg] * deg * (ch_eval ** (deg-1)) * ch_eval_deriv
+        return y
+    
+    def get_ncoeffs(self) -> int:
         n = self.n_coeffs
-        for c in self.children: n += c.get_poly_coeffs()
+        for c in self.children: n += c.get_ncoeffs()
         return n
     
     def tostring(self, id:str=''):
@@ -528,7 +616,8 @@ def get_system(coeffs, stree:SyntaxTree, interc_dp:list):
     eqs = []
     for dp in interc_dp:
         coeffs_pop = list(coeffs)
-        eq = stree.evaluate(dp.x, coeffs_pop)
+        stree.set_coeffs(coeffs_pop)
+        eq = stree.evaluate(dp.x)
         eq -= dp.y
         eqs.append(eq)
     return eqs
@@ -536,7 +625,7 @@ def get_system(coeffs, stree:SyntaxTree, interc_dp:list):
 def tune_syntax_tree(S:dataset.Dataset, stree:SyntaxTree, interc_dp:list, verbose:bool=True) -> dict:
 
     start_time = time.time()
-    tot_coeffs = stree.get_poly_coeffs()
+    tot_coeffs = stree.get_ncoeffs()
     
     coeffs_0 = [random.uniform(1., 5.) for _ in range(tot_coeffs)]
     #res, _, _, msg = fsolve( get_system, coeffs_0, args=(stree, interc_dp), full_output=True )
