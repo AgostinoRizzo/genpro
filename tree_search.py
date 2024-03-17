@@ -984,3 +984,30 @@ def infer_syntaxtree(S:dataset.Dataset, max_degree:int=2, max_degree_inner:int=1
     
     return alphas, betas, inter_points
 """
+
+
+def test_syntax_tree(stree:SyntaxTree, S:dataset.Dataset, sample_size:int, pk_epsilon:float=1e-8):
+    test_sse = 0.
+    test_r2  = 0.
+    for dp in S.test:
+        test_sse += (stree.evaluate(dp.x) - dp.y) ** 2
+    test_mse = test_sse / len(S.test)
+    test_r2 = 1 - (test_sse / S.test_sst)
+
+    pk_sat_count = 0
+    pk_sat_size  = 0
+    for deg in S.knowledge.derivs:
+        if deg >= 2: continue
+        for dp in S.knowledge.derivs[deg]:
+            if abs((stree.evaluate(dp.x) if deg == 0 else stree.evaluate_deriv(dp.x)) - dp.y) < pk_epsilon:
+                pk_sat_count += 1
+            pk_sat_size += 1
+    for deg in S.knowledge.sign:
+        if deg >= 2: continue
+        for (l,u,sign) in S.knowledge.sign[deg]:
+            for x in np.linspace(l, u, sample_size):
+                tree_eval = (stree.evaluate(x) if deg == 0 else stree.evaluate_deriv(x))
+                if (sign == '+' and tree_eval >= 0.) or (sign == '-' and tree_eval <= 0.): pk_sat_count += 1
+                pk_sat_size += 1
+
+    return test_mse, test_r2, pk_sat_count/pk_sat_size, pk_sat_count, pk_sat_size

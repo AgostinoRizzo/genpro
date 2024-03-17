@@ -41,6 +41,17 @@ class DataKnowledge:
                 plt.axvspan(l, u, alpha=0.05, color='g' if s == '+' else 'r')
             
 
+def compute_sst(dpoints:list) -> float:
+    if len(dpoints) == 0: return 0.
+    y_mean = 0.
+    for dp in dpoints: y_mean += dp.y
+    y_mean /= len(dpoints)
+
+    sst = 0.
+    for dp in dpoints: sst += (dp.y - y_mean) ** 2
+    return sst
+
+
 class Dataset:
     def __init__(self) -> None:
         self.data = []
@@ -50,7 +61,8 @@ class Dataset:
         self.yl = 0.
         self.yu = 1.
         self.knowledge = DataKnowledge(self)
-        self.sst = 0.
+        self.data_sst = 0.
+        self.test_sst = 0.
     
     def sample(self, size:int=100, noise:float=0., mesh:bool=False):
         y_noise = (self.yu - self.yl) * noise * 0.5
@@ -88,12 +100,8 @@ class Dataset:
         self._on_data_changed()
     
     def _on_data_changed(self):
-        y_mean = 0.
-        for dp in self.data: y_mean += dp.y
-        y_mean /= len(self.data)
-
-        self.sst = 0.
-        for dp in self.data: self.sst += (dp.y - y_mean) ** 2
+        self.data_sst = compute_sst(self.data)
+        self.test_sst = compute_sst(self.test)
     
     def func(self, x:float) -> float:
         pass
