@@ -645,7 +645,10 @@ get_system_evaluate_tottime = 0.
 get_system_evalderiv_tottime = 0.
 
 def get_system(coeffs, stree:SyntaxTree,
-               interc_dpx:np.array, interc_dpy:np.array, activ_dpx:np.array=None, activ_dpy:np.array=None,):
+               interc_dpx:np.array, interc_dpy:np.array,
+               deriv_interc_dpx:np.array=None, deriv_interc_dpy:np.array=None,
+               activ_dpx:np.array=None, activ_dpy:np.array=None,
+               deriv_activ_dpx:np.array=None, deriv_activ_dpy:np.array=None):
     global get_system_tot_time
     global get_system_time_count
     global get_system_setcoeffs_tottime
@@ -661,8 +664,14 @@ def get_system(coeffs, stree:SyntaxTree,
 
     eqs = stree.evaluate(interc_dpx) - interc_dpy
 
+    if deriv_interc_dpx is not None and deriv_interc_dpy is not None:
+        eqs = np.concatenate( (eqs, stree.evaluate_deriv(deriv_interc_dpx) - deriv_interc_dpy) )
+
     if activ_dpx is not None and activ_dpy is not None:
        eqs = np.concatenate( (eqs, get_ineq_activation(stree.evaluate(activ_dpx)) - activ_dpy) )
+    
+    if deriv_activ_dpx is not None and deriv_activ_dpy is not None:
+       eqs = np.concatenate( (eqs, get_ineq_activation(stree.evaluate_deriv(deriv_activ_dpx)) - deriv_activ_dpy) )
     
     """for (deg, sign, dp) in interc_dp[:max(len(coeffs), 1)]:  #random.choices(interc_dp, k=max(len(coeffs), 100)):
 
@@ -712,7 +721,10 @@ def get_func(coeffs, stree:SyntaxTree, interc_dpx:np.array, interc_dpy:np.array)
     return y
 
 def tune_syntax_tree(S:dataset.Dataset, stree:SyntaxTree,
-                     interc_dpx:np.array, interc_dpy:np.array, activ_dpx:np.array=None, activ_dpy:np.array=None,
+                     interc_dpx:np.array, interc_dpy:np.array,
+                     deriv_interc_dpx:np.array=None, deriv_interc_dpy:np.array=None,
+                     activ_dpx:np.array=None, activ_dpy:np.array=None,
+                     deriv_activ_dpx:np.array=None, deriv_activ_dpy:np.array=None,
                      verbose:bool=True, maxiter:int=0) -> dict:
 
     start_time = time.time()
@@ -722,7 +734,7 @@ def tune_syntax_tree(S:dataset.Dataset, stree:SyntaxTree,
     #res, _, _, msg = fsolve( get_system, coeffs_0, args=(stree, interc_dp), full_output=True )
     res = root(
         get_system, coeffs_0,
-        args=(stree, interc_dpx, interc_dpy, activ_dpx, activ_dpy),
+        args=(stree, interc_dpx, interc_dpy, deriv_interc_dpx, deriv_interc_dpy, activ_dpx, activ_dpy, deriv_activ_dpx, deriv_activ_dpy),
         method='lm', options={'maxiter':maxiter} )
     #res = minimize( get_func, coeffs_0, args=(stree, interc_dpx, interc_dpy), method='BFGS', options={'maxiter':maxiter} )
     #print(res)
@@ -742,9 +754,19 @@ def tune_syntax_tree(S:dataset.Dataset, stree:SyntaxTree,
     try:
         sse = np.sum( (stree.evaluate(interc_dpx) - interc_dpy) ** 2 )
         sse_size = len(interc_dpx)
+
+        if deriv_interc_dpx is not None and deriv_interc_dpy is not None:
+            sse += np.sum( (stree.evaluate_deriv(deriv_interc_dpx) - deriv_interc_dpy) ** 2 )
+            sse_size += len(activ_dpx)
+
         if activ_dpx is not None and activ_dpy is not None:
             sse += np.sum( (get_ineq_activation(stree.evaluate(activ_dpx)) - activ_dpy) ** 2 )
             sse_size += len(activ_dpx)
+        
+        if deriv_activ_dpx is not None and deriv_activ_dpy is not None:
+            sse += np.sum( (get_ineq_activation(stree.evaluate_deriv(deriv_activ_dpx)) - deriv_activ_dpy) ** 2 )
+            sse_size += len(activ_dpx)
+        
     except RuntimeWarning: raise OperationDomainError()
 
     """for (deg, sign, dp) in interc_dp:
@@ -766,30 +788,49 @@ def tune_syntax_tree(S:dataset.Dataset, stree:SyntaxTree,
     return { 'sol': sol, 'sse': sse, 'mse': mse, 'root_found': root_found, 'elapsed_time': elapsed_time }
 
 
-def get_knowledge_interc_points(S:dataset.Dataset) -> list:
+def get_data_interc_points(S:dataset.Dataset):
+    data_interc_dpx = np.array( [dp.x for dp in S.data] )
+    data_interc_dpy = np.array( [dp.y for dp in S.data] )
+    return data_interc_dpx, data_interc_dpy
+
+
+def get_knowledge_interc_points(S:dataset.Dataset):
     interc_dpx = []
     interc_dpy = []
     activ_dpx  = []
     activ_dpy  = []
+    deriv_interc_dpx = []
+    deriv_interc_dpy = []
+    deriv_activ_dpx  = []
+    deriv_activ_dpy  = []
 
     for deg in S.knowledge.derivs.keys():
-        interc_dpx += [dp.x for dp in S.knowledge.derivs[deg]]
-        interc_dpy += [dp.y for dp in S.knowledge.derivs[deg]]
-        #for dp in S.knowledge.derivs[deg]:
-            #interc_dp.append( (deg, '=', dp) )
+        if deg >= 2: continue
+        if deg == 0:
+            interc_dpx += [dp.x for dp in S.knowledge.derivs[deg]]
+            interc_dpy += [dp.y for dp in S.knowledge.derivs[deg]]
+        else:
+            deriv_interc_dpx += [dp.x for dp in S.knowledge.derivs[deg]]
+            deriv_interc_dpy += [dp.y for dp in S.knowledge.derivs[deg]]
 
     for deg in S.knowledge.sign.keys():
+        if deg >= 2: continue
         for (l,u,sign) in S.knowledge.sign[deg]:
             dpy = 1. if sign == '+' else 0.
-            activ_dpx += [x for x in np.linspace(l, u, 20)]
-            activ_dpy += [dpy for _ in range(20)]
-            #for x in np.linspace(l, u, 10):
-            #    interc_dp.append( (deg, '>' if sign == '+' else '<', dataset.DataPoint(x, 0)) )"""
+            if deg == 0:
+                activ_dpx += [x for x in np.linspace(l, u, 20)]
+                activ_dpy += [dpy for _ in range(20)]
+            else:
+                deriv_activ_dpx += [x for x in np.linspace(l, u, 20)]
+                deriv_activ_dpy += [dpy for _ in range(20)]
     
-    return np.array( interc_dpx ), np.array( interc_dpy ), np.array( activ_dpx ), np.array( activ_dpy )
+    return np.array( interc_dpx ), np.array( interc_dpy ), \
+           np.array( deriv_interc_dpx ), np.array( deriv_interc_dpy ), \
+           np.array( activ_dpx ), np.array( activ_dpy ), \
+           np.array( deriv_activ_dpx ), np.array( deriv_activ_dpy )
 
 
-def infer_syntaxtree(S:dataset.Dataset, max_degree:int=2, max_degree_inner:int=1, max_depth:int=2, trials:int=10):
+def infer_syntaxtree(S:dataset.Dataset, max_degree:int=2, max_degree_inner:int=1, max_depth:int=2, trials:int=10, kn_pressure:float=0.8):
     global get_system_tot_time
     global get_system_time_count
     global get_system_setcoeffs_tottime
@@ -811,10 +852,11 @@ def infer_syntaxtree(S:dataset.Dataset, max_degree:int=2, max_degree_inner:int=1
     n_coeffs = max_degree + 1
     n_coeffs_inner = max_degree_inner + 1
 
-    data_interc_dp  = S.data
-    data_interc_dpx = np.array( [dp.x for dp in data_interc_dp] )
-    data_interc_dpy = np.array( [dp.y for dp in data_interc_dp] )
-    knowledge_interc_dpx, knowledge_interc_dpy, knowledge_activ_dpx, knowledge_activ_dpy = get_knowledge_interc_points(S)
+    data_interc_dpx, data_interc_dpy = get_data_interc_points(S)
+    knowledge_interc_dpx, knowledge_interc_dpy, \
+    knowledge_deriv_interc_dpx, knowledge_deriv_interc_dpy, \
+    knowledge_activ_dpx, knowledge_activ_dpy, \
+    knowledge_deriv_activ_dpx, knowledge_deriv_activ_dpy = get_knowledge_interc_points(S)
 
     best_stree = None
     best_data_tuning_report = None
@@ -839,11 +881,14 @@ def infer_syntaxtree(S:dataset.Dataset, max_degree:int=2, max_degree_inner:int=1
 
             for _ in range(n_restarts):
                 
-                data_tuning_report      = tune_syntax_tree(S, stree, data_interc_dpx,      data_interc_dpy,      verbose=False, maxiter=50)
+                data_tuning_report      = tune_syntax_tree(S, stree, data_interc_dpx, data_interc_dpy, verbose=False, maxiter=50)
                 knowledge_tuning_report = tune_syntax_tree(S, stree,
-                                                           knowledge_interc_dpx, knowledge_interc_dpy, knowledge_activ_dpx, knowledge_activ_dpy,
+                                                           knowledge_interc_dpx, knowledge_interc_dpy,
+                                                           knowledge_deriv_interc_dpx, knowledge_deriv_interc_dpy,
+                                                           knowledge_activ_dpx, knowledge_activ_dpy,
+                                                           knowledge_deriv_activ_dpx, knowledge_deriv_activ_dpy,
                                                            verbose=False, maxiter=50)
-                fitness = fitness = .2 * data_tuning_report['mse'] + .8 * knowledge_tuning_report['mse']
+                fitness = fitness = ((1-kn_pressure) * data_tuning_report['mse']) + (kn_pressure * knowledge_tuning_report['mse'])
 
                 if tree_found:
                     pass#print(f"Tree found fitness: {data_tuning_report['mse'] } [data], {knowledge_tuning_report['mse']} [knowledge], {fitness} [fitness]")
