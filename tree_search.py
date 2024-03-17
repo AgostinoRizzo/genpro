@@ -737,7 +737,7 @@ def tune_syntax_tree(S:dataset.Dataset, stree:SyntaxTree,
         args=(stree, interc_dpx, interc_dpy, deriv_interc_dpx, deriv_interc_dpy, activ_dpx, activ_dpy, deriv_activ_dpx, deriv_activ_dpy),
         method='lm', options={'maxiter':maxiter} )
     #res = minimize( get_func, coeffs_0, args=(stree, interc_dpx, interc_dpy), method='BFGS', options={'maxiter':maxiter} )
-    #print(res)
+    if verbose: print(res)
     #print(res.fun)
     sol = res.x
     #close_res = np.isclose(get_system(res, stree, interc_dp), [0. for _ in range(tot_coeffs)])
@@ -794,7 +794,7 @@ def get_data_interc_points(S:dataset.Dataset):
     return data_interc_dpx, data_interc_dpy
 
 
-def get_knowledge_interc_points(S:dataset.Dataset):
+def get_knowledge_interc_points(S:dataset.Dataset, sample_size:int=20):
     interc_dpx = []
     interc_dpy = []
     activ_dpx  = []
@@ -818,11 +818,11 @@ def get_knowledge_interc_points(S:dataset.Dataset):
         for (l,u,sign) in S.knowledge.sign[deg]:
             dpy = 1. if sign == '+' else 0.
             if deg == 0:
-                activ_dpx += [x for x in np.linspace(l, u, 20)]
-                activ_dpy += [dpy for _ in range(20)]
+                activ_dpx += [x for x in np.linspace(l, u, sample_size)]
+                activ_dpy += [dpy for _ in range(sample_size)]
             else:
-                deriv_activ_dpx += [x for x in np.linspace(l, u, 20)]
-                deriv_activ_dpy += [dpy for _ in range(20)]
+                deriv_activ_dpx += [x for x in np.linspace(l, u, sample_size)]
+                deriv_activ_dpy += [dpy for _ in range(sample_size)]
     
     return np.array( interc_dpx ), np.array( interc_dpy ), \
            np.array( deriv_interc_dpx ), np.array( deriv_interc_dpy ), \
