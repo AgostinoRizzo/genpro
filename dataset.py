@@ -273,8 +273,8 @@ class MagmanDatasetScaled(Dataset):
         self.knowledge.add_deriv(0, DataPoint(self.xu, self.func(self.xu)))
 
         # known (first) derivatives
-        self.knowledge.add_deriv(1, DataPoint(-peak_x,  0.))
-        self.knowledge.add_deriv(1, DataPoint( peak_x,  0.))
+        """self.knowledge.add_deriv(1, DataPoint(-peak_x,  0.))
+        self.knowledge.add_deriv(1, DataPoint( peak_x,  0.))"""
 
         #
         # positivity/negativity contraints
@@ -285,13 +285,13 @@ class MagmanDatasetScaled(Dataset):
         self.knowledge.add_sign(0, 0.001, self.xu, '-')
     
         # monotonically increasing/decreasing
-        self.knowledge.add_sign(1, self.xl, -0.81, '+')
+        """self.knowledge.add_sign(1, self.xl, -0.81, '+')
         self.knowledge.add_sign(1, -peak_x+0.1, peak_x-0.1, '-')
         self.knowledge.add_sign(1, 0.81, self.xu, '+')
 
         # concavity/convexity
         self.knowledge.add_sign(2, self.xl, -0.81, '+')
-        self.knowledge.add_sign(2, 0.81, self.xu, '-')
+        self.knowledge.add_sign(2, 0.81, self.xu, '-')"""
 
     def func(self, x: float) -> float:
         x = self.__xmap(x, toorigin=True)

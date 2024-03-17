@@ -7,6 +7,9 @@ import random
 import time
 import dataset
 
+import warnings
+warnings.filterwarnings("error")
+
 def __get_slope(dp_i: dataset.DataPoint, dp_j: dataset.DataPoint) -> float:
     return (dp_j.y - dp_i.y) / (dp_j.x - dp_i.x)
 
@@ -383,11 +386,21 @@ class MathOperatorFactory:
     def get_cos (self, x): return math.cos(x)
 
 class NumpyOperatorFactory:
-    def get_sqrt(self, x): return np.sqrt(x)
-    def get_log (self, x): return np.log(x)
-    def get_exp (self, x): return np.exp(x)
-    def get_sin (self, x): return np.sin(x)
-    def get_cos (self, x): return np.cos(x)
+    def get_sqrt(self, x):
+        try: return np.sqrt(x)
+        except RuntimeWarning: raise OperationDomainError()
+    def get_log (self, x):
+        try: return np.log(x)
+        except RuntimeWarning: raise OperationDomainError()
+    def get_exp (self, x):
+        try: return np.exp(x)
+        except RuntimeWarning: raise OperationDomainError()
+    def get_sin (self, x):
+        try: return np.sin(x)
+        except RuntimeWarning: raise OperationDomainError()
+    def get_cos (self, x):
+        try: return np.cos(x)
+        except RuntimeWarning: raise OperationDomainError()
 
 class SympyOperatorFactory:
     def get_sqrt(self, x): return sympy.sqrt(x)
@@ -406,7 +419,7 @@ class SyntaxTree:
     def append(self, subtree):
         self.children.append(subtree)
     
-    def set_coeffs(self, coeffs):
+    def set_coeffs(self, coeffs, offset:int=0) -> int:  # returns updated offset
         raise RuntimeError('Operation not defined.')
     
     def evaluate(self, x) -> float:
@@ -435,7 +448,7 @@ class SyntaxTree:
     def get_evaluate_operator_lambda(operator:str, optfact:OperatorFactory):
         if   operator == '*':    return lambda f, g, x: f.evaluate(x) * g.evaluate(x), 2
         elif operator == '/':    return lambda f, g, x: f.evaluate(x) / g.evaluate(x), 2
-        elif operator == 'sqrt': return lambda f, x: optfact.get_sqrt(f.evaluate(x)), 1
+        elif operator == 'sqrt': return lambda f, x: optfact.get_sqrt(f.evaluate(x)),  1
         elif operator == 'log':  return lambda f, x: optfact.get_log (f.evaluate(x)),  1
         elif operator == 'exp':  return lambda f, x: optfact.get_exp (f.evaluate(x)),  1
         elif operator == 'sin':  return lambda f, x: optfact.get_sin (f.evaluate(x)),  1
@@ -494,8 +507,10 @@ class OperatorSyntaxTree(SyntaxTree):
     def append(self, subtree):
         self.children.append(subtree)
     
-    def set_coeffs(self, coeffs):
-        for c in self.children: c.set_coeffs(coeffs)
+    def set_coeffs(self, coeffs, offset:int=0) -> int:
+        for c in self.children:
+            offset = c.set_coeffs(coeffs, offset)
+        return offset
     
     def evaluate(self, x) -> float:
         if len(self.children) != self.arity: raise RuntimeError('Mismatch with arity.')
@@ -529,9 +544,10 @@ class PolySyntaxTree(SyntaxTree):
     def append(self, subtree):
         raise RuntimeError('Append not supported on PolySystaxTree')
 
-    def set_coeffs(self, coeffs):
-        self.curr_coeffs = coeffs[0:self.n_coeffs]
-        for _ in range(self.n_coeffs): coeffs.pop(0)
+    def set_coeffs(self, coeffs, offset:int=0) -> int:
+        new_offset = offset + self.n_coeffs
+        self.curr_coeffs = coeffs[offset:new_offset]
+        return new_offset
     
     def evaluate(self, x) -> float:
         y = 0.
@@ -569,10 +585,12 @@ class InnerPolySyntaxTree(PolySyntaxTree):
     def append(self, subtree):
         self.children.append(subtree)
     
-    def set_coeffs(self, coeffs):
-        for c in self.children: c.set_coeffs(coeffs)
-        self.curr_coeffs = coeffs[0:self.n_coeffs]
-        for _ in range(self.n_coeffs): coeffs.pop(0)
+    def set_coeffs(self, coeffs, offset:int=0) -> int:
+        for c in self.children:
+            offset = c.set_coeffs(coeffs, offset)
+        new_offset = offset + self.n_coeffs
+        self.curr_coeffs = coeffs[offset:new_offset]
+        return new_offset
     
     def evaluate(self, x) -> float:
         if len(self.children) != self.arity: raise RuntimeError('Mismatch with arity.')
@@ -612,28 +630,106 @@ class InnerPolySyntaxTree(PolySyntaxTree):
         return ans
     
 
-def get_system(coeffs, stree:SyntaxTree, interc_dp:list):
+def get_ineq_activation(f_x:float, threshold:float=0., sigma:float=1e3) -> float:
+    assert threshold == 0.
+    # sigmoid activation
+    #if f_x < 0: return np.exp(sigma*f_x) / (1 + np.exp(sigma*f_x))  # two implementations to avoid overflow.
+    #return 1 / (1 + np.exp(-sigma*f_x))
+    return np.tanh(sigma * f_x * 0.5) * 0.5 + 0.5
+
+
+get_system_tot_time = 0.
+get_system_time_count = 0
+get_system_setcoeffs_tottime = 0.
+get_system_evaluate_tottime = 0.
+get_system_evalderiv_tottime = 0.
+
+def get_system(coeffs, stree:SyntaxTree,
+               interc_dpx:np.array, interc_dpy:np.array, activ_dpx:np.array=None, activ_dpy:np.array=None,):
+    global get_system_tot_time
+    global get_system_time_count
+    global get_system_setcoeffs_tottime
+    global get_system_evaluate_tottime
+    global get_system_evalderiv_tottime
+
+    start_tottime = time.time()
     eqs = []
-    for dp in interc_dp:
-        coeffs_pop = list(coeffs)
-        stree.set_coeffs(coeffs_pop)
-        eq = stree.evaluate(dp.x)
-        eq -= dp.y
-        eqs.append(eq)
+
+    start_setcoeffs = time.time()
+    stree.set_coeffs(coeffs)
+    get_system_setcoeffs_tottime += time.time() - start_setcoeffs
+
+    eqs = stree.evaluate(interc_dpx) - interc_dpy
+
+    if activ_dpx is not None and activ_dpy is not None:
+       eqs = np.concatenate( (eqs, get_ineq_activation(stree.evaluate(activ_dpx)) - activ_dpy) )
+    
+    """for (deg, sign, dp) in interc_dp[:max(len(coeffs), 1)]:  #random.choices(interc_dp, k=max(len(coeffs), 100)):
+
+        eq = None
+        if   deg == 0:
+            start_evaluate = time.time()
+            eq = stree.evaluate(dp.x)
+            get_system_evaluate_tottime += time.time() - start_evaluate
+        
+        elif deg == 1:
+            start_evalderiv = time.time()
+            eq = stree.evaluate_deriv(dp.x)
+            get_system_evalderiv_tottime += time.time() - start_evalderiv
+        
+        else: raise RuntimeError(f"Degree {deg} not supported.")
+
+        y_target = dp.y
+        if   sign == '>':
+            eq = get_ineq_activation(eq, y_target)
+            y_target = 1.
+        elif sign == '<':
+            eq = get_ineq_activation(eq, y_target)
+            y_target = 0.
+        
+        eq -= y_target
+        eqs.append(eq)"""
+    
+    get_system_tot_time += time.time() - start_tottime
+    get_system_time_count += 1
+
     return eqs
 
-def tune_syntax_tree(S:dataset.Dataset, stree:SyntaxTree, interc_dp:list, verbose:bool=True) -> dict:
+
+get_func_total_time = 0.
+get_func_total_calls = 0
+
+def get_func(coeffs, stree:SyntaxTree, interc_dpx:np.array, interc_dpy:np.array):
+    global get_func_total_time
+    global get_func_total_calls
+    start_time = time.time()
+
+    stree.set_coeffs(coeffs)
+    y = np.sum( (stree.evaluate(interc_dpx) - interc_dpy) ** 2 )
+
+    get_func_total_time += time.time() - start_time
+    get_func_total_calls += 1
+    return y
+
+def tune_syntax_tree(S:dataset.Dataset, stree:SyntaxTree,
+                     interc_dpx:np.array, interc_dpy:np.array, activ_dpx:np.array=None, activ_dpy:np.array=None,
+                     verbose:bool=True, maxiter:int=0) -> dict:
 
     start_time = time.time()
     tot_coeffs = stree.get_ncoeffs()
     
-    coeffs_0 = [random.uniform(1., 5.) for _ in range(tot_coeffs)]
+    coeffs_0 = np.array( [random.uniform(1., 5.) for _ in range(tot_coeffs)] )
     #res, _, _, msg = fsolve( get_system, coeffs_0, args=(stree, interc_dp), full_output=True )
-    res = root( get_system, coeffs_0, args=(stree, interc_dp), method='lm', options={'maxiter':100} )
+    res = root(
+        get_system, coeffs_0,
+        args=(stree, interc_dpx, interc_dpy, activ_dpx, activ_dpy),
+        method='lm', options={'maxiter':maxiter} )
+    #res = minimize( get_func, coeffs_0, args=(stree, interc_dpx, interc_dpy), method='BFGS', options={'maxiter':maxiter} )
     #print(res)
+    #print(res.fun)
     sol = res.x
     #close_res = np.isclose(get_system(res, stree, interc_dp), [0. for _ in range(tot_coeffs)])
-    close_sol = np.isclose(get_system(sol, stree, interc_dp), [0. for _ in range(len(interc_dp))])
+    close_sol = False #np.isclose(get_system(sol, stree, interc_dp), [0. for _ in range(len(interc_dp))])
     root_found = np.all(close_sol == True)
     
     if verbose:
@@ -641,26 +737,84 @@ def tune_syntax_tree(S:dataset.Dataset, stree:SyntaxTree, interc_dp:list, verbos
         print(f"Solution: {sol}")
         print(f"Is close: {close_sol}")
 
-    Y   = []
-    sse = 0.
-    for dp in interc_dp:
-        sol_pop = list(sol)
-        y = stree.evaluate(dp.x, sol_pop)
+    stree.set_coeffs(sol)
+    sse_size = 0
+    try:
+        sse = np.sum( (stree.evaluate(interc_dpx) - interc_dpy) ** 2 )
+        sse_size = len(interc_dpx)
+        if activ_dpx is not None and activ_dpy is not None:
+            sse += np.sum( (get_ineq_activation(stree.evaluate(activ_dpx)) - activ_dpy) ** 2 )
+            sse_size += len(activ_dpx)
+    except RuntimeWarning: raise OperationDomainError()
+
+    """for (deg, sign, dp) in interc_dp:
+        stree.set_coeffs(sol)
+        
+        y = None
+        if   deg == 0: y = stree.evaluate(dp.x)
+        elif deg == 1: y = stree.evaluate_deriv(dp.x)
+        else: raise RuntimeError(f"Degree {deg} not supported.")
+
         Y.append(y)
-        sse += ( y - dp.y ) ** 2
-    mse = sse / len(interc_dp)
+        error = y - dp.y
+        if   sign == '>': error = min(0, error)
+        elif sign == '<': error = max(0, error)
+        sse += error ** 2"""
+    mse = sse / sse_size
     
     elapsed_time = time.time() - start_time
-
     return { 'sol': sol, 'sse': sse, 'mse': mse, 'root_found': root_found, 'elapsed_time': elapsed_time }
 
 
-def infer_syntaxtree(S:dataset.Dataset, max_degree:int=2, max_degree_inner:int=1, max_depth:int=2, trials:int=10):
+def get_knowledge_interc_points(S:dataset.Dataset) -> list:
+    interc_dpx = []
+    interc_dpy = []
+    activ_dpx  = []
+    activ_dpy  = []
+
+    for deg in S.knowledge.derivs.keys():
+        interc_dpx += [dp.x for dp in S.knowledge.derivs[deg]]
+        interc_dpy += [dp.y for dp in S.knowledge.derivs[deg]]
+        #for dp in S.knowledge.derivs[deg]:
+            #interc_dp.append( (deg, '=', dp) )
+
+    for deg in S.knowledge.sign.keys():
+        for (l,u,sign) in S.knowledge.sign[deg]:
+            dpy = 1. if sign == '+' else 0.
+            activ_dpx += [x for x in np.linspace(l, u, 20)]
+            activ_dpy += [dpy for _ in range(20)]
+            #for x in np.linspace(l, u, 10):
+            #    interc_dp.append( (deg, '>' if sign == '+' else '<', dataset.DataPoint(x, 0)) )"""
     
+    return np.array( interc_dpx ), np.array( interc_dpy ), np.array( activ_dpx ), np.array( activ_dpy )
+
+
+def infer_syntaxtree(S:dataset.Dataset, max_degree:int=2, max_degree_inner:int=1, max_depth:int=2, trials:int=10):
+    global get_system_tot_time
+    global get_system_time_count
+    global get_system_setcoeffs_tottime
+    global get_system_evaluate_tottime
+    global get_system_evalderiv_tottime
+    
+    global get_func_total_time
+    global get_func_total_calls
+
+    get_system_tot_time = 0.
+    get_system_time_count = 0
+    get_system_setcoeffs_tottime = 0.
+    get_system_evaluate_tottime = 0.
+    get_system_evalderiv_tottime = 0.
+
+    get_func_total_time = 0.
+    get_func_total_calls = 0
+
     n_coeffs = max_degree + 1
     n_coeffs_inner = max_degree_inner + 1
-    data_interc_dp      = [dp for dp in S.data]
-    knowledge_interc_dp = [dataset.DataPoint(x, S.func(x)) for x in np.linspace(S.xl, S.xu, 50).tolist()]
+
+    data_interc_dp  = S.data
+    data_interc_dpx = np.array( [dp.x for dp in data_interc_dp] )
+    data_interc_dpy = np.array( [dp.y for dp in data_interc_dp] )
+    knowledge_interc_dpx, knowledge_interc_dpy, knowledge_activ_dpx, knowledge_activ_dpy = get_knowledge_interc_points(S)
 
     best_stree = None
     best_data_tuning_report = None
@@ -678,13 +832,24 @@ def infer_syntaxtree(S:dataset.Dataset, max_degree:int=2, max_degree_inner:int=1
             depth = random.randint(1, max_depth)
             stree = SyntaxTree.create_random(1, n_coeffs, n_coeffs_inner, depth)
 
+            tree_found = False
+            if type(stree) is OperatorSyntaxTree and stree.operator_str == '/' and stree.arity == 2 and type(stree.children[0]) is PolySyntaxTree and type(stree.children[1]) is PolySyntaxTree:
+                print("TREE FOUND")
+                tree_found = True
+
             for _ in range(n_restarts):
                 
-                data_tuning_report      = tune_syntax_tree(S, stree, data_interc_dp,      verbose=False)
-                knowledge_tuning_report = tune_syntax_tree(S, stree, knowledge_interc_dp, verbose=False)
-                fitness = .2 * data_tuning_report['mse'] + .8 * knowledge_tuning_report['mse']
+                data_tuning_report      = tune_syntax_tree(S, stree, data_interc_dpx,      data_interc_dpy,      verbose=False, maxiter=50)
+                knowledge_tuning_report = tune_syntax_tree(S, stree,
+                                                           knowledge_interc_dpx, knowledge_interc_dpy, knowledge_activ_dpx, knowledge_activ_dpy,
+                                                           verbose=False, maxiter=50)
+                fitness = fitness = .2 * data_tuning_report['mse'] + .8 * knowledge_tuning_report['mse']
+
+                if tree_found:
+                    pass#print(f"Tree found fitness: {data_tuning_report['mse'] } [data], {knowledge_tuning_report['mse']} [knowledge], {fitness} [fitness]")
 
                 if best_stree is None or fitness < best_fitness:
+                    #print(f"Update best fitness from {best_fitness} to {fitness}")
                     best_stree = stree
                     best_data_tuning_report = data_tuning_report
                     best_knowledge_tuning_report = knowledge_tuning_report
@@ -699,10 +864,21 @@ def infer_syntaxtree(S:dataset.Dataset, max_degree:int=2, max_degree_inner:int=1
         except OperationDomainError:  # domain error
             pass
     
-    print(f"Data tuning (avg time):        {int((data_elapsed_time / (trials*n_actual_restarts)) * 1e3)} ms")
+    print(f"\nData tuning (avg time):      {int((data_elapsed_time / (trials*n_actual_restarts)) * 1e3)} ms")
     print(f"Knowledge tuning (avg time):   {int((knowledge_elapsed_time / (trials*n_actual_restarts)) * 1e3)} ms")
     print(f"Data tuning (total time):      {int(data_elapsed_time * 1e3)} ms")
     print(f"Knowledge tuning (total time): {int(knowledge_elapsed_time * 1e3)} ms")
+
+    """print(f"\nGet func (total time): {int((get_func_total_time) * 1e3)} ms")
+    print(f"Get func (total calls):  {get_func_total_calls}")"""
+
+    print(f"\nGet system (avg time): {int((get_system_tot_time / get_system_time_count) * 1e3)} ms")
+    print(f"Get system (total time): {int((get_system_tot_time) * 1e3)} ms")
+    print(f"Get system (total calls): {get_system_time_count}")
+
+    print(f"\nSetcoeffs (total time): {int((get_system_setcoeffs_tottime) * 1e3)} ms")
+    """print(f"Evaluate (total time): {int((get_system_evaluate_tottime) * 1e3)} ms")
+    print(f"Evalderiv (total time): {int((get_system_evalderiv_tottime) * 1e3)} ms")"""
 
     return best_stree, best_data_tuning_report, best_knowledge_tuning_report
 
