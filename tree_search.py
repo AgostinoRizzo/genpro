@@ -812,6 +812,10 @@ def get_knowledge_interc_points(S:dataset.Dataset, sample_size:int=20):
         else:
             deriv_interc_dpx += [dp.x for dp in S.knowledge.derivs[deg]]
             deriv_interc_dpy += [dp.y for dp in S.knowledge.derivs[deg]]
+    interc_dpx = np.repeat( interc_dpx, sample_size )
+    interc_dpy = np.repeat( interc_dpy, sample_size )
+    deriv_interc_dpx = np.repeat( deriv_interc_dpx, sample_size )
+    deriv_interc_dpy = np.repeat( deriv_interc_dpy, sample_size )
 
     for deg in S.knowledge.sign.keys():
         if deg >= 2: continue
@@ -829,6 +833,9 @@ def get_knowledge_interc_points(S:dataset.Dataset, sample_size:int=20):
            np.array( activ_dpx ), np.array( activ_dpy ), \
            np.array( deriv_activ_dpx ), np.array( deriv_activ_dpy )
 
+
+def __print_header(header:str):
+    print('='*10 + ' ' + header + ' ' + '='*10)
 
 def infer_syntaxtree(S:dataset.Dataset, max_degree:int=2, max_degree_inner:int=1, max_depth:int=2, trials:int=10, kn_pressure:float=0.8):
     global get_system_tot_time
@@ -868,6 +875,8 @@ def infer_syntaxtree(S:dataset.Dataset, max_degree:int=2, max_degree_inner:int=1
 
     n_restarts = 5
     n_actual_restarts = 0
+
+    __print_header('Syntax Tree Inference')
 
     for _ in range(trials):
         try:
@@ -986,7 +995,51 @@ def infer_syntaxtree(S:dataset.Dataset, max_degree:int=2, max_degree_inner:int=1
 """
 
 
+def enhance_syntax_tree(stree:SyntaxTree, S:dataset.Dataset, sample_size:int, n_restarts:int=10):
+    
+    __print_header('Syntax Tree Enhancement')
+
+    data_interc_dpx, data_interc_dpy = get_data_interc_points(S)
+    knowledge_interc_dpx, knowledge_interc_dpy, \
+    knowledge_deriv_interc_dpx, knowledge_deriv_interc_dpy, \
+    knowledge_activ_dpx, knowledge_activ_dpy, \
+    knowledge_deriv_activ_dpx, knowledge_deriv_activ_dpy = get_knowledge_interc_points(S, sample_size=sample_size)
+
+    knowledge_interc_dpx = np.repeat( knowledge_interc_dpx, sample_size )
+    knowledge_interc_dpy = np.repeat( knowledge_interc_dpy, sample_size )
+    knowledge_deriv_interc_dpx = np.repeat( knowledge_deriv_interc_dpx, sample_size )
+    knowledge_deriv_interc_dpy = np.repeat( knowledge_deriv_interc_dpy, sample_size )
+
+    interc_dpx = np.concatenate( (data_interc_dpx, knowledge_interc_dpx) )
+    interc_dpy = np.concatenate( (data_interc_dpy, knowledge_interc_dpy) )
+
+    #interc_dpx = data_interc_dpx
+    #interc_dpy = data_interc_dpy
+
+    best_tuning_report = None
+
+    for i_restart in range(n_restarts):
+        tuning_report = tune_syntax_tree(S, stree,
+                                         interc_dpx, interc_dpy,  # merge data+knowledge (0th deriv)
+                                         knowledge_deriv_interc_dpx, knowledge_deriv_interc_dpy,
+                                         knowledge_activ_dpx, knowledge_activ_dpy,
+                                         knowledge_deriv_activ_dpx, knowledge_deriv_activ_dpy,
+                                         verbose=False, maxiter=5000)  # no limit for maxiter
+        if best_tuning_report is None or tuning_report['mse'] < best_tuning_report['mse']:
+            print(f"[Restart #{i_restart+1}] MSE improvement from {None if best_tuning_report is None else best_tuning_report['mse']} to {tuning_report['mse']}")
+            best_tuning_report = tuning_report
+        else:
+            print(f"[Restart #{i_restart+1}] No improvement.")
+
+    print(f"Training MSE: {best_tuning_report['mse']}")
+
+    return best_tuning_report
+
+
 def test_syntax_tree(stree:SyntaxTree, S:dataset.Dataset, sample_size:int, pk_epsilon:float=1e-8):
+
+    __print_header('Syntax Tree Testing')
+
     test_sse = 0.
     test_r2  = 0.
     for dp in S.test:
@@ -1011,3 +1064,5 @@ def test_syntax_tree(stree:SyntaxTree, S:dataset.Dataset, sample_size:int, pk_ep
                 pk_sat_size += 1
 
     return test_mse, test_r2, pk_sat_count/pk_sat_size, pk_sat_count, pk_sat_size
+
+
