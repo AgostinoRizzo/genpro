@@ -372,20 +372,23 @@ class OperationDomainError(RuntimeError):
 
 
 class OperatorFactory:
-    def get_sqrt(self, x): raise RuntimeError('Operation not defined.')
-    def get_log (self, x): raise RuntimeError('Operation not defined.')
-    def get_exp (self, x): raise RuntimeError('Operation not defined.')
-    def get_sin (self, x): raise RuntimeError('Operation not defined.')
-    def get_cos (self, x): raise RuntimeError('Operation not defined.')
+    def get_div (self, x1, x2):
+        try: return x1 / x2
+        except RuntimeWarning: raise OperationDomainError()
+    def get_sqrt(self, x):      raise RuntimeError('Operation not defined.')
+    def get_log (self, x):      raise RuntimeError('Operation not defined.')
+    def get_exp (self, x):      raise RuntimeError('Operation not defined.')
+    def get_sin (self, x):      raise RuntimeError('Operation not defined.')
+    def get_cos (self, x):      raise RuntimeError('Operation not defined.')
 
-class MathOperatorFactory:
+class MathOperatorFactory(OperatorFactory):
     def get_sqrt(self, x): return math.sqrt(x)
     def get_log (self, x): return math.log(x)
     def get_exp (self, x): return math.exp(x)
     def get_sin (self, x): return math.sin(x)
     def get_cos (self, x): return math.cos(x)
 
-class NumpyOperatorFactory:
+class NumpyOperatorFactory(OperatorFactory):
     def get_sqrt(self, x):
         try: return np.sqrt(x)
         except RuntimeWarning: raise OperationDomainError()
@@ -402,13 +405,12 @@ class NumpyOperatorFactory:
         try: return np.cos(x)
         except RuntimeWarning: raise OperationDomainError()
 
-class SympyOperatorFactory:
+class SympyOperatorFactory(OperatorFactory):
     def get_sqrt(self, x): return sympy.sqrt(x)
     def get_log (self, x): return sympy.log (x)
     def get_exp (self, x): return sympy.exp (x)
     def get_sin (self, x): return sympy.sin (x)
     def get_cos (self, x): return sympy.cos (x)
-
 
 class SyntaxTree:
     OPERATORS = ['*', '/', 'sqrt', 'log', 'exp', 'sin', 'cos']
@@ -447,12 +449,12 @@ class SyntaxTree:
     @staticmethod
     def get_evaluate_operator_lambda(operator:str, optfact:OperatorFactory):
         if   operator == '*':    return lambda f, g, x: f.evaluate(x) * g.evaluate(x), 2
-        elif operator == '/':    return lambda f, g, x: f.evaluate(x) / g.evaluate(x), 2
-        elif operator == 'sqrt': return lambda f, x: optfact.get_sqrt(f.evaluate(x)),  1
-        elif operator == 'log':  return lambda f, x: optfact.get_log (f.evaluate(x)),  1
-        elif operator == 'exp':  return lambda f, x: optfact.get_exp (f.evaluate(x)),  1
-        elif operator == 'sin':  return lambda f, x: optfact.get_sin (f.evaluate(x)),  1
-        elif operator == 'cos':  return lambda f, x: optfact.get_cos (f.evaluate(x)),  1
+        elif operator == '/':    return lambda f, g, x: optfact.get_div(f.evaluate(x), g.evaluate(x)), 2
+        elif operator == 'sqrt': return lambda f, x:    optfact.get_sqrt(f.evaluate(x)),  1
+        elif operator == 'log':  return lambda f, x:    optfact.get_log (f.evaluate(x)),  1
+        elif operator == 'exp':  return lambda f, x:    optfact.get_exp (f.evaluate(x)),  1
+        elif operator == 'sin':  return lambda f, x:    optfact.get_sin (f.evaluate(x)),  1
+        elif operator == 'cos':  return lambda f, x:    optfact.get_cos (f.evaluate(x)),  1
         raise RuntimeError(f"Operator {operator} not supported. Please choose from {SyntaxTree.OPERATORS}.")
     
     @staticmethod
@@ -461,13 +463,13 @@ class SyntaxTree:
             (f.evaluate_deriv(x) * g.evaluate(x)) + (f.evaluate(x) * g.evaluate_deriv(x)), 2
         
         elif operator == '/':    return lambda f, g, x: \
-            ((f.evaluate_deriv(x) * g.evaluate(x)) - (f.evaluate(x) * g.evaluate_deriv(x))) / (g.evaluate(x)**2), 2
+            optfact.get_div( ((f.evaluate_deriv(x) * g.evaluate(x)) - (f.evaluate(x) * g.evaluate_deriv(x))), (g.evaluate(x)**2) ), 2
         
         elif operator == 'sqrt': return lambda f, x: \
-            f.evaluate_deriv(x) / (2 * optfact.get_sqrt(f.evaluate(x))), 1
+            optfact.get_div( f.evaluate_deriv(x), (2 * optfact.get_sqrt(f.evaluate(x))) ), 1
         
         elif operator == 'log':  return lambda f, x: \
-            f.evaluate_deriv(x) / f.evaluate(x), 1
+            optfact.get_div( f.evaluate_deriv(x), f.evaluate(x) ), 1
         
         elif operator == 'exp':  return lambda f, x: \
             optfact.get_exp(f.evaluate(x)) * f.evaluate_deriv(x), 1
@@ -837,7 +839,7 @@ def get_knowledge_interc_points(S:dataset.Dataset, sample_size:int=20):
 def __print_header(header:str):
     print('='*10 + ' ' + header + ' ' + '='*10)
 
-def infer_syntaxtree(S:dataset.Dataset, max_degree:int=2, max_degree_inner:int=1, max_depth:int=2, trials:int=10, kn_pressure:float=0.8):
+def infer_syntaxtree(S:dataset.Dataset, max_degree:int=2, max_degree_inner:int=1, max_depth:int=2, trials:int=10, pk_pressure:float=0.8):
     global get_system_tot_time
     global get_system_time_count
     global get_system_setcoeffs_tottime
@@ -884,20 +886,28 @@ def infer_syntaxtree(S:dataset.Dataset, max_degree:int=2, max_degree_inner:int=1
             stree = SyntaxTree.create_random(1, n_coeffs, n_coeffs_inner, depth)
 
             tree_found = False
-            if type(stree) is OperatorSyntaxTree and stree.operator_str == '/' and stree.arity == 2 and type(stree.children[0]) is PolySyntaxTree and type(stree.children[1]) is PolySyntaxTree:
-                print("TREE FOUND")
+            #if type(stree) is OperatorSyntaxTree and stree.operator_str == '/' and stree.arity == 2 and type(stree.children[0]) is PolySyntaxTree and type(stree.children[1]) is PolySyntaxTree:
+            #    print("TREE FOUND")
+            #    tree_found = True
+            if type(stree) is InnerPolySyntaxTree and type(stree.children[0]) is OperatorSyntaxTree and stree.children[0].operator_str == 'sin' and \
+                type(stree.children[0].children[0]) is PolySyntaxTree:
+                print("TREE FOUND " + stree.tostring())
                 tree_found = True
 
             for _ in range(n_restarts):
                 
                 data_tuning_report      = tune_syntax_tree(S, stree, data_interc_dpx, data_interc_dpy, verbose=False, maxiter=50)
-                knowledge_tuning_report = tune_syntax_tree(S, stree,
-                                                           knowledge_interc_dpx, knowledge_interc_dpy,
-                                                           knowledge_deriv_interc_dpx, knowledge_deriv_interc_dpy,
-                                                           knowledge_activ_dpx, knowledge_activ_dpy,
-                                                           knowledge_deriv_activ_dpx, knowledge_deriv_activ_dpy,
-                                                           verbose=False, maxiter=50)
-                fitness = fitness = ((1-kn_pressure) * data_tuning_report['mse']) + (kn_pressure * knowledge_tuning_report['mse'])
+                knowledge_tuning_report = tune_syntax_tree(
+                        S, stree,
+                        knowledge_interc_dpx, knowledge_interc_dpy,
+                        knowledge_deriv_interc_dpx, knowledge_deriv_interc_dpy,
+                        knowledge_activ_dpx, knowledge_activ_dpy,
+                        knowledge_deriv_activ_dpx, knowledge_deriv_activ_dpy,
+                        verbose=False, maxiter=50) if pk_pressure > 0 else None
+                
+                fitness = fitness = \
+                    ((1-pk_pressure) * data_tuning_report['mse']) + \
+                    ((pk_pressure * knowledge_tuning_report['mse']) if knowledge_tuning_report is not None else 0.)
 
                 if tree_found:
                     pass#print(f"Tree found fitness: {data_tuning_report['mse'] } [data], {knowledge_tuning_report['mse']} [knowledge], {fitness} [fitness]")
@@ -910,7 +920,7 @@ def infer_syntaxtree(S:dataset.Dataset, max_degree:int=2, max_degree_inner:int=1
                     best_fitness = fitness
                 
                 data_elapsed_time += data_tuning_report['elapsed_time']
-                knowledge_elapsed_time += knowledge_tuning_report['elapsed_time']
+                if knowledge_tuning_report is not None: knowledge_elapsed_time += knowledge_tuning_report['elapsed_time']
 
                 n_actual_restarts += 1
                 if fitness <= 0.01: break
@@ -1030,6 +1040,8 @@ def enhance_syntax_tree(stree:SyntaxTree, S:dataset.Dataset, sample_size:int, n_
             best_tuning_report = tuning_report
         else:
             print(f"[Restart #{i_restart+1}] No improvement.")
+        
+        if best_tuning_report['mse'] < 0.01: break
 
     print(f"Training MSE: {best_tuning_report['mse']}")
 

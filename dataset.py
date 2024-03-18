@@ -398,6 +398,20 @@ class ABSDataset(Dataset):
         self.xu = 1.
         self.yl = 0.
         self.yu = 0.45
+
+        #
+        # prior knowledge
+        #
+
+        peak_x = 0.06182
+        peak_y = self.func(peak_x)
+
+        # known positivity/negativity
+        self.knowledge.add_sign(0, self.xl, self.xu, '+')
+
+        # monotonically increasing/decreasing
+        self.knowledge.add_sign(1, self.xl, peak_x-0.001, '+')
+        self.knowledge.add_sign(1, peak_x+0.001, self.xu, '-')
     
     def func(self, x: float) -> float:
         m = 6.67 #407.75
