@@ -210,15 +210,15 @@ class MagmanDataset(Dataset):
         peak_x  = 0.00788845
         
         # intersection points
-        self.knowledge.add_deriv(0, DataPoint( 0., 0.))
+        """self.knowledge.add_deriv(0, DataPoint( 0., 0.))
         self.knowledge.add_deriv(0, DataPoint(-peak_x, self.func(-peak_x)))
         self.knowledge.add_deriv(0, DataPoint( peak_x, self.func( peak_x)))
         self.knowledge.add_deriv(0, DataPoint(self.xl, self.func(self.xl)))
-        self.knowledge.add_deriv(0, DataPoint(self.xu, self.func(self.xu)))
+        self.knowledge.add_deriv(0, DataPoint(self.xu, self.func(self.xu)))"""
 
         # known (first) derivatives
-        self.knowledge.add_deriv(1, DataPoint(-peak_x,  0.))
-        self.knowledge.add_deriv(1, DataPoint( peak_x,  0.))
+        """self.knowledge.add_deriv(1, DataPoint(-peak_x,  0.))
+        self.knowledge.add_deriv(1, DataPoint( peak_x,  0.))"""
 
         #
         # positivity/negativity contraints
@@ -229,13 +229,13 @@ class MagmanDataset(Dataset):
         self.knowledge.add_sign(0, 0.00001, self.xu, '-')
     
         # monotonically increasing/decreasing
-        self.knowledge.add_sign(1, self.xl, -0.01, '+')
+        """self.knowledge.add_sign(1, self.xl, -0.01, '+')
         #self.knowledge.add_sign(1, -peak_x+0.1, peak_x-0.1, '-')
-        self.knowledge.add_sign(1, -0.01, self.xu, '+')
+        self.knowledge.add_sign(1, -0.01, self.xu, '+')"""
 
         # concavity/convexity
-        self.knowledge.add_sign(2, self.xl, -0.01, '+')
-        self.knowledge.add_sign(2, 0.01, self.xu, '-')
+        """self.knowledge.add_sign(2, self.xl, -0.01, '+')
+        self.knowledge.add_sign(2, 0.01, self.xu, '-')"""
 
     def func(self, x: float) -> float:
         return -self.i*self.c1*x / (x**2 + self.c2)**3
@@ -271,7 +271,7 @@ class MagmanDatasetScaled(Dataset):
         self.c2 = .000305
         self.i = .000004
         #peak_x = 0.00788845
-        peak_x = 0.208
+        peak_x = 0.20827333333333353
         
         # intersection points
         self.knowledge.add_deriv(0, DataPoint( 0., 0.))
@@ -304,6 +304,11 @@ class MagmanDatasetScaled(Dataset):
     def func(self, x: float) -> float:
         x = self.__xmap(x, toorigin=True)
         y = -self.i*self.c1*x / (x**2 + self.c2)**3
+        return self.__ymap(y)
+
+    def deriv(self, x: float) -> float:
+        x = self.__xmap(x, toorigin=True)
+        y = (6.4e-9 * x**2 - 3.904e-13) / (x**2 + 0.000305) ** 4
         return self.__ymap(y)
     
     def load(self, filename:str):
@@ -411,7 +416,7 @@ class ABSDataset(Dataset):
 
         # monotonically increasing/decreasing
         self.knowledge.add_sign(1, self.xl, peak_x-0.001, '+')
-        self.knowledge.add_sign(1, peak_x+0.001, self.xu, '-')
+        #self.knowledge.add_sign(1, peak_x+0.001, self.xu, '-')
     
     def func(self, x: float) -> float:
         m = 6.67 #407.75

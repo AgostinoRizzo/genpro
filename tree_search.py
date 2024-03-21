@@ -412,6 +412,7 @@ class SympyOperatorFactory(OperatorFactory):
     def get_sin (self, x): return sympy.sin (x)
     def get_cos (self, x): return sympy.cos (x)
 
+
 class SyntaxTree:
     OPERATORS = ['*', '/', 'sqrt', 'log', 'exp', 'sin', 'cos']
 
@@ -420,6 +421,12 @@ class SyntaxTree:
     
     def append(self, subtree):
         self.children.append(subtree)
+    
+    def lambdify(self) -> str:
+        raise RuntimeError('Operation not defined.')
+    
+    def lambdify_deriv(self) -> str:
+        raise RuntimeError('Operation not defined.')
     
     def set_coeffs(self, coeffs, offset:int=0) -> int:  # returns updated offset
         raise RuntimeError('Operation not defined.')
@@ -448,34 +455,64 @@ class SyntaxTree:
     
     @staticmethod
     def get_evaluate_operator_lambda(operator:str, optfact:OperatorFactory):
-        if   operator == '*':    return lambda f, g, x: f.evaluate(x) * g.evaluate(x), 2
-        elif operator == '/':    return lambda f, g, x: optfact.get_div(f.evaluate(x), g.evaluate(x)), 2
-        elif operator == 'sqrt': return lambda f, x:    optfact.get_sqrt(f.evaluate(x)),  1
-        elif operator == 'log':  return lambda f, x:    optfact.get_log (f.evaluate(x)),  1
-        elif operator == 'exp':  return lambda f, x:    optfact.get_exp (f.evaluate(x)),  1
-        elif operator == 'sin':  return lambda f, x:    optfact.get_sin (f.evaluate(x)),  1
-        elif operator == 'cos':  return lambda f, x:    optfact.get_cos (f.evaluate(x)),  1
+        if   operator == '*':    return lambda f, g, x: f.evaluate(x) * g.evaluate(x), \
+                                        lambda f, g, x: f"({f.lambdify(x)}) * ({g.lambdify(x)})", \
+                                        2
+        elif operator == '/':    return lambda f, g, x: optfact.get_div(f.evaluate(x), g.evaluate(x)), \
+                                        lambda f, g, x: f"({f.lambdify(x)}) / ({g.lambdify(x)})", \
+                                        2
+        elif operator == 'sqrt': return lambda f, x:    optfact.get_sqrt(f.evaluate(x)), \
+                                        lambda f, x:    f"np.sqrt({f.lambdify(x)}, out=None)", \
+                                        1
+        elif operator == 'log':  return lambda f, x:    optfact.get_log(f.evaluate(x)), \
+                                        lambda f, x:    f"np.log({f.lambdify(x)}, out=None)", \
+                                        1
+        elif operator == 'exp':  return lambda f, x:    optfact.get_exp(f.evaluate(x)), \
+                                        lambda f, x:    f"np.exp({f.lambdify(x)}, out=None)", \
+                                        1
+        elif operator == 'sin':  return lambda f, x:    optfact.get_sin (f.evaluate(x)), \
+                                        lambda f, x:    f"np.sin({f.lambdify(x)}, out=None)", \
+                                        1
+        elif operator == 'cos':  return lambda f, x:    optfact.get_cos(f.evaluate(x)), \
+                                        lambda f, x:    f"np.cos({f.lambdify(x)}, out=None)", \
+                                        1
         raise RuntimeError(f"Operator {operator} not supported. Please choose from {SyntaxTree.OPERATORS}.")
     
     @staticmethod
     def get_deriv_operator_lambda(operator:str, optfact:OperatorFactory):
-        if   operator == '*':    return lambda f, g, x: \
-            (f.evaluate_deriv(x) * g.evaluate(x)) + (f.evaluate(x) * g.evaluate_deriv(x)), 2
+        if   operator == '*': return \
+            lambda f, g, x: (f.evaluate_deriv(x) * g.evaluate(x)) + (f.evaluate(x) * g.evaluate_deriv(x)), \
+            lambda f, g:    f"({f.lambdify_deriv()} * {g.lambdify()}) + ({f.lambdify()} * {g.lambdify_deriv()})", \
+            2
         
-        elif operator == '/':    return lambda f, g, x: \
-            optfact.get_div( ((f.evaluate_deriv(x) * g.evaluate(x)) - (f.evaluate(x) * g.evaluate_deriv(x))), (g.evaluate(x)**2) ), 2
+        elif operator == '/': return \
+            lambda f, g, x: optfact.get_div( ((f.evaluate_deriv(x) * g.evaluate(x)) - (f.evaluate(x) * g.evaluate_deriv(x))), (g.evaluate(x)**2) ), \
+            lambda f, g:    f"((({f.lambdify_deriv()}) * ({g.lambdify()})) - (({f.lambdify()}) * ({g.lambdify_deriv()}))) / (({g.lambdify()})**2)", \
+            2
         
-        elif operator == 'sqrt': return lambda f, x: \
-            optfact.get_div( f.evaluate_deriv(x), (2 * optfact.get_sqrt(f.evaluate(x))) ), 1
+        elif operator == 'sqrt': return \
+            lambda f, x: optfact.get_div( f.evaluate_deriv(x), (2 * optfact.get_sqrt(f.evaluate(x))) ), \
+            lambda f:    f"({f.lambdify_deriv()}) / (2 * np.sqrt({f.lambdify()}, out=None))", \
+            1
         
-        elif operator == 'log':  return lambda f, x: \
-            optfact.get_div( f.evaluate_deriv(x), f.evaluate(x) ), 1
+        elif operator == 'log': return \
+            lambda f, x: optfact.get_div( f.evaluate_deriv(x), f.evaluate(x) ), \
+            lambda f:    f"({f.lambdify_deriv()}) / ({f.lambdify()})", \
+            1
         
-        elif operator == 'exp':  return lambda f, x: \
-            optfact.get_exp(f.evaluate(x)) * f.evaluate_deriv(x), 1
+        elif operator == 'exp': return \
+            lambda f, x: optfact.get_exp(f.evaluate(x)) * f.evaluate_deriv(x), \
+            lambda f:    f"np.exp({f.lambdify()}, out=None) * ({f.lambdify_deriv()})", \
+            1
         
-        elif operator == 'sin':  return lambda f, x: optfact.get_cos(f.evaluate(x)) * f.evaluate_deriv(x), 1
-        elif operator == 'cos':  return lambda f, x: -optfact.get_sin(f.evaluate(x)) * f.evaluate_deriv(x), 1
+        elif operator == 'sin': return \
+            lambda f, x: optfact.get_cos(f.evaluate(x)) * f.evaluate_deriv(x), \
+            lambda f:    f"np.cos({f.lambdify()}, out=None) * ({f.lambdify_deriv()})", \
+            1
+        elif operator == 'cos': return \
+            lambda f, x: -optfact.get_sin(f.evaluate(x)) * f.evaluate_deriv(x), \
+            lambda f:    f"-np.sin({f.lambdify()}, out=None) * ({f.lambdify_deriv()})", \
+            1
 
         raise RuntimeError(f"Operator {operator} not supported. Please choose from {SyntaxTree.OPERATORS}.")
 
@@ -497,14 +534,23 @@ class SyntaxTree:
                 stree.append( SyntaxTree.create_random(curr_depth+1, n_coeffs, n_coeffs_inner, max_depth, optfact) )
         
         return stree
+    
+    @staticmethod
+    def lambdify(stree, x='x'):
+        return eval(f"lambda coeffs, x, out1, out2: {stree.lambdify(x)}")
+    
+    @staticmethod
+    def lambdify_deriv(stree):
+        return eval(f"lambda coeffs, x, out1, out2: {stree.lambdify_deriv()}")
+        #return eval(f"lambda coeffs, x, out1, out2: {stree.lambdify('(x+0.000001)')} - {stree.lambdify()}")
         
     
 class OperatorSyntaxTree(SyntaxTree):
     def __init__(self, operator:str, optfact:OperatorFactory) -> None:
         super().__init__()
         self.operator_str = operator
-        self.operator, self.arity = SyntaxTree.get_evaluate_operator_lambda(operator, optfact)
-        self.deriv_operator, self.deriv_arity = SyntaxTree.get_deriv_operator_lambda(operator, optfact)
+        self.operator, self.lamb_operator, self.arity = SyntaxTree.get_evaluate_operator_lambda(operator, optfact)
+        self.deriv_operator, self.lamb_deriv_operator, self.deriv_arity = SyntaxTree.get_deriv_operator_lambda(operator, optfact)
     
     def append(self, subtree):
         self.children.append(subtree)
@@ -513,6 +559,14 @@ class OperatorSyntaxTree(SyntaxTree):
         for c in self.children:
             offset = c.set_coeffs(coeffs, offset)
         return offset
+    
+    def lambdify(self, x='x') -> str:
+        if len(self.children) != self.arity: raise RuntimeError('Mismatch with arity.')
+        return self.lamb_operator(*self.children, x)
+    
+    def lambdify_deriv(self) -> str:
+        if len(self.children) != self.arity: raise RuntimeError('Mismatch with arity.')
+        return self.lamb_deriv_operator(*self.children)
     
     def evaluate(self, x) -> float:
         if len(self.children) != self.arity: raise RuntimeError('Mismatch with arity.')
@@ -541,33 +595,39 @@ class PolySyntaxTree(SyntaxTree):
     def __init__(self, n_coeffs:int) -> None:
         super().__init__()
         self.n_coeffs = n_coeffs
-        self.curr_coeffs = []
+        self.coeffs_startidx = None
+        self.coeffs_endidx = None
+        self.coeffs = np.zeros(n_coeffs)  # in decreasing order of power!
+        self.coeffs_deriv = np.zeros(n_coeffs-1)
     
     def append(self, subtree):
-        raise RuntimeError('Append not supported on PolySystaxTree')
+        raise RuntimeError('Append not supported on PolySyntaxTree')
 
     def set_coeffs(self, coeffs, offset:int=0) -> int:
         new_offset = offset + self.n_coeffs
-        self.curr_coeffs = coeffs[offset:new_offset]
+        self.coeffs_startidx = offset
+        self.coeffs_endidx = new_offset  # not included
+        self.coeffs = coeffs[offset:new_offset]
+        self.coeffs_deriv = self.coeffs[:-1] * np.arange(self.n_coeffs-1, 0, -1)
         return new_offset
     
+    def lambdify(self, x='x') -> str:
+        return f"np.polyval(coeffs[{self.coeffs_startidx}:{self.coeffs_endidx}], {x})"
+
+    def lambdify_deriv(self) -> str:
+        return f"np.polyval(coeffs[{self.coeffs_startidx}:{self.coeffs_endidx-1}] * np.arange({self.n_coeffs-1}, 0, -1), x)"
+    
     def evaluate(self, x) -> float:
-        y = 0.
-        for deg in range(self.n_coeffs):
-            y += self.curr_coeffs[deg] * (x ** deg)
-        return y
+        return np.polyval(self.coeffs, x)
 
     def evaluate_deriv(self, x) -> float:
-        y = 0.
-        for deg in range(1, self.n_coeffs):
-            y += self.curr_coeffs[deg] * deg * (x ** (deg-1))
-        return y
+        return np.polyval(self.coeffs_deriv, x)
     
     def get_ncoeffs(self) -> int:
         return self.n_coeffs
     
     def tostring(self, id:str=''):
-        if len(self.curr_coeffs) == 0 or True:
+        if self.n_coeffs == 0 or True:
             return 'P' + ('' if id == '' else '_' + id) + '(x)'
         epsilon = 1e-8
         ans = ''
@@ -590,26 +650,29 @@ class InnerPolySyntaxTree(PolySyntaxTree):
     def set_coeffs(self, coeffs, offset:int=0) -> int:
         for c in self.children:
             offset = c.set_coeffs(coeffs, offset)
-        new_offset = offset + self.n_coeffs
-        self.curr_coeffs = coeffs[offset:new_offset]
-        return new_offset
+        return super().set_coeffs(coeffs, offset)
+    
+    def lambdify(self, x='x') -> str:
+        if len(self.children) != self.arity: raise RuntimeError('Mismatch with arity.')
+        ch_lamb = self.children[0].lambdify(x)
+        return f"np.polyval(coeffs[{self.coeffs_startidx}:{self.coeffs_endidx}], {ch_lamb})"
+
+    def lambdify_deriv(self) -> str:
+        if len(self.children) != self.arity: raise RuntimeError('Mismatch with arity.')
+        ch_lamb = self.children[0].lambdify()
+        ch_lamb_deriv = self.children[0].lambdify_deriv()
+        return f"np.polyval(coeffs[{self.coeffs_startidx}:{self.coeffs_endidx-1}] * np.arange({self.n_coeffs-1}, 0, -1), {ch_lamb}) * {ch_lamb_deriv}"
     
     def evaluate(self, x) -> float:
         if len(self.children) != self.arity: raise RuntimeError('Mismatch with arity.')
-        y = 0.
         ch_eval = self.children[0].evaluate(x)
-        for deg in range(self.n_coeffs):
-            y += self.curr_coeffs[deg] * (ch_eval ** deg)
-        return y
+        return np.polyval(self.coeffs, ch_eval)
     
     def evaluate_deriv(self, x) -> float:
         if len(self.children) != self.arity: raise RuntimeError('Mismatch with arity.')
-        y = 0.
         ch_eval = self.children[0].evaluate(x)
         ch_eval_deriv = self.children[0].evaluate_deriv(x)
-        for deg in range(1, self.n_coeffs):
-            y += self.curr_coeffs[deg] * deg * (ch_eval ** (deg-1)) * ch_eval_deriv
-        return y
+        return np.polyval(self.coeffs_deriv, ch_eval) * ch_eval_deriv
     
     def get_ncoeffs(self) -> int:
         n = self.n_coeffs
@@ -619,7 +682,7 @@ class InnerPolySyntaxTree(PolySyntaxTree):
     def tostring(self, id:str=''):
         child_str = self.children[0].tostring()
 
-        if len(self.curr_coeffs) == 0 or True:
+        if self.n_coeffs == 0 or True:
             return 'P' + ('' if id == '' else '_' + id) + f"({child_str})"
         
         epsilon = 1e-8
@@ -632,12 +695,21 @@ class InnerPolySyntaxTree(PolySyntaxTree):
         return ans
     
 
-def get_ineq_activation(f_x:float, threshold:float=0., sigma:float=1e3) -> float:
+def get_ineq_activation(f_x:np.array, y_activ:np.array, threshold:float=0., sigma:float=1e12) -> np.array:
     assert threshold == 0.
     # sigmoid activation
     #if f_x < 0: return np.exp(sigma*f_x) / (1 + np.exp(sigma*f_x))  # two implementations to avoid overflow.
     #return 1 / (1 + np.exp(-sigma*f_x))
-    return np.tanh(sigma * f_x * 0.5) * 0.5 + 0.5
+
+    #return np.tanh(sigma * f_x * 0.5) * 0.5 + 0.5
+    #return -np.log(1 + np.exp(-f_x -10)) + 1
+    #return np.where(f_x * y_activ < 0, f_x + y_activ, y_activ)
+    
+    activ = np.empty(f_x.size)
+    for i in range(f_x.size):
+        if f_x[i] * y_activ[i] < 0: activ[i] = f_x[i] * y_activ[i] + y_activ[i]
+        else: activ[i] = y_activ[i]
+    return activ #np.where(f_x * y_activ < 0, f_x, y_activ)
 
 
 get_system_tot_time = 0.
@@ -646,11 +718,9 @@ get_system_setcoeffs_tottime = 0.
 get_system_evaluate_tottime = 0.
 get_system_evalderiv_tottime = 0.
 
-def get_system(coeffs, stree:SyntaxTree,
+def get_system(coeffs, stree:SyntaxTree, stree_lamb, stree_lamb_deriv, out1, out2,
                interc_dpx:np.array, interc_dpy:np.array,
-               deriv_interc_dpx:np.array=None, deriv_interc_dpy:np.array=None,
-               activ_dpx:np.array=None, activ_dpy:np.array=None,
-               deriv_activ_dpx:np.array=None, deriv_activ_dpy:np.array=None):
+               image_range, image_activ_range, deriv_range, deriv_activ_range):
     global get_system_tot_time
     global get_system_time_count
     global get_system_setcoeffs_tottime
@@ -658,22 +728,37 @@ def get_system(coeffs, stree:SyntaxTree,
     global get_system_evalderiv_tottime
 
     start_tottime = time.time()
-    eqs = []
 
     start_setcoeffs = time.time()
-    stree.set_coeffs(coeffs)
     get_system_setcoeffs_tottime += time.time() - start_setcoeffs
 
-    eqs = stree.evaluate(interc_dpx) - interc_dpy
+    is_interc       = image_range[1] - image_range[0]  > 0
+    is_deriv_interc = deriv_range[1] - deriv_range[0]  > 0
+    is_activ        = image_activ_range[1] - image_activ_range[0]  > 0
+    is_deriv_activ  = deriv_activ_range[1] - deriv_activ_range[0]  > 0
 
-    if deriv_interc_dpx is not None and deriv_interc_dpy is not None:
-        eqs = np.concatenate( (eqs, stree.evaluate_deriv(deriv_interc_dpx) - deriv_interc_dpy) )
+    eqs = np.empty(interc_dpx.size)
+    offset = 0
 
-    if activ_dpx is not None and activ_dpy is not None:
-       eqs = np.concatenate( (eqs, get_ineq_activation(stree.evaluate(activ_dpx)) - activ_dpy) )
+    try:
+
+        image_size = image_activ_range[1] - image_range[0]
+        if image_size > 0:
+            image = stree_lamb(coeffs, interc_dpx[image_range[0]:image_activ_range[1]], out1[:image_size], out2[:image_size])
+            image_activ_size = image_activ_range[1] - image_activ_range[0]
+            if image_activ_size > 0:
+                image[image_activ_range[0]:image_activ_range[1]] = get_ineq_activation(image[image_activ_range[0]:image_activ_range[1]], interc_dpy[image_activ_range[0]:image_activ_range[1]])
+            np.subtract( image, interc_dpy[image_range[0]:image_activ_range[1]], out=eqs[image_range[0]:image_activ_range[1]] )
+
+        deriv_size = deriv_activ_range[1] - deriv_range[0]
+        if deriv_size > 0:
+            deriv = stree_lamb_deriv(coeffs, interc_dpx[deriv_range[0]:deriv_activ_range[1]], out1[:deriv_size], out2[:deriv_size])
+            deriv_activ_size = deriv_activ_range[1] - deriv_activ_range[0]
+            if deriv_activ_size > 0:
+                deriv[deriv_activ_range[0]:deriv_activ_range[1]] = get_ineq_activation(deriv[deriv_activ_range[0]:deriv_activ_range[1]], interc_dpy[deriv_activ_range[0]:deriv_activ_range[1]])
+            np.subtract( deriv, interc_dpy[deriv_range[0]:deriv_activ_range[1]], out=eqs[deriv_range[0]:deriv_activ_range[1]] )
     
-    if deriv_activ_dpx is not None and deriv_activ_dpy is not None:
-       eqs = np.concatenate( (eqs, get_ineq_activation(stree.evaluate_deriv(deriv_activ_dpx)) - deriv_activ_dpy) )
+    except RuntimeWarning: raise OperationDomainError()
     
     """for (deg, sign, dp) in interc_dp[:max(len(coeffs), 1)]:  #random.choices(interc_dp, k=max(len(coeffs), 100)):
 
@@ -722,28 +807,27 @@ def get_func(coeffs, stree:SyntaxTree, interc_dpx:np.array, interc_dpy:np.array)
     get_func_total_calls += 1
     return y
 
-def tune_syntax_tree(S:dataset.Dataset, stree:SyntaxTree,
+def tune_syntax_tree(S:dataset.Dataset, stree:SyntaxTree, stree_lamb, stree_lamb_deriv, out1, out2,
                      interc_dpx:np.array, interc_dpy:np.array,
-                     deriv_interc_dpx:np.array=None, deriv_interc_dpy:np.array=None,
-                     activ_dpx:np.array=None, activ_dpy:np.array=None,
-                     deriv_activ_dpx:np.array=None, deriv_activ_dpy:np.array=None,
+                     image_range, image_activ_range, deriv_range, deriv_activ_range,
+                     coeffs_0:np.array=None,
                      verbose:bool=True, maxiter:int=0) -> dict:
 
     start_time = time.time()
     tot_coeffs = stree.get_ncoeffs()
     
-    coeffs_0 = np.array( [random.uniform(1., 5.) for _ in range(tot_coeffs)] )
+    if coeffs_0 is None: coeffs_0 = np.array( [random.uniform(1., 5.) for _ in range(tot_coeffs)] )
     #res, _, _, msg = fsolve( get_system, coeffs_0, args=(stree, interc_dp), full_output=True )
     res = root(
         get_system, coeffs_0,
-        args=(stree, interc_dpx, interc_dpy, deriv_interc_dpx, deriv_interc_dpy, activ_dpx, activ_dpy, deriv_activ_dpx, deriv_activ_dpy),
+        args=(stree, stree_lamb, stree_lamb_deriv, out1, out2, interc_dpx, interc_dpy, image_range, image_activ_range, deriv_range, deriv_activ_range),
         method='lm', options={'maxiter':maxiter} )
     #res = minimize( get_func, coeffs_0, args=(stree, interc_dpx, interc_dpy), method='BFGS', options={'maxiter':maxiter} )
     if verbose: print(res)
     #print(res.fun)
     sol = res.x
-    #close_res = np.isclose(get_system(res, stree, interc_dp), [0. for _ in range(tot_coeffs)])
-    close_sol = False #np.isclose(get_system(sol, stree, interc_dp), [0. for _ in range(len(interc_dp))])
+    #close_res = np.isclose(get_system(res, stree, stree_lamb, stree_lamb_deriv, interc_dp), [0. for _ in range(tot_coeffs)])
+    close_sol = False #np.isclose(get_system(sol, stree, stree_lamb, stree_lamb_deriv, interc_dp), [0. for _ in range(len(interc_dp))])
     root_found = np.all(close_sol == True)
     
     if verbose:
@@ -751,23 +835,48 @@ def tune_syntax_tree(S:dataset.Dataset, stree:SyntaxTree,
         print(f"Solution: {sol}")
         print(f"Is close: {close_sol}")
 
-    stree.set_coeffs(sol)
-    sse_size = 0
+    is_interc       = image_range[1] - image_range[0]  > 0
+    is_deriv_interc = deriv_range[1] - deriv_range[0]  > 0
+    is_activ        = image_activ_range[1] - image_activ_range[0]  > 0
+    is_deriv_activ  = deriv_activ_range[1] - deriv_activ_range[0]  > 0
+
+    coeffs = sol
+    sse = 0
+    sse_size = interc_dpx.size
     try:
-        sse = np.sum( (stree.evaluate(interc_dpx) - interc_dpy) ** 2 )
-        sse_size = len(interc_dpx)
 
-        if deriv_interc_dpx is not None and deriv_interc_dpy is not None:
-            sse += np.sum( (stree.evaluate_deriv(deriv_interc_dpx) - deriv_interc_dpy) ** 2 )
-            sse_size += len(activ_dpx)
+        image_size = image_activ_range[1] - image_range[0]
+        if image_size > 0:
+            image = stree_lamb(coeffs, interc_dpx[image_range[0]:image_activ_range[1]], out1[:image_size], out2[:image_size])
+            image_activ_size = image_activ_range[1] - image_activ_range[0]
+            if image_activ_size > 0:
+                image[image_activ_range[0]:image_activ_range[1]] = get_ineq_activation(image[image_activ_range[0]:image_activ_range[1]], interc_dpy[image_activ_range[0]:image_activ_range[1]])
+            sse += np.sum( np.subtract( image, interc_dpy[image_range[0]:image_activ_range[1]] ) ** 2 )
 
-        if activ_dpx is not None and activ_dpy is not None:
-            sse += np.sum( (get_ineq_activation(stree.evaluate(activ_dpx)) - activ_dpy) ** 2 )
-            sse_size += len(activ_dpx)
+        deriv_size = deriv_activ_range[1] - deriv_range[0]
+        if deriv_size > 0:
+            deriv = stree_lamb_deriv(coeffs, interc_dpx[deriv_range[0]:deriv_activ_range[1]], out1[:deriv_size], out2[:deriv_size])
+            deriv_activ_size = deriv_activ_range[1] - deriv_activ_range[0]
+            if deriv_activ_size > 0:
+                deriv[deriv_activ_range[0]:deriv_activ_range[1]] = get_ineq_activation(deriv[deriv_activ_range[0]:deriv_activ_range[1]], interc_dpy[deriv_activ_range[0]:deriv_activ_range[1]])
+            sse += np.sum( np.subtract( deriv, interc_dpy[deriv_range[0]:deriv_activ_range[1]] ) ** 2 )
         
-        if deriv_activ_dpx is not None and deriv_activ_dpy is not None:
-            sse += np.sum( (get_ineq_activation(stree.evaluate_deriv(deriv_activ_dpx)) - deriv_activ_dpy) ** 2 )
-            sse_size += len(activ_dpx)
+
+        """if is_interc:
+            sse = np.sum( (stree_lamb(coeffs, interc_dpx, out1[:interc_dpx.size], out2[:interc_dpx.size]) - interc_dpy) ** 2 )
+            sse_size = interc_dpx.size
+
+        if is_deriv_interc:
+            sse += np.sum( (stree_lamb_deriv(coeffs, deriv_interc_dpx, out1[:deriv_interc_dpx.size], out2[:deriv_interc_dpx.size]) - deriv_interc_dpy) ** 2 )
+            sse_size += deriv_interc_dpx.size
+
+        if is_activ:
+            sse += np.sum( (get_ineq_activation(stree_lamb(coeffs, activ_dpx, out1[:activ_dpx.size], out2[:activ_dpx.size])) - activ_dpy) ** 2 )
+            sse_size += activ_dpx.size
+        
+        if is_deriv_activ:
+            sse += np.sum( (get_ineq_activation(stree_lamb_deriv(coeffs, deriv_activ_dpx, out1[:deriv_activ_dpx.size], out2[:deriv_activ_dpx.size])) - deriv_activ_dpy) ** 2 )
+            sse_size += deriv_activ_dpx.size"""
         
     except RuntimeWarning: raise OperationDomainError()
 
@@ -790,50 +899,73 @@ def tune_syntax_tree(S:dataset.Dataset, stree:SyntaxTree,
     return { 'sol': sol, 'sse': sse, 'mse': mse, 'root_found': root_found, 'elapsed_time': elapsed_time }
 
 
-def get_data_interc_points(S:dataset.Dataset):
-    data_interc_dpx = np.array( [dp.x for dp in S.data] )
-    data_interc_dpy = np.array( [dp.y for dp in S.data] )
+def get_data_interc_points(S:dataset.Dataset, sample_size:int=0):
+    data = S.data if sample_size == 0 else random.choices(S.data, k=sample_size)
+    data_interc_dpx = np.array( [dp.x for dp in data] )
+    data_interc_dpy = np.array( [dp.y for dp in data] )
     return data_interc_dpx, data_interc_dpy
 
 
 def get_knowledge_interc_points(S:dataset.Dataset, sample_size:int=20):
     interc_dpx = []
     interc_dpy = []
-    activ_dpx  = []
-    activ_dpy  = []
-    deriv_interc_dpx = []
-    deriv_interc_dpy = []
-    deriv_activ_dpx  = []
-    deriv_activ_dpy  = []
+    image_range       = [0, 0]
+    image_activ_range = [0, 0]
+    deriv_range       = [0, 0]
+    deriv_activ_range = [0, 0]
 
-    for deg in S.knowledge.derivs.keys():
-        if deg >= 2: continue
-        if deg == 0:
-            interc_dpx += [dp.x for dp in S.knowledge.derivs[deg]]
-            interc_dpy += [dp.y for dp in S.knowledge.derivs[deg]]
-        else:
-            deriv_interc_dpx += [dp.x for dp in S.knowledge.derivs[deg]]
-            deriv_interc_dpy += [dp.y for dp in S.knowledge.derivs[deg]]
-    interc_dpx = np.repeat( interc_dpx, sample_size )
-    interc_dpy = np.repeat( interc_dpy, sample_size )
-    deriv_interc_dpx = np.repeat( deriv_interc_dpx, sample_size )
-    deriv_interc_dpy = np.repeat( deriv_interc_dpy, sample_size )
+    offset = 0
 
-    for deg in S.knowledge.sign.keys():
-        if deg >= 2: continue
-        for (l,u,sign) in S.knowledge.sign[deg]:
-            dpy = 1. if sign == '+' else 0.
-            if deg == 0:
-                activ_dpx += [x for x in np.linspace(l, u, sample_size)]
-                activ_dpy += [dpy for _ in range(sample_size)]
-            else:
-                deriv_activ_dpx += [x for x in np.linspace(l, u, sample_size)]
-                deriv_activ_dpy += [dpy for _ in range(sample_size)]
     
+    if 0 in S.knowledge.derivs.keys():
+        interc_dpx += [dp.x for dp in S.knowledge.derivs[0]] * sample_size
+        interc_dpy += [dp.y for dp in S.knowledge.derivs[0]] * sample_size
+        image_range[0] = offset
+        image_range[1] = offset + len(S.knowledge.derivs[0]) * sample_size
+        offset = image_range[1]
+    else:
+        image_range[0] = offset
+        image_range[1] = offset
+    
+    if 0 in S.knowledge.sign.keys() and len(S.knowledge.sign[0]) > 0:
+        image_activ_range[0] = offset
+        for (l,u,sign) in S.knowledge.sign[0]:
+            dpy = 1. if sign == '+' else -1.
+            interc_dpx += [x for x in np.linspace(l, u, sample_size)]
+            interc_dpy += [dpy for _ in range(sample_size)]
+            image_activ_range[1] = offset + sample_size
+            offset = image_activ_range[1]
+    else:
+        image_activ_range[0] = offset
+        image_activ_range[1] = offset
+    
+
+    if 1 in S.knowledge.derivs.keys():
+        interc_dpx += [dp.x for dp in S.knowledge.derivs[1]] * sample_size
+        interc_dpy += [dp.y for dp in S.knowledge.derivs[1]] * sample_size
+        deriv_range[0] = offset
+        deriv_range[1] = offset + len(S.knowledge.derivs[1]) * sample_size
+        offset = deriv_range[1]
+    else:
+        deriv_range[0] = offset
+        deriv_range[1] = offset
+    
+    if 1 in S.knowledge.sign.keys() and len(S.knowledge.sign[1]) > 0:
+        deriv_activ_range[0] = offset
+        for (l,u,sign) in S.knowledge.sign[1]:
+            dpy = 1. if sign == '+' else -1.
+            interc_dpx += [x for x in np.linspace(l, u, sample_size)]
+            interc_dpy += [dpy for _ in range(sample_size)]
+            deriv_activ_range[1] = offset + sample_size
+            offset = deriv_activ_range[1]
+    else:
+        deriv_activ_range[0] = offset
+        deriv_activ_range[1] = offset
+
+  
+    print(f"{image_range}, {image_activ_range}, {deriv_range}, {deriv_activ_range}")
     return np.array( interc_dpx ), np.array( interc_dpy ), \
-           np.array( deriv_interc_dpx ), np.array( deriv_interc_dpy ), \
-           np.array( activ_dpx ), np.array( activ_dpy ), \
-           np.array( deriv_activ_dpx ), np.array( deriv_activ_dpy )
+           image_range, image_activ_range, deriv_range, deriv_activ_range
 
 
 def __print_header(header:str):
@@ -863,19 +995,23 @@ def infer_syntaxtree(S:dataset.Dataset, max_degree:int=2, max_degree_inner:int=1
 
     data_interc_dpx, data_interc_dpy = get_data_interc_points(S)
     knowledge_interc_dpx, knowledge_interc_dpy, \
-    knowledge_deriv_interc_dpx, knowledge_deriv_interc_dpy, \
-    knowledge_activ_dpx, knowledge_activ_dpy, \
-    knowledge_deriv_activ_dpx, knowledge_deriv_activ_dpy = get_knowledge_interc_points(S)
+    image_range, image_activ_range, deriv_range, deriv_activ_range = get_knowledge_interc_points(S)
+
+    data_out1      = np.empty(data_interc_dpx.size)  # TODO: can be obtimized (just use max)
+    data_out2      = np.empty(data_interc_dpx.size)
+    knowledge_out1 = np.empty(knowledge_interc_dpx.size)
+    knowledge_out2 = np.empty(knowledge_interc_dpx.size)
 
     best_stree = None
     best_data_tuning_report = None
-    best_knowledge_tuning_report = None
+    best_knowledge_image_tuning_report = None
+    best_knowledge_deriv_tuning_report = None
     best_fitness = None
 
     data_elapsed_time = 0.
     knowledge_elapsed_time = 0.
 
-    n_restarts = 5
+    n_restarts = 2#5
     n_actual_restarts = 0
 
     __print_header('Syntax Tree Inference')
@@ -884,6 +1020,10 @@ def infer_syntaxtree(S:dataset.Dataset, max_degree:int=2, max_degree_inner:int=1
         try:
             depth = random.randint(1, max_depth)
             stree = SyntaxTree.create_random(1, n_coeffs, n_coeffs_inner, depth)
+
+            stree.set_coeffs(np.zeros(stree.get_ncoeffs()))
+            stree_lamb = SyntaxTree.lambdify(stree)
+            stree_lamb_deriv = SyntaxTree.lambdify_deriv(stree)
 
             tree_found = False
             #if type(stree) is OperatorSyntaxTree and stree.operator_str == '/' and stree.arity == 2 and type(stree.children[0]) is PolySyntaxTree and type(stree.children[1]) is PolySyntaxTree:
@@ -896,18 +1036,37 @@ def infer_syntaxtree(S:dataset.Dataset, max_degree:int=2, max_degree_inner:int=1
 
             for _ in range(n_restarts):
                 
-                data_tuning_report      = tune_syntax_tree(S, stree, data_interc_dpx, data_interc_dpy, verbose=False, maxiter=50)
-                knowledge_tuning_report = tune_syntax_tree(
-                        S, stree,
-                        knowledge_interc_dpx, knowledge_interc_dpy,
-                        knowledge_deriv_interc_dpx, knowledge_deriv_interc_dpy,
-                        knowledge_activ_dpx, knowledge_activ_dpy,
-                        knowledge_deriv_activ_dpx, knowledge_deriv_activ_dpy,
+                ## data tuning
+                data_tuning_report      = tune_syntax_tree(
+                        S, stree, stree_lamb, stree_lamb_deriv, data_out1, data_out2,
+                        data_interc_dpx, data_interc_dpy,
+                        [0, data_interc_dpx.size], [data_interc_dpx.size, data_interc_dpx.size], [data_interc_dpx.size, data_interc_dpx.size], [data_interc_dpx.size, data_interc_dpx.size],
+                        verbose=False, maxiter=50)
+                
+                # image tuning (PK)
+                lastidx = image_activ_range[1]
+                knowledge_image_tuning_report = tune_syntax_tree(
+                        S, stree, stree_lamb, stree_lamb_deriv, knowledge_out1, knowledge_out2,
+                        #knowledge_interc_dpx, knowledge_interc_dpy,
+                        #image_range, image_activ_range, deriv_range, deriv_activ_range,
+                        knowledge_interc_dpx[:lastidx], knowledge_interc_dpy[:lastidx],
+                        image_range, image_activ_range, [lastidx,lastidx], [lastidx,lastidx],
+                        verbose=False, maxiter=50) if pk_pressure > 0 else None
+
+                # deriv tuning (PK)
+                firstidx = deriv_range[0]
+                knowledge_deriv_tuning_report = tune_syntax_tree(
+                        S, stree, stree_lamb, stree_lamb_deriv, knowledge_out1, knowledge_out2,
+                        knowledge_interc_dpx[firstidx:], knowledge_interc_dpy[firstidx:],
+                        [0,0], [0,0], [deriv_range[0]-firstidx,deriv_range[1]-firstidx], [deriv_activ_range[0]-firstidx, deriv_activ_range[1]-firstidx],
+                        coeffs_0=knowledge_image_tuning_report['sol'],
                         verbose=False, maxiter=50) if pk_pressure > 0 else None
                 
-                fitness = fitness = \
-                    ((1-pk_pressure) * data_tuning_report['mse']) + \
-                    ((pk_pressure * knowledge_tuning_report['mse']) if knowledge_tuning_report is not None else 0.)
+                data_fitness = data_tuning_report['mse']
+                knowledge_fitness = max( 0 if knowledge_image_tuning_report is None else knowledge_image_tuning_report['mse'],
+                                         0 if knowledge_deriv_tuning_report is None else knowledge_deriv_tuning_report['mse'] )
+                
+                fitness = ((1-pk_pressure) * data_fitness) + (pk_pressure * knowledge_fitness)
 
                 if tree_found:
                     pass#print(f"Tree found fitness: {data_tuning_report['mse'] } [data], {knowledge_tuning_report['mse']} [knowledge], {fitness} [fitness]")
@@ -916,14 +1075,16 @@ def infer_syntaxtree(S:dataset.Dataset, max_degree:int=2, max_degree_inner:int=1
                     #print(f"Update best fitness from {best_fitness} to {fitness}")
                     best_stree = stree
                     best_data_tuning_report = data_tuning_report
-                    best_knowledge_tuning_report = knowledge_tuning_report
+                    best_knowledge_image_tuning_report = knowledge_image_tuning_report
+                    best_knowledge_deriv_tuning_report = knowledge_deriv_tuning_report
                     best_fitness = fitness
                 
                 data_elapsed_time += data_tuning_report['elapsed_time']
-                if knowledge_tuning_report is not None: knowledge_elapsed_time += knowledge_tuning_report['elapsed_time']
+                if knowledge_image_tuning_report is not None: knowledge_elapsed_time += knowledge_image_tuning_report['elapsed_time']
+                if knowledge_deriv_tuning_report is not None: knowledge_elapsed_time += knowledge_deriv_tuning_report['elapsed_time']
 
                 n_actual_restarts += 1
-                if fitness <= 0.01: break
+                #if fitness <= 0.01: break
 
         except OperationDomainError:  # domain error
             pass
@@ -944,7 +1105,7 @@ def infer_syntaxtree(S:dataset.Dataset, max_degree:int=2, max_degree_inner:int=1
     """print(f"Evaluate (total time): {int((get_system_evaluate_tottime) * 1e3)} ms")
     print(f"Evalderiv (total time): {int((get_system_evalderiv_tottime) * 1e3)} ms")"""
 
-    return best_stree, best_data_tuning_report, best_knowledge_tuning_report
+    return best_stree, best_data_tuning_report, best_knowledge_image_tuning_report, best_knowledge_deriv_tuning_report
 
 
 """def infer_poly(S:dataset.Dataset, max_degree:int=2, comb_func=lambda a,b : a+b):
@@ -1009,19 +1170,33 @@ def enhance_syntax_tree(stree:SyntaxTree, S:dataset.Dataset, sample_size:int, n_
     
     __print_header('Syntax Tree Enhancement')
 
-    data_interc_dpx, data_interc_dpy = get_data_interc_points(S)
+    data_interc_dpx, data_interc_dpy = get_data_interc_points(S, sample_size=0)
     knowledge_interc_dpx, knowledge_interc_dpy, \
-    knowledge_deriv_interc_dpx, knowledge_deriv_interc_dpy, \
-    knowledge_activ_dpx, knowledge_activ_dpy, \
-    knowledge_deriv_activ_dpx, knowledge_deriv_activ_dpy = get_knowledge_interc_points(S, sample_size=sample_size)
+    image_range, image_activ_range, deriv_range, deriv_activ_range = get_knowledge_interc_points(S, sample_size=sample_size)
 
-    knowledge_interc_dpx = np.repeat( knowledge_interc_dpx, sample_size )
-    knowledge_interc_dpy = np.repeat( knowledge_interc_dpy, sample_size )
-    knowledge_deriv_interc_dpx = np.repeat( knowledge_deriv_interc_dpx, sample_size )
-    knowledge_deriv_interc_dpy = np.repeat( knowledge_deriv_interc_dpy, sample_size )
+    #knowledge_interc_dpx = np.repeat( knowledge_interc_dpx, sample_size )
+    #knowledge_interc_dpy = np.repeat( knowledge_interc_dpy, sample_size )
+    #knowledge_deriv_interc_dpx = np.repeat( knowledge_deriv_interc_dpx, sample_size )
+    #knowledge_deriv_interc_dpy = np.repeat( knowledge_deriv_interc_dpy, sample_size )
 
     interc_dpx = np.concatenate( (data_interc_dpx, knowledge_interc_dpx) )
     interc_dpy = np.concatenate( (data_interc_dpy, knowledge_interc_dpy) )
+
+    image_range[0] = 0
+    image_range[1] = interc_dpx.size
+    image_activ_range[0] += data_interc_dpx.size
+    image_activ_range[1] += data_interc_dpx.size
+    deriv_range[0] += data_interc_dpx.size
+    deriv_range[1] += data_interc_dpx.size
+    deriv_activ_range[0] += data_interc_dpx.size
+    deriv_activ_range[1] += data_interc_dpx.size
+
+    stree.set_coeffs(np.zeros(stree.get_ncoeffs()))
+    stree_lamb = SyntaxTree.lambdify(stree)
+    stree_lamb_deriv = SyntaxTree.lambdify_deriv(stree)
+
+    out1 = np.empty(interc_dpx.size)  # TODO: can be obtimized (just use max)
+    out2 = np.empty(interc_dpx.size)
 
     #interc_dpx = data_interc_dpx
     #interc_dpy = data_interc_dpy
@@ -1029,11 +1204,9 @@ def enhance_syntax_tree(stree:SyntaxTree, S:dataset.Dataset, sample_size:int, n_
     best_tuning_report = None
 
     for i_restart in range(n_restarts):
-        tuning_report = tune_syntax_tree(S, stree,
+        tuning_report = tune_syntax_tree(S, stree, stree_lamb, stree_lamb_deriv, out1, out2,
                                          interc_dpx, interc_dpy,  # merge data+knowledge (0th deriv)
-                                         knowledge_deriv_interc_dpx, knowledge_deriv_interc_dpy,
-                                         knowledge_activ_dpx, knowledge_activ_dpy,
-                                         knowledge_deriv_activ_dpx, knowledge_deriv_activ_dpy,
+                                         image_range, image_activ_range, deriv_range, deriv_activ_range,
                                          verbose=False, maxiter=5000)  # no limit for maxiter
         if best_tuning_report is None or tuning_report['mse'] < best_tuning_report['mse']:
             print(f"[Restart #{i_restart+1}] MSE improvement from {None if best_tuning_report is None else best_tuning_report['mse']} to {tuning_report['mse']}")
