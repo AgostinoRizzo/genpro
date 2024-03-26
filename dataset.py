@@ -26,10 +26,10 @@ class DataKnowledge:
             self.derivs[d] = []
         self.derivs[d].append(xy)
     
-    def add_sign(self, d:int, l:float, u:float, sign:str='+'):
+    def add_sign(self, d:int, l:float, u:float, sign:str='+', th:float=0):
         if d not in self.sign.keys():
             self.sign[d] = []
-        self.sign[d].append((l,u,sign))
+        self.sign[d].append((l,u,sign,th))
     
     def plot(self):
         if 0 in self.derivs.keys():
@@ -37,7 +37,7 @@ class DataKnowledge:
                 plt.plot(xy.x, xy.y, 'rx', markersize=10)
         
         if 0 in self.sign.keys():
-            for (l,u,s) in self.sign[0]:
+            for (l,u,s,_) in self.sign[0]:
                 plt.axvspan(l, u, alpha=0.05, color='g' if s == '+' else 'r')
             
 
@@ -293,13 +293,13 @@ class MagmanDatasetScaled(Dataset):
         self.knowledge.add_sign(0, 0.001, self.xu, '-')
     
         # monotonically increasing/decreasing
-        self.knowledge.add_sign(1, self.xl, -0.81, '+')
-        self.knowledge.add_sign(1, -peak_x+0.1, peak_x-0.1, '-')
-        self.knowledge.add_sign(1, 0.81, self.xu, '+')
+        """self.knowledge.add_sign(1, self.xl, -peak_x, '+')
+        self.knowledge.add_sign(1, -peak_x, peak_x, '-')
+        self.knowledge.add_sign(1, peak_x, self.xu, '+')"""
 
         # concavity/convexity
-        """self.knowledge.add_sign(2, self.xl, -0.81, '+')
-        self.knowledge.add_sign(2, 0.81, self.xu, '-')"""
+        """self.knowledge.add_sign(2, self.xl, -0.4, '+')
+        self.knowledge.add_sign(2, 0.4, self.xu, '-')"""
 
     def func(self, x: float) -> float:
         x = self.__xmap(x, toorigin=True)
@@ -411,12 +411,18 @@ class ABSDataset(Dataset):
         peak_x = 0.06182
         peak_y = self.func(peak_x)
 
+        # intersection points
+        self.knowledge.add_deriv(0, DataPoint( 0., 0.))
+        
         # known positivity/negativity
         self.knowledge.add_sign(0, self.xl, self.xu, '+')
 
         # monotonically increasing/decreasing
-        self.knowledge.add_sign(1, self.xl, peak_x-0.001, '+')
-        #self.knowledge.add_sign(1, peak_x+0.001, self.xu, '-')
+        self.knowledge.add_sign(1, self.xl, peak_x, '+')
+        self.knowledge.add_sign(1, peak_x, self.xu, '-')
+
+        # convave up
+        self.knowledge.add_sign(2, 0.1, self.xu, '+')
     
     def func(self, x: float) -> float:
         m = 6.67 #407.75
