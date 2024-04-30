@@ -453,6 +453,9 @@ class SyntaxTree:
     def get_ncoeffs(self) -> int:
         raise RuntimeError('Operation not supported.')
     
+    def get_polys(self, polys:list):
+        for c in self.children: c.get_polys(polys)
+    
     @staticmethod
     def get_evaluate_operator_lambda(operator:str, optfact:OperatorFactory):
         if   operator == '*':    return lambda f, g, x: f.evaluate(x) * g.evaluate(x), \
@@ -520,6 +523,7 @@ class SyntaxTree:
     def create_random(curr_depth:int, n_coeffs:int, n_coeffs_inner:int, max_depth:int=2, optfact:OperatorFactory=NumpyOperatorFactory()):
         if curr_depth >= max_depth:
             return PolySyntaxTree(n_coeffs)
+            #return ConstrainedPolySyntaxTree()
         
         operator = random.choice(SyntaxTree.OPERATORS + ['inner_poly'])
         
@@ -546,7 +550,7 @@ class SyntaxTree:
         
     
 class OperatorSyntaxTree(SyntaxTree):
-    def __init__(self, operator:str, optfact:OperatorFactory) -> None:
+    def __init__(self, operator:str, optfact:OperatorFactory=NumpyOperatorFactory()) -> None:
         super().__init__()
         self.operator_str = operator
         self.operator, self.lamb_operator, self.arity = SyntaxTree.get_evaluate_operator_lambda(operator, optfact)
@@ -626,6 +630,10 @@ class PolySyntaxTree(SyntaxTree):
     def get_ncoeffs(self) -> int:
         return self.n_coeffs
     
+    def get_polys(self, polys:list):
+        polys.append(self)
+        super().get_polys(polys)
+    
     def tostring(self, id:str=''):
         if self.n_coeffs == 0 or True:
             return 'P' + ('' if id == '' else '_' + id) + '(x)'
@@ -637,6 +645,38 @@ class PolySyntaxTree(SyntaxTree):
             if deg > 0: ans += '+' + f"{c}*x{'**' + str(deg) if deg > 1 else ''}" if abs(1-c) >= epsilon else f"x**{deg}"
             else: ans += f"{c}"
         return ans
+
+
+class ConstrainedPolySyntaxTree(PolySyntaxTree):
+    def __init__(self) -> None:
+        super().__init__(3)  # a(x^b - c)^d + e
+    
+    def lambdify(self, x='x') -> str:
+        a_i = self.coeffs_startidx
+        b_i = self.coeffs_startidx + 1
+        c_i = self.coeffs_startidx + 2
+        #d_i = 3
+        #e_i = 4
+        #return f"(coeffs[{a_i}] * np.power((np.power({x}, coeffs[{b_i}]) - coeffs[{c_i}]), coeffs[{d_i}])) + coeffs[{e_i}]"
+        #return f"(coeffs[{a_i}] * np.power((np.power({x}, 1) - coeffs[{c_i}]), 2)) + coeffs[{e_i}]"
+        return f"coeffs[{a_i}] * ({x} ** 4) + coeffs[{b_i}] * {x} + coeffs[{c_i}]"
+
+    def lambdify_deriv(self) -> str:
+        #raise RuntimeError(f"'lambdify_deriv' not defined for 'ConstrainedPolySyntaxTree'")
+        return self.lambdify()  # TODO: define it properly! (not used for now)
+    
+    def evaluate(self, x) -> float:
+        a_i = 0
+        b_i = 1
+        c_i = 2
+        #d_i = 3
+        #e_i = 4
+        #return (self.coeffs[a_i] * np.power((np.power(x, 1) - self.coeffs[c_i]), 2)) + self.coeffs[e_i]
+        return self.coeffs[a_i] * (x ** 4) + self.coeffs[b_i] * x + self.coeffs[c_i]
+
+    def evaluate_deriv(self, x) -> float:
+        h = 1e-5
+        return (self.evaluate(x+h) - self.evaluate(x)) / h
 
 
 class InnerPolySyntaxTree(PolySyntaxTree):
@@ -1064,13 +1104,17 @@ def infer_syntaxtree(S:dataset.Dataset, bin_bounds:dict=None, max_degree:int=2, 
             stree_lamb_deriv = SyntaxTree.lambdify_deriv(stree)
 
             tree_found = False
-            #if type(stree) is OperatorSyntaxTree and stree.operator_str == '/' and stree.arity == 2 and type(stree.children[0]) is PolySyntaxTree and type(stree.children[1]) is PolySyntaxTree:
-            #    print("TREE FOUND")
-            #    tree_found = True
-            if type(stree) is InnerPolySyntaxTree and type(stree.children[0]) is OperatorSyntaxTree and stree.children[0].operator_str == 'sin' and \
-                type(stree.children[0].children[0]) is PolySyntaxTree:
+            if type(stree) is OperatorSyntaxTree and stree.operator_str == '/' and stree.arity == 2 and \
+                ((type(stree.children[0]) is PolySyntaxTree and type(stree.children[1]) is PolySyntaxTree) or \
+                 (type(stree.children[0]) is ConstrainedPolySyntaxTree and type(stree.children[1]) is ConstrainedPolySyntaxTree)):
                 print("TREE FOUND " + stree.tostring())
                 tree_found = True
+            else: continue
+            
+            #if type(stree) is InnerPolySyntaxTree and type(stree.children[0]) is OperatorSyntaxTree and stree.children[0].operator_str == 'sin' and \
+            #    type(stree.children[0].children[0]) is PolySyntaxTree:
+            #    print("TREE FOUND " + stree.tostring())
+            #    tree_found = True
 
             for _ in range(n_restarts):
                 
@@ -1130,7 +1174,7 @@ def infer_syntaxtree(S:dataset.Dataset, bin_bounds:dict=None, max_degree:int=2, 
 
         except OperationDomainError:  # domain error
             pass
-    
+    print(f"ACTUAL RESTARTS: {n_actual_restarts}")
     print(f"\nData tuning (avg time):      {int((data_elapsed_time / (trials*n_actual_restarts)) * 1e3)} ms")
     print(f"Knowledge tuning (avg time):   {int((knowledge_elapsed_time / (trials*n_actual_restarts)) * 1e3)} ms")
     print(f"Data tuning (total time):      {int(data_elapsed_time * 1e3)} ms")

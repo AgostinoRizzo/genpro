@@ -31,6 +31,14 @@ class DataKnowledge:
             self.sign[d] = []
         self.sign[d].append((l,u,sign,th))
     
+    def get_mesh(self, sample_size:int=20) -> np.array:
+        deriv_points = []
+        for dp in self.derivs.values():
+            deriv_points.append(dp.x)
+        return np.concatenate((
+            np.linspace(self.dataset.xl, self.dataset.xu, max(0, sample_size - len(deriv_points))),
+            np.array(deriv_points))).sort()
+    
     def plot(self):
         if 0 in self.derivs.keys():
             for xy in self.derivs[0]:
@@ -99,6 +107,18 @@ class Dataset:
         self.test = []
         self._on_data_changed()
     
+    def minmax_scale_y(self):
+        if len(self.data) == 0: return
+        y_min = self.data[0].y
+        y_max = self.data[0].y
+        for dp in self.data:
+            if dp.y < y_min: y_min = dp.y
+            if dp.y > y_max: y_max = dp.y
+        y_l = y_max - y_min
+        for dp in self.data:
+            y_std = (dp.y - y_min) / y_l
+            dp.y = (y_std * (self.yu - self.yl)) + self.yl
+    
     def _on_data_changed(self):
         self.data_sst = compute_sst(self.data)
         self.test_sst = compute_sst(self.test)
@@ -116,8 +136,8 @@ class Dataset:
     def inrange_xy(self, x:float, y:float, scale:float=1.5) -> bool:
         return self.inrange(DataPoint(x, y), scale)
     
-    def plot(self, plot_data: bool=True):
-        plt.figure(2, figsize=[10,8])
+    def plot(self, plot_data: bool=True, width:int=10, height:int=8, plotref:bool=True):
+        plt.figure(2, figsize=[width,height])
         plt.clf()
 
         if plot_data:
@@ -130,8 +150,10 @@ class Dataset:
         
         self.knowledge.plot()
 
-        x = np.linspace(self.xl, self.xu, 100)
-        plt.plot(x, self.func(x), linestyle='dashed', linewidth=2, color='black', label='Reference model')
+        if plotref:
+            x = np.linspace(self.xl, self.xu, 100)
+            plt.plot(x, self.func(x), linestyle='dashed', linewidth=2, color='black', label='Reference model')
+        plt.xlim(self.xl, self.xu)
         plt.ylim(self.yl, self.yu)
         plt.grid()
         plt.legend(loc='upper right', fontsize=14)
@@ -148,13 +170,13 @@ class Dataset:
 class MockDataset(Dataset):   
     def __init__(self) -> None:
         super().__init__()
-        self.xl = 0.8
-        self.xu = 10
-        self.yl = -1
-        self.yu = 9
+        self.xl = 0.#0.8
+        self.xu = 1.#10
+        self.yl = 0.#-1
+        self.yu = 1.#9
      
     def func(self, x: float) -> float:
-        return np.sin(x) + 1  #x / (x**2)#(x+2) / (x**2 + x + 1)
+        return (x**3 -2*x + 1) / (x*3 + x -1) #np.sin(x) + 1  #x / (x**2)#(x+2) / (x**2 + x + 1)
 
 
 class PolyDataset(Dataset):   
@@ -279,6 +301,9 @@ class MagmanDatasetScaled(Dataset):
         self.knowledge.add_deriv(0, DataPoint( peak_x, self.func( peak_x)))
         self.knowledge.add_deriv(0, DataPoint(self.xl, self.func(self.xl)))
         self.knowledge.add_deriv(0, DataPoint(self.xu, self.func(self.xu)))
+        #infty = 10
+        #self.knowledge.add_deriv(0, DataPoint(-infty, 0))
+        #self.knowledge.add_deriv(0, DataPoint(+infty, 0))
 
         # known (first) derivatives
         self.knowledge.add_deriv(1, DataPoint(-peak_x,  0.))
@@ -291,15 +316,22 @@ class MagmanDatasetScaled(Dataset):
         # known positivity/negativity
         self.knowledge.add_sign(0, self.xl, -0.001, '+')
         self.knowledge.add_sign(0, 0.001, self.xu, '-')
+        #self.knowledge.add_sign(0, -infty, -0.001, '+')
+        #self.knowledge.add_sign(0, 0.001, +infty, '-')
     
         # monotonically increasing/decreasing
-        """self.knowledge.add_sign(1, self.xl, -peak_x, '+')
+        self.knowledge.add_sign(1, self.xl, -peak_x, '+')
         self.knowledge.add_sign(1, -peak_x, peak_x, '-')
-        self.knowledge.add_sign(1, peak_x, self.xu, '+')"""
+        self.knowledge.add_sign(1, peak_x, self.xu, '+')
+        #self.knowledge.add_sign(1, -infty, -peak_x, '+')
+        #self.knowledge.add_sign(1, -peak_x, peak_x, '-')
+        #self.knowledge.add_sign(1, peak_x, infty, '+')
 
         # concavity/convexity
-        """self.knowledge.add_sign(2, self.xl, -0.4, '+')
-        self.knowledge.add_sign(2, 0.4, self.xu, '-')"""
+        self.knowledge.add_sign(2, self.xl, -0.4, '+')
+        self.knowledge.add_sign(2, 0.4, self.xu, '-')
+        #self.knowledge.add_sign(2, -infty, -0.4, '+')
+        #self.knowledge.add_sign(2, 0.4, infty, '-')
 
     def func(self, x: float) -> float:
         x = self.__xmap(x, toorigin=True)
