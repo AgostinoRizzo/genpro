@@ -246,7 +246,7 @@ class BinaryOperatorSyntaxTree(SyntaxTree):
         
         elif self.operator == '+':
             #return f_pos & g_pos if sign == '+' else f_neg & g_neg
-            return ~(f_neg & g_neg)
+            return ~(f_neg & g_neg) if sign == '+' else ~(f_pos & g_pos)
         
         elif self.operator == '-':
             """f_greater_g_constr = PropositionalConstraint(f, g, '>', lb, ub)
@@ -256,7 +256,7 @@ class BinaryOperatorSyntaxTree(SyntaxTree):
                 symbmapper.map_as_symbol(f_lower_g_constr)
             )"""
             #return f_pos & g_neg if sign == '+' else f_neg & g_pos
-            return ~(f_neg & g_pos)
+            return ~(f_neg & g_pos) if sign == '+' else ~(f_pos & g_neg)
         
         elif self.operator == '^':
             g_even_constr = PropositionalConstraint(g, ConstantSyntaxTree(0), '%', lb, ub)

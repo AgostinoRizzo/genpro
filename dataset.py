@@ -108,16 +108,37 @@ class Dataset:
         self._on_data_changed()
     
     def minmax_scale_y(self):
-        if len(self.data) == 0: return
-        y_min = self.data[0].y
-        y_max = self.data[0].y
-        for dp in self.data:
+        Dataset.__minmax_scale_y(self.data, self.yl, self.yu)
+    
+    def remove_outliers(self):
+        self.data = Dataset.__remove_outliers(self.data)
+    
+    @staticmethod
+    def __minmax_scale_y(data:list, yl:float, yu:float):
+        if len(data) == 0: return
+        y_min = data[0].y
+        y_max = data[0].y
+        for dp in data:
             if dp.y < y_min: y_min = dp.y
             if dp.y > y_max: y_max = dp.y
         y_l = y_max - y_min
-        for dp in self.data:
+        for dp in data:
             y_std = (dp.y - y_min) / y_l
-            dp.y = (y_std * (self.yu - self.yl)) + self.yl
+            dp.y = (y_std * (yu - yl)) + yl
+    
+    @staticmethod
+    def __remove_outliers(data:list) -> list:
+        Y = [dp.y for dp in data]
+        Q1 = np.percentile(Y, 25, method='midpoint')
+        Q3 = np.percentile(Y, 75, method='midpoint')
+        IQR = Q3 - Q1
+        upper = Q3+1.5*IQR
+        lower = Q1-1.5*IQR
+        
+        new_data = []
+        for dp in data:
+            if dp.y <= upper and dp.y >= lower: new_data.append(dp)
+        return new_data
     
     def _on_data_changed(self):
         self.data_sst = compute_sst(self.data)
