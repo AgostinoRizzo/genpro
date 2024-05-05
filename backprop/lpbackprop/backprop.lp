@@ -3,6 +3,8 @@
 % sign(ModelName, PosNeg, LowerBound, UpperBound)
 % sign_and(ModelName1, ModelName2, PosNeg1, PosNeg2, LowerBound, UpperBound)
 % root(ModelName, Input)
+% even_symm(ModelName, Input)
+% odd_symm(ModelName, Input)
 
 #const infty=100000.
 
@@ -57,7 +59,10 @@ sign("m'", "+",  peak_x, infty).
 root("m'", -peak_x).
 root("m'", peak_x).
 
-% TODO: add simmetry + backpropagate?.
+% prior knowledge (symmetry).
+odd_symm ("m"  , 0).
+even_symm("m'" , 0).
+odd_symm ("m''", 0).
 
 %
 % prior knowledge back propagation.
@@ -69,13 +74,35 @@ sign(N2, PN2, L, U) :- sign_and(_, N2, _, PN2, L, U).
 sign(Base, PN, L, U) :- sign_and_odd(Base, PN, L, U, _).
 odd(Val) :- sign_and_odd(_, _, _, _, Val).
 
+even_symm(F, X) :- even_symm_and(F, _, X).
+even_symm(G, X) :- even_symm_and(_, G, X).
+odd_symm (F, X) :- odd_symm_and (F, _, X).
+odd_symm (G, X) :- odd_symm_and (_, G, X).
+even_symm(F, X) :- even_odd_symm_and(F, _, X).
+odd_symm (G, X) :- even_odd_symm_and(_, G, X).
+odd_symm (F, X) :- odd_even_symm_and(F, _, X).
+even_symm(G, X) :- odd_even_symm_and(_, G, X).
+
 %
 % hyper knowledge back propagation (search space reduction).
 %
 % see {...}_opt.lp encodings.
+% root
 root(N, Mid) | undef(N, Mid) :- sign(N, PN1, _, Mid), sign(N, PN2, Mid, _), PN1 != PN2.
 sign_change(N, Input) :- sign(N, PN1, _, Input), sign(N, PN2, Input, _), PN1!=PN2.
 :- root(N, Input), not sign_change(N, Input), not sign_change(N_pr, Input), deriv(N, N_pr).
+% symmetry
+:- even_symm(F, X1), even_symm(F, X2), X1!=X2.
+:- odd_symm(F, X1), odd_symm(F, X2), X1!=X2.
+:- even_symm(F, _), odd_symm(F, _).
+% symmetry + sign (TODO: no generation here)
+:- even_symm(F, X), sign(F, PN1, L1, U1), L1<U1, U1<=X, sign(F, PN2, L2, U2), L2=X+(X-U1), U2=X+(X-L1), PN1!=PN2.
+:- odd_symm (F, X), sign(F, PN1, L1, U1), L1<U1, U1<=X, sign(F, PN2, L2, U2), L2=X+(X-U1), U2=X+(X-L1), PN1=PN2.
+% symmetry + root (TODO: no generation here)
+:- even_symm(F, X), root(F, X1), X1<X, not root(F, X2), X2=X+X-X1.
+:- even_symm(F, X), root(F, X1), X1>X, not root(F, X2), X2=X-(X1-X).
+:- odd_symm (F, X), root(F, X1), X1<X, not root(F, X2), X2=X+X-X1.
+:- odd_symm (F, X), root(F, X1), X1>X, not root(F, X2), X2=X-(X1-X).
 
 %
 % prefer simple (unknown) models.
@@ -99,7 +126,8 @@ root_count(N, C) :- #count{Input : root(N, Input)}=C, tree_node(N).
 sign_unkn(N, PN, L, U) :- sign(N, PN, L, U), unkn_tree_node(N), N="A'".
 root_unkn(N, Input) :- root(N, Input), unkn_tree_node(N).
 undef_unkn(N, Input) :- undef(N, Input), unkn_tree_node(N).
-%#show sign_unkn/4.
+#show sign_unkn/4.
 #show root_unkn/2.
-%#show undef_unkn/2.
+#show undef_unkn/2.
 %#show sign_changes/2.
+%#show even_symm/2.
