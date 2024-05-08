@@ -4,6 +4,7 @@ import numpy as np
 import csv
 from sklearn.model_selection import train_test_split
 import matplotlib.pyplot as plt
+import numbs
 
 
 class DataPoint:
@@ -16,10 +17,11 @@ class DataPoint:
 
 
 class DataKnowledge:
-    def __init__(self, dataset) -> None:
+    def __init__(self, dataset=None) -> None:
         self.dataset = dataset
         self.derivs = {}
         self.sign = {}
+        self.symm = {}
     
     def add_deriv(self, d:int, xy:DataPoint):
         if d not in self.derivs.keys():
@@ -30,6 +32,9 @@ class DataKnowledge:
         if d not in self.sign.keys():
             self.sign[d] = []
         self.sign[d].append((l,u,sign,th))
+    
+    def add_symm(self, d:int, x:float, iseven:bool=True):
+        self.symm[d] = (x, iseven)
     
     def get_mesh(self, sample_size:int=20) -> np.array:
         deriv_points = []
@@ -335,24 +340,29 @@ class MagmanDatasetScaled(Dataset):
         #
         
         # known positivity/negativity
-        self.knowledge.add_sign(0, self.xl, -0.001, '+')
-        self.knowledge.add_sign(0, 0.001, self.xu, '-')
-        #self.knowledge.add_sign(0, -infty, -0.001, '+')
-        #self.knowledge.add_sign(0, 0.001, +infty, '-')
+        #self.knowledge.add_sign(0, self.xl, -0.001, '+')
+        #self.knowledge.add_sign(0, 0.001, self.xu, '-')
+        self.knowledge.add_sign(0, -numbs.INFTY, 0, '+')
+        self.knowledge.add_sign(0, 0, numbs.INFTY, '-')
     
         # monotonically increasing/decreasing
-        self.knowledge.add_sign(1, self.xl, -peak_x, '+')
-        self.knowledge.add_sign(1, -peak_x, peak_x, '-')
-        self.knowledge.add_sign(1, peak_x, self.xu, '+')
-        #self.knowledge.add_sign(1, -infty, -peak_x, '+')
+        #self.knowledge.add_sign(1, self.xl, -peak_x, '+')
         #self.knowledge.add_sign(1, -peak_x, peak_x, '-')
-        #self.knowledge.add_sign(1, peak_x, infty, '+')
+        #self.knowledge.add_sign(1, peak_x, self.xu, '+')
+        self.knowledge.add_sign(1, -numbs.INFTY, -peak_x, '+')
+        self.knowledge.add_sign(1, -peak_x, peak_x, '-')
+        self.knowledge.add_sign(1, peak_x, numbs.INFTY, '+')
 
         # concavity/convexity
-        self.knowledge.add_sign(2, self.xl, -0.4, '+')
-        self.knowledge.add_sign(2, 0.4, self.xu, '-')
-        #self.knowledge.add_sign(2, -infty, -0.4, '+')
-        #self.knowledge.add_sign(2, 0.4, infty, '-')
+        #self.knowledge.add_sign(2, self.xl, -0.4, '+')
+        #self.knowledge.add_sign(2, 0.4, self.xu, '-')
+        self.knowledge.add_sign(2, -numbs.INFTY, -0.4, '+')
+        self.knowledge.add_sign(2, 0.4, numbs.INFTY, '-')
+
+        # symmetry
+        self.knowledge.add_symm(0, 0, iseven=False)
+        self.knowledge.add_symm(1, 0, iseven=True )
+        self.knowledge.add_symm(2, 0, iseven=False)
 
     def func(self, x: float) -> float:
         x = self.__xmap(x, toorigin=True)

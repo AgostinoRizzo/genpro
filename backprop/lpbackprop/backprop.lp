@@ -6,30 +6,30 @@
 % even_symm(ModelName, Input)
 % odd_symm(ModelName, Input)
 
-#const infty=100000.
+%#const infty=10.%100000.
 
 
 % syntax tree m(x) = A(x)/B(x)
-bin_tree_node("m", "/", "A", "B").
+%bin_tree_node("m", "/", "A", "B").
 
 % syntax tree m'(x) = (((A'(x) * B(x)) - (A(x) * B'(x))) / (B(x) ^ 2))
-bin_tree_node("m'", "/", "m'_num", "m'_den").
-bin_tree_node("m'_num", "-", "m'_num_left", "m'_num_right").
-bin_tree_node("m'_num_left",  "*", "A'", "B" ).
-bin_tree_node("m'_num_right", "*", "A" , "B'").
-bin_tree_node("m'_den", "^", "B", 2).
-const(2).  % TODO: factorize.
-even(2).
+%bin_tree_node("m'", "/", "m'_num", "m'_den").
+%bin_tree_node("m'_num", "-", "m'_num_left", "m'_num_right").
+%bin_tree_node("m'_num_left",  "*", "A'", "B" ).
+%bin_tree_node("m'_num_right", "*", "A" , "B'").
+%bin_tree_node("m'_den", "^", "B", 2).
+%const(2).  % TODO: factorize.
+even(2).  % TODO: use built-in functions (with odd as well).
 :- even(N), odd(N).
 
-unkn_tree_node("A").
-unkn_tree_node("B").
-unkn_tree_node("A'").
-unkn_tree_node("B'").
-deriv("A", "A'").
-deriv("B", "B'").
-deriv("A'", "A''").
-deriv("B'", "B''").
+%unkn_tree_node("A").
+%unkn_tree_node("B").
+%unkn_tree_node("A'").
+%unkn_tree_node("B'").
+%deriv("A", "A'").  % TODO: implement using some built-in function for all nodes.
+%deriv("B", "B'").
+%deriv("A'", "A''").
+%deriv("B'", "B''").
 
 tree_node(N) :- bin_tree_node(N, _, _, _).
 tree_node(N) :- unkn_tree_node(N).
@@ -46,23 +46,23 @@ tree_node(N) :- unkn_tree_node(N).
 %sign("B'", "+", 0, peak_x). sign("B'", "+", peak_x, infty).
 
 % prior knowledge (image).
-#const peak_x=1.
-sign("m", "+", -infty, -peak_x). sign("m", "+", -peak_x, 0).  % TODO: manage closed intervals (now are open).
-sign("m", "-", 0, peak_x). sign("m", "-", peak_x, infty).
-root("m", 0).
-:- tree_node(N), undef(N, _).
+%#const peak_x=1.
+%sign("m", "+", -infty, -peak_x). sign("m", "+", -peak_x, 0).  % TODO: manage closed intervals (now are open).
+%sign("m", "-", 0, peak_x). sign("m", "-", peak_x, infty).
+%root("m", 0).
+%:- tree_node(N), undef(N, _).
 
 % prior knowledge (first deriv).
-sign("m'", "+", -infty, -peak_x).
-sign("m'", "-", -peak_x, 0). sign("m'", "-", 0, peak_x).
-sign("m'", "+",  peak_x, infty).
-root("m'", -peak_x).
-root("m'", peak_x).
+%sign("m'", "+", -infty, -peak_x).
+%sign("m'", "-", -peak_x, 0). sign("m'", "-", 0, peak_x).
+%sign("m'", "+",  peak_x, infty).
+%root("m'", -peak_x).
+%root("m'", peak_x).
 
 % prior knowledge (symmetry).
-odd_symm ("m"  , 0).
-even_symm("m'" , 0).
-odd_symm ("m''", 0).
+%odd_symm ("m"  , 0).
+%even_symm("m'" , 0).
+%odd_symm ("m''", 0).
 
 %
 % prior knowledge back propagation.
@@ -91,6 +91,9 @@ even_symm(G, X) :- odd_even_symm_and(_, G, X).
 root(N, Mid) | undef(N, Mid) :- sign(N, PN1, _, Mid), sign(N, PN2, Mid, _), PN1 != PN2.
 sign_change(N, Input) :- sign(N, PN1, _, Input), sign(N, PN2, Input, _), PN1!=PN2.
 :- root(N, Input), not sign_change(N, Input), not sign_change(N_pr, Input), deriv(N, N_pr).
+% root + deriv.
+:- root(N, X), sign(N, PN1, X, _), sign(N_PR, PN2, X, _), deriv(N, N_PR), PN1!=PN2.
+:- root(N, X), sign(N, PN1, _, X), sign(N_PR, PN2, _, X), deriv(N, N_PR), PN1 =PN2.
 % symmetry
 :- even_symm(F, X1), even_symm(F, X2), X1!=X2.
 :- odd_symm(F, X1), odd_symm(F, X2), X1!=X2.
@@ -123,11 +126,16 @@ root_count(N, C) :- #count{Input : root(N, Input)}=C, tree_node(N).
 %
 % get knowledge abound unknown models
 %
-sign_unkn(N, PN, L, U) :- sign(N, PN, L, U), unkn_tree_node(N), N="A'".
+sign_unkn(N, PN, L, U) :- sign(N, PN, L, U), unkn_tree_node(N).
 root_unkn(N, Input) :- root(N, Input), unkn_tree_node(N).
 undef_unkn(N, Input) :- undef(N, Input), unkn_tree_node(N).
-#show sign_unkn/4.
-#show root_unkn/2.
-#show undef_unkn/2.
+even_symm_unkn(N, Input) :- even_symm(N, Input), unkn_tree_node(N).
+odd_symm_unkn(N, Input) :- odd_symm(N, Input), unkn_tree_node(N).
+%#show sign_unkn/4.
+%#show root_unkn/2.
+%#show undef_unkn/2.
+%#show even_symm_unkn/2.
+%#show odd_symm_unkn/2.
+
 %#show sign_changes/2.
 %#show even_symm/2.

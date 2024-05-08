@@ -78,6 +78,13 @@ class Relopt:  # immutable class
         return strict_opt
     def __eq__(self, other) -> bool:
         return self.opt == other.opt
+    def check(self, a:float, b:float) -> bool:
+        if self.opt == '=' : return a == b
+        if self.opt == '>=': return a >= b
+        if self.opt == '<=': return a <= b
+        if self.opt == '>' : return a >  b
+        if self.opt == '<' : return a <  b
+        raise RuntimeError(f"Operator {self.opt} not supported.")
 
 
 class PullViolation(RuntimeError):
@@ -101,6 +108,8 @@ class SyntaxTree:
     def get_unknown_stree(self, unknown_stree_label:str): return None
     def set_unknown_model(self, model_label:str, model): pass
     def count_unknown_model(self, model_label:str) -> int: return 0
+    def accept(self, visitor): pass
+
 
 class BinaryOperatorSyntaxTree(SyntaxTree):
     def __init__(self, operator:str, left:SyntaxTree, right:SyntaxTree):
@@ -289,6 +298,11 @@ class BinaryOperatorSyntaxTree(SyntaxTree):
     def count_unknown_model(self, model_label:str) -> int:
         return self.left.count_unknown_model(model_label) + \
                self.right.count_unknown_model(model_label)
+    
+    def accept(self, visitor):
+        visitor.visitBinaryOperator(self)
+        self.left.accept(visitor)
+        self.right.accept(visitor)
 
 
 class ConstantSyntaxTree(SyntaxTree):
@@ -315,6 +329,9 @@ class ConstantSyntaxTree(SyntaxTree):
     
     def backprop_sign(self, symbmapper:SymbolMapper, lb:float=-numbs.INFTY, ub:float=numbs.INFTY, sign:str='+'):
         return self.val > 0 if sign == '+' else self.val < 0
+    
+    def accept(self, visitor):
+        visitor.visitConstant(self)
         
 
 class UnknownSyntaxTree(SyntaxTree):
@@ -358,3 +375,22 @@ class UnknownSyntaxTree(SyntaxTree):
     
     def count_unknown_model(self, model_label:str) -> int:
         return 1 if self.label == model_label else 0
+    
+    def accept(self, visitor):
+        visitor.visitUnknown(self)
+
+
+class SyntaxTreeVisitor:
+    def visitBinaryOperator(self, stree:BinaryOperatorSyntaxTree): pass
+    def visitConstant      (self, stree:ConstantSyntaxTree):       pass
+    def visitUnknown       (self, stree:UnknownSyntaxTree):        pass
+
+
+class UnknownSyntaxTreeCollector(SyntaxTreeVisitor):
+    def __init__(self):
+        self.unknown_labels = set()
+    
+    def visitBinaryOperator(self, stree:BinaryOperatorSyntaxTree): pass
+    def visitConstant      (self, stree:ConstantSyntaxTree):       pass
+    def visitUnknown       (self, stree:UnknownSyntaxTree):
+        self.unknown_labels.add(stree.label)
