@@ -6,7 +6,6 @@ import numpy as np
 
 import dataset
 import backprop
-import jump_backprop
 import numbs
 import utils
 import qp
@@ -15,7 +14,7 @@ import qp
 ASP_ENCODINGS = ["lpbackprop/backprop.lp", "lpbackprop/add_sub_opt.lp",
                  "lpbackprop/muldiv_opt.lp", "lpbackprop/pow_opt.lp"]
 SAMPLE_SIZE = 5
-SYNTH_POLYDEG = 5
+SYNTH_POLYDEG = 6
 
 
 class ASPSpecBuilder(backprop.SyntaxTreeVisitor): # TODO: avoid multiple facts for unkn nodes (A, A', ...)
@@ -105,19 +104,20 @@ def build_knowledge_spec(K:dataset.DataKnowledge):  # -> spec:str, break_points_
     return spec, break_points_map, break_points_invmap
 
 
-def synthesize_unknown(unkn_label:str, K:dataset.DataKnowledge):  # returns a model (e.g. polynomial).
+# returns a model (e.g. polynomial), constraints:dict.
+def synthesize_unknown(unkn_label:str, K:dataset.DataKnowledge, break_points:set):
     pulled_constrs = {}
     for derivdeg in range(3):
-        pulled_constrs[derivdeg] = qp.get_constraints(K, derivdeg, SAMPLE_SIZE)
+        pulled_constrs[derivdeg] = qp.get_constraints(K, break_points, derivdeg, SAMPLE_SIZE)
     
     poly_coeffs = qp.qp_solve(pulled_constrs, SYNTH_POLYDEG)  # in decreasing power.
     P = np.poly1d(poly_coeffs)
-    #P = utils.simplify_poly(P, pulled_constrs)
+    P, coeffs_mask = utils.simplify_poly(P, pulled_constrs)
 
-    return P
+    return (P, coeffs_mask, pulled_constrs)
 
 
-def synthesize_unknowns(stree:backprop.SyntaxTree, unknown_labels:list[str], break_points_invmap:dict,  # invmap: from asp to float.
+def synthesize_unknowns(stree:backprop.SyntaxTree, unknown_labels:list[str], break_points_map:dict, break_points_invmap:dict,  # invmap: from asp to float.
                         asp_model, onsynth_callback:callable):  # passing unknown_labels for efficiency
     if not asp_model.optimality_proven: return
     print(f"--- ASP Model ---\n{asp_model}")
@@ -141,11 +141,11 @@ def synthesize_unknowns(stree:backprop.SyntaxTree, unknown_labels:list[str], bre
             x = break_points_invmap[ atom.arguments[1].number ]
             unkn_knowledge_map[unkn].add_deriv(derivdeg, dataset.DataPoint(x, 0))
         
-        elif atom.name == 'even_unkn':
+        elif atom.name == 'even_symm_unkn':
             x = break_points_invmap[ atom.arguments[1].number ]
             unkn_knowledge_map[unkn].add_symm(derivdeg, x, iseven=True)
         
-        elif atom.name == 'odd_unkn':
+        elif atom.name == 'odd_symm_unkn':
             x = break_points_invmap[ atom.arguments[1].number ]
             unkn_knowledge_map[unkn].add_symm(derivdeg, x, iseven=False)
         
@@ -155,12 +155,12 @@ def synthesize_unknowns(stree:backprop.SyntaxTree, unknown_labels:list[str], bre
     # synthetize each unknown model.
     synth_unkn_models = {}
     for unkn in unknown_labels:
-        synth_unkn_models[unkn] = synthesize_unknown(unkn, unkn_knowledge_map[unkn])
+        synth_unkn_models[unkn] = synthesize_unknown(unkn, unkn_knowledge_map[unkn], set(break_points_map.keys()))
         
     onsynth_callback(synth_unkn_models)    
 
 
-def backprop_knowledge(K:dataset.DataKnowledge, stree:backprop.SyntaxTree, onsynth_callback:callable):
+def lpbackprop(K:dataset.DataKnowledge, stree:backprop.SyntaxTree, onsynth_callback:callable):
     #
     # build ASP specification of stree and stree' (facts).
     #
@@ -192,6 +192,8 @@ def backprop_knowledge(K:dataset.DataKnowledge, stree:backprop.SyntaxTree, onsyn
     clingo_ctl.add('show'      , [], """
         #show root_unkn/2.
         #show sign_unkn/4.
+        #show even_symm_unkn/2.
+        #show odd_symm_unkn/2.
     """)
 
     # set solving options.
@@ -204,7 +206,7 @@ def backprop_knowledge(K:dataset.DataKnowledge, stree:backprop.SyntaxTree, onsyn
     unknown_labels = unkn_collector.unknown_labels
     clingo_ctl.ground([('stree_spec', []), ('K_spec', []), ('show', []), ('base', [])])
     print(clingo_ctl.solve(on_model= \
-        lambda asp_model: synthesize_unknowns(stree, unknown_labels, break_points_invmap, asp_model, onsynth_callback)))
+        lambda asp_model: synthesize_unknowns(stree, unknown_labels, break_points_map, break_points_invmap, asp_model, onsynth_callback)))
 
 
 
@@ -218,8 +220,8 @@ if __name__ == '__main__':
 
     def onsynth_callback(synth_unkn_models:dict):
         print('--- On Synth ---')
-        for unkn in synth_unkn_models:
+        for unkn in synth_unkn_models.keys():
             print(f"{unkn}(x) =\n{synth_unkn_models[unkn]}")
         print()
 
-    backprop_knowledge(S.knowledge, stree, onsynth_callback)
+    lpbackprop(S.knowledge, stree, onsynth_callback)

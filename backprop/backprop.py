@@ -106,7 +106,7 @@ class SyntaxTree:
     def pull_output(self, target_output:float, relopt:Relopt=Relopt('='), child=None): # -> float, Relopt
         return (target_output, relopt) if self.parent is None else self.parent.pull_output(target_output, relopt, self)
     def get_unknown_stree(self, unknown_stree_label:str): return None
-    def set_unknown_model(self, model_label:str, model): pass
+    def set_unknown_model(self, model_label:str, model:callable, coeffs_mask:list[float]=None, constrs:dict=None): pass
     def count_unknown_model(self, model_label:str) -> int: return 0
     def accept(self, visitor): pass
 
@@ -291,9 +291,9 @@ class BinaryOperatorSyntaxTree(SyntaxTree):
         if stree is not None: return stree
         return self.right.get_unknown_stree(unknown_stree_label)
 
-    def set_unknown_model(self, model_label:str, model):
-        self.left .set_unknown_model(model_label, model)
-        self.right.set_unknown_model(model_label, model)
+    def set_unknown_model(self, model_label:str, model:callable, coeffs_mask:list[float]=None, constrs:dict=None):
+        self.left .set_unknown_model(model_label, model, coeffs_mask, constrs)
+        self.right.set_unknown_model(model_label, model, coeffs_mask, constrs)
     
     def count_unknown_model(self, model_label:str) -> int:
         return self.left.count_unknown_model(model_label) + \
@@ -335,10 +335,12 @@ class ConstantSyntaxTree(SyntaxTree):
         
 
 class UnknownSyntaxTree(SyntaxTree):
-    def __init__(self, label:str='A'):
+    def __init__(self, label:str='A', model=None, coeffs_mask=None, constrs=None):
         super().__init__()
         self.label = label
         self.model = None
+        self.coeffs_mask = None
+        self.constrs = None
     
     def clone(self):
         return UnknownSyntaxTree(self.label)
@@ -369,9 +371,11 @@ class UnknownSyntaxTree(SyntaxTree):
         if self.label == unknown_stree_label: return self
         return None
 
-    def set_unknown_model(self, model_label:str, model):
+    def set_unknown_model(self, model_label:str, model:callable, coeffs_mask:list[float]=None, constrs:dict=None):
         if self.label == model_label:
             self.model = model
+            self.coeffs_mask = coeffs_mask
+            self.constrs = constrs
     
     def count_unknown_model(self, model_label:str) -> int:
         return 1 if self.label == model_label else 0

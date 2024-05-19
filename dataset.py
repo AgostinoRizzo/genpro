@@ -44,6 +44,43 @@ class DataKnowledge:
             np.linspace(self.dataset.xl, self.dataset.xu, max(0, sample_size - len(deriv_points))),
             np.array(deriv_points))).sort()
     
+    def evaluate(self, model:callable) -> float:
+        n = 0
+        ssr = 0
+
+        def compute_model_output(model:callable, x:float, deriv:int=0) -> float:  # TODO: use derivative stree directly.
+            if deriv == 0: return model(x)
+            return (compute_model_output(model, x+numbs.STEPSIZE, deriv-1) - compute_model_output(model, x, deriv-1)) / numbs.STEPSIZE
+        
+        # intersection points.
+        for derivdeg, dps in self.derivs.items():
+            n += len(dps)
+            for dp in dps:
+                ssr += (compute_model_output(model, dp.x, derivdeg) - dp.y) ** 2
+        
+        # positivity constraints.
+        for derivdeg, constrs in self.sign.items():
+            for (_l,_u,sign,th) in constrs:
+                l = _l + numbs.EPSILON
+                u = _u - numbs.EPSILON
+                if l > u: continue
+                X = np.linspace(l, u, 1 if l == u else 20)  # TODO: factorize sample size.
+                n += X.size
+                for x in X:
+                    model_y = compute_model_output(model, x, derivdeg)
+                    ssr += ( min(0, model_y - th) if sign == '+' else max(0, model_y - th) ) ** 2
+        
+        # symmetry constraints.
+        for derivdeg, (x0, iseven) in self.symm.items():
+            X = np.linspace(x0 + numbs.EPSILON, numbs.INFTY, 20)  # TODO: factorize sample size.
+            n += X.size
+            for x in X:
+                model_y1 = compute_model_output(model, x, derivdeg)
+                model_y2 = compute_model_output(model, x0-(x-x0), derivdeg)
+                ssr += ( (model_y1 - model_y2) if iseven else (model_y1 + model_y2) ) ** 2
+        
+        return ssr / n    
+    
     def plot(self):
         if 0 in self.derivs.keys():
             for xy in self.derivs[0]:
@@ -76,6 +113,8 @@ class Dataset:
         self.knowledge = DataKnowledge(self)
         self.data_sst = 0.
         self.test_sst = 0.
+        self.__sorted_data__ = None
+        self.__x_map__ = None
     
     def sample(self, size:int=100, noise:float=0., mesh:bool=False):
         y_noise = (self.yu - self.yl) * noise * 0.5
@@ -137,13 +176,61 @@ class Dataset:
         Q1 = np.percentile(Y, 25, method='midpoint')
         Q3 = np.percentile(Y, 75, method='midpoint')
         IQR = Q3 - Q1
-        upper = Q3+1.5*IQR
-        lower = Q1-1.5*IQR
+        upper = Q3+70.5*IQR
+        lower = Q1-70.5*IQR
         
         new_data = []
         for dp in data:
             if dp.y <= upper and dp.y >= lower: new_data.append(dp)
         return new_data
+    
+    def index(self):
+        self.__sorted_data__ = sorted(self.data, key=lambda dp: dp.x)
+        self.__x_map__ = {}
+        for idx, dp in enumerate(self.__sorted_data__):
+            self.__x_map__[dp.x] = idx
+    
+    def share_index(self, other):
+        self.__sorted_data__ = other.__sorted_data__
+        self.__x_map__ = other.__x_map__
+    
+    def compute_point_density(self, dp:DataPoint) -> float:  # TODO: can be optimized using numpy.
+        d = 0.
+        n = len(self.data)
+        for other_dp in self.data:
+            if id(other_dp) == id(dp):
+                n -= 1
+                continue
+            d += math.sqrt( ((other_dp.x-dp.x) ** 2) + ((other_dp.y-dp.y) ** 2) )
+        max_d = math.sqrt( ((self.xu-self.xl) ** 2) + ((self.yu-self.yl) ** 2) )
+        return max_d - (d / n)
+    
+    def compute_yvar(self, x0:float, dx_ratio:float=0.05) -> float:
+        """assert self.__sorted_data__ is not None and self.__x_map__ is not None
+
+        k = max( int(len(self.data) * k_ratio), 1 )
+        if k == 1: return 0.
+        k_left = (k-1) // 2
+        k_right = k - 1 - k_left
+
+        i0 = self.__x_map__[dp0.x]
+        offset = i0 - k_left
+        Y = np.empty(k)
+        Y[i0-offset] = self.__sorted_data__[i0].y
+        for i in range(i0-1, max(i0-k_left-1, -1),     -1): Y[i-offset] = self.__sorted_data__[i].y
+        for i in range(i0+1, min(i0+k_left+1, len(Y)), +1): Y[i-offset] = self.__sorted_data__[i].y
+
+        if dp0.x < -1.5 or (dp0.x > -0.5 and dp0.x < 0.5): print(f"-----> VAR({dp0.x}) = {np.var(Y)}")
+        return np.var(Y)"""
+
+        h = (self.xu - self.xl) * 0.05 * 0.5
+        l = x0 - h
+        u = x0 + h
+        Y = []
+        for dp in self.data:
+            if dp.x > l and dp.x < u: Y.append(dp.y)
+        if len(Y) <= 1: return numbs.EPSILON  # TODO: manage this situation (otherwise in qp.qp_solve we have a division by zero).
+        return np.var( np.array(Y) )
     
     def _on_data_changed(self):
         self.data_sst = compute_sst(self.data)
@@ -161,6 +248,16 @@ class Dataset:
     
     def inrange_xy(self, x:float, y:float, scale:float=1.5) -> bool:
         return self.inrange(DataPoint(x, y), scale)
+    
+    def evaluate(self, model:callable) -> tuple[float,float,float]:  # TODO: for now just mse and r2 over training data.
+        ssr = 0.
+        for dp in self.data: ssr += (model(dp.x) - dp.y) ** 2  # TODO: can be done efficiently using numpy.
+        
+        mse   = ssr / len(self.data)
+        r2    = 1 - (ssr / self.data_sst)
+        k_mse = self.knowledge.evaluate(model)
+
+        return mse, r2, k_mse
     
     def plot(self, plot_data: bool=True, width:int=10, height:int=8, plotref:bool=True):
         plt.figure(2, figsize=[width,height])
