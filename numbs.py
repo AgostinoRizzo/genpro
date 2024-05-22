@@ -1,8 +1,9 @@
 import dataset
 
-INFTY = 10 #sys.float_info.max  # TODO: fix it (consider overflow for qp).
-EPSILON = 1e-50 #1e-16  # TODO: consider it differently for qp?!
-STEPSIZE = 1e-5
+INFTY        = 10     #sys.float_info.max  # TODO: fix it (consider overflow for qp).
+EPSILON      = 1e-50  #1e-16  # TODO: consider it differently for qp?!
+INEQ_EPSILON = 1e-50
+STEPSIZE     = 1e-5
 
 def tostr(n:float) -> str:
     if abs(n) == INFTY:

@@ -13,7 +13,7 @@ import qp
 
 ASP_ENCODINGS = ["lpbackprop/backprop.lp", "lpbackprop/add_sub_opt.lp",
                  "lpbackprop/muldiv_opt.lp", "lpbackprop/pow_opt.lp"]
-SAMPLE_SIZE = 5
+SAMPLE_SIZE = 20
 SYNTH_POLYDEG = 6
 
 
@@ -110,7 +110,10 @@ def synthesize_unknown(unkn_label:str, K:dataset.DataKnowledge, break_points:set
     for derivdeg in range(3):
         pulled_constrs[derivdeg] = qp.get_constraints(K, break_points, derivdeg, SAMPLE_SIZE)
     
-    poly_coeffs = qp.qp_solve(pulled_constrs, SYNTH_POLYDEG)  # in decreasing power.
+    poly_coeffs_pos = qp.qp_solve(pulled_constrs, SYNTH_POLYDEG, s_val= 1)  # in decreasing power.
+    poly_coeffs_neg = qp.qp_solve(pulled_constrs, SYNTH_POLYDEG, s_val=-1)
+    poly_coeffs = poly_coeffs_pos if np.sum(poly_coeffs_pos**2) >= np.sum(poly_coeffs_neg**2) else poly_coeffs_neg
+        
     P = np.poly1d(poly_coeffs)
     P, coeffs_mask = utils.simplify_poly(P, pulled_constrs)
 
@@ -120,7 +123,7 @@ def synthesize_unknown(unkn_label:str, K:dataset.DataKnowledge, break_points:set
 def synthesize_unknowns(stree:backprop.SyntaxTree, unknown_labels:list[str], break_points_map:dict, break_points_invmap:dict,  # invmap: from asp to float.
                         asp_model, onsynth_callback:callable):  # passing unknown_labels for efficiency
     if not asp_model.optimality_proven: return
-    print(f"--- ASP Model ---\n{asp_model}")
+    print(f"--- ASP Model ---\n{asp_model}\n")
 
     # build knowledge from ASP model.
     unkn_knowledge_map = {}
@@ -140,6 +143,9 @@ def synthesize_unknowns(stree:backprop.SyntaxTree, unknown_labels:list[str], bre
         elif atom.name == 'root_unkn':
             x = break_points_invmap[ atom.arguments[1].number ]
             unkn_knowledge_map[unkn].add_deriv(derivdeg, dataset.DataPoint(x, 0))
+        
+        elif atom.name == 'noroot_unkn':
+            unkn_knowledge_map[unkn].add_noroot(derivdeg)
         
         elif atom.name == 'even_symm_unkn':
             x = break_points_invmap[ atom.arguments[1].number ]
@@ -172,13 +178,13 @@ def lpbackprop(K:dataset.DataKnowledge, stree:backprop.SyntaxTree, onsynth_callb
     stree.accept(aspSpecBuilder)
     stree_pr.accept(aspSpecBuilder)
     stree_spec = aspSpecBuilder.spec
-    print(stree_spec)
+    #print(stree_spec)
 
     #
     # build ASP prior knowledge (K) specification.
     #
     K_spec, break_points_map, break_points_invmap = build_knowledge_spec(K)
-    print(K_spec)
+    #print(K_spec)
 
     #
     # invoke ASP solver with stree_spec and K_spec (knowledge backprop).
@@ -191,6 +197,7 @@ def lpbackprop(K:dataset.DataKnowledge, stree:backprop.SyntaxTree, onsynth_callb
     clingo_ctl.add('K_spec'    , [], K_spec    )  # ASP facts (knowledge).
     clingo_ctl.add('show'      , [], """
         #show root_unkn/2.
+        #show noroot_unkn/1.
         #show sign_unkn/4.
         #show even_symm_unkn/2.
         #show odd_symm_unkn/2.

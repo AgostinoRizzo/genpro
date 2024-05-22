@@ -23,6 +23,7 @@ root(Left, Input) | root(Right, Input) :- root(Model, Input), bin_tree_node(Mode
 :- root(Model, Input), bin_tree_node(Model, "*", Left, Right), not root(Left, Input), not root(Right, Input).
 
 root(Num, Input) :- root(Model, Input), bin_tree_node(Model, "/", Num, _).
+noroot(Den) :- bin_tree_node(_, "/", _, Den).
 :- root(Model, Input), bin_tree_node(Model, "/", Num, _), not root(Num, Input).
 :- bin_tree_node(_, "/", _, Den), root(Den, _).
 

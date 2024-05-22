@@ -19,8 +19,10 @@
 %bin_tree_node("m'_num_right", "*", "A" , "B'").
 %bin_tree_node("m'_den", "^", "B", 2).
 %const(2).  % TODO: factorize.
-even(2).  % TODO: use built-in functions (with odd as well).
-:- even(N), odd(N).
+
+even(C) :- const(C), C\2=0.
+odd (C)  :- const(C), C\2!=0.
+:- even(N), odd(N).  % as hyper knowledge (see pow_opt.lp)
 
 %unkn_tree_node("A").
 %unkn_tree_node("B").
@@ -90,7 +92,11 @@ even_symm(G, X) :- odd_even_symm_and(_, G, X).
 % root
 root(N, Mid) | undef(N, Mid) :- sign(N, PN1, _, Mid), sign(N, PN2, Mid, _), PN1 != PN2.
 sign_change(N, Input) :- sign(N, PN1, _, Input), sign(N, PN2, Input, _), PN1!=PN2.
-:- root(N, Input), not sign_change(N, Input), not sign_change(N_pr, Input), deriv(N, N_pr).
+:- root(N, Input),
+   sign(N,    PN1, _, Input), sign(N,    PN2, Input, _), PN1=PN2,
+   sign(N_pr, PN1, _, Input), sign(N_pr, PN2, Input, _), PN1=PN2,
+   deriv(N, N_pr).
+:- root(N, _), noroot(N).
 % root + deriv.
 :- root(N, X), sign(N, PN1, X, _), sign(N_PR, PN2, X, _), deriv(N, N_PR), PN1!=PN2.
 :- root(N, X), sign(N, PN1, _, X), sign(N_PR, PN2, _, X), deriv(N, N_PR), PN1 =PN2.
@@ -127,12 +133,14 @@ root_count(N, C) :- #count{Input : root(N, Input)}=C, tree_node(N).
 % get knowledge abound unknown models
 %
 sign_unkn(N, PN, L, U) :- sign(N, PN, L, U), unkn_tree_node(N).
+noroot_unkn(N) :- noroot(N), unkn_tree_node(N).
 root_unkn(N, Input) :- root(N, Input), unkn_tree_node(N).
 undef_unkn(N, Input) :- undef(N, Input), unkn_tree_node(N).
 even_symm_unkn(N, Input) :- even_symm(N, Input), unkn_tree_node(N).
 odd_symm_unkn(N, Input) :- odd_symm(N, Input), unkn_tree_node(N).
 %#show sign_unkn/4.
 %#show root_unkn/2.
+%#show noroot_unkn/1.
 %#show undef_unkn/2.
 %#show even_symm_unkn/2.
 %#show odd_symm_unkn/2.

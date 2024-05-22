@@ -39,6 +39,7 @@ class History:
 
 def __fit_pulled_dataset(pulled_S:dict, pulled_constrs:dict[dict[qp.Constraints]],
                          unknown_stree:backprop.UnknownSyntaxTree, unkn_name:str,
+                         global_stree:backprop.SyntaxTree,
                          hist:History, phase:str) -> callable:  # returns a fit model if successful, None otherwise.
 
     pulled_data = pulled_S[unkn_name].data
@@ -47,9 +48,13 @@ def __fit_pulled_dataset(pulled_S:dict, pulled_constrs:dict[dict[qp.Constraints]
     # TODO: use synth model in case no solution is returned.
     #P = np.poly1d( qp.qp_solve(pulled_constrs[unkn_name], FIT_POLYDEG, pulled_data) )
     assert type(unknown_stree.model) is np.poly1d
-    P = np.poly1d( qp.qp_solve(unknown_stree.constrs, unknown_stree.model.c.size - 1, pulled_S[unkn_name], unknown_stree.coeffs_mask) ) \
+
+    data_W = utils.compute_data_weight(pulled_data, unknown_stree, global_stree)
+
+    P = np.poly1d( qp.qp_solve(unknown_stree.constrs, unknown_stree.model.c.size - 1, pulled_S[unkn_name], data_W, unknown_stree.coeffs_mask) ) \
         if phase == 'data_fit' else \
-        np.poly1d( qp.qp_solve(pulled_constrs[unkn_name],  unknown_stree.model.c.size - 1, pulled_S[unkn_name], unknown_stree.coeffs_mask) )
+        np.poly1d( qp.qp_solve(pulled_constrs[unkn_name],  unknown_stree.model.c.size - 1, pulled_S[unkn_name], data_W, unknown_stree.coeffs_mask) )
+    P, _ = utils.simplify_poly(P, None)
     return P
 
 
@@ -82,7 +87,7 @@ def jump_backprop(stree_d0:backprop.SyntaxTree, stree_d1:backprop.SyntaxTree, sy
         for _ in range(max_rounds):
 
             # for each unknown model.
-            for unkn_name in sorted(synth_unkn_models.keys(), reverse=False):  # TODO: establish jumping policy/heuristic.
+            for unkn_name in sorted(synth_unkn_models.keys(), reverse=True):  # TODO: establish jumping policy/heuristic.
 
                 # pull dataset and constraints.
                 pulled_S = {}
@@ -139,6 +144,7 @@ def jump_backprop(stree_d0:backprop.SyntaxTree, stree_d1:backprop.SyntaxTree, sy
                             stree.compute_output(dp.x)
                             try:
                                 pulled_th, pulled_relopt = unknown_stree.pull_output(dp.y, relopt)
+                                print(f"Pulled th: {pulled_th}")
                                 pulled_constrs[unkn_name][derivdeg].eq_ineq \
                                     .append( (dataset.DataPoint(dp.x, pulled_th), pulled_relopt) )
                                 
@@ -149,8 +155,8 @@ def jump_backprop(stree_d0:backprop.SyntaxTree, stree_d1:backprop.SyntaxTree, sy
                     # fit pulled dataset.
                     #
                     fit_model = None
-                    if len(violated_constrs) == 0:
-                        fit_model = __fit_pulled_dataset(pulled_S, pulled_constrs, unknown_stree, unkn_name, hist, phase)
+                    if len(violated_constrs) == 0 or True:
+                        fit_model = __fit_pulled_dataset(pulled_S, pulled_constrs, unknown_stree, unkn_name, stree, hist, phase)
                     else:
                         hist.log_pull(unknown_stree, pulled_S[unkn_name], pulled_constrs[unkn_name], violated_constrs)
                     
@@ -178,6 +184,6 @@ def jump_backprop(stree_d0:backprop.SyntaxTree, stree_d1:backprop.SyntaxTree, sy
                 best_r2 = r2
             else:
                 # stop rounds and go to next phase.
-                break
+                pass #break
 
     return hist, best_unkn_models, best_r2, best_k_mse

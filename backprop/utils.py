@@ -1,9 +1,11 @@
 import sys
 sys.path.append('..')
 
+from scipy.interpolate import lagrange as scipy_interp_lagrange
 import numpy as np
 import dataset
 import numbs
+import backprop
 import lpbackprop
 import qp
 
@@ -73,12 +75,12 @@ def check_constrs_sat(P:np.poly1d, constrs:dict[qp.Constraints]) -> bool:
 def simplify_poly(P:np.poly1d, constrs:dict[qp.Constraints]) -> np.poly1d:
     coeffs_mask = []
     for i in range(P.c.size):
-        if abs(P.c[i]) < 1e-16:  # TODO: fix epsilon.
+        if abs(P.c[i]) < 1e-8:  # TODO: fix epsilon.
             P.c[i] = 0
             coeffs_mask.append(0)
         else:
             coeffs_mask.append(1 if P.c[i] > 0 else -1)
-    return P, coeffs_mask
+    return P, None #coeffs_mask
 
     # TODO:
     if not check_constrs_sat(P, constrs):
@@ -107,3 +109,58 @@ def coeffs_softmax(c:np.array) -> np.array:
     c_norm = np.abs(c)
     c_norm = (c - c.min()) / (c.max() - c.min())
     return np.exp(c_norm) / np.sum(np.exp(c_norm))
+
+
+def compute_data_weight(data:list[dataset.DataPoint],
+                        local_stree:backprop.UnknownSyntaxTree,
+                        global_stree:backprop.SyntaxTree) -> np.array:
+    data_W = np.empty(len(data))
+    for i, dp in enumerate(data):
+        local_model = local_stree.model
+        
+        local_stree.model = lambda x: dp.y
+        dy = global_stree.compute_output(dp.x)
+
+        local_stree.model = lambda x: dp.y + numbs.STEPSIZE
+        dy = abs(global_stree.compute_output(dp.x) - dy)
+
+        data_W[i] = dy
+        local_stree.model = local_model
+
+    return data_W
+
+
+def scale_data_weight(data_W:np.array, u:float=1., l:float=0.) -> np.array:
+    w_min = data_W.min()
+    w_max = data_W.max()
+    return l + ( (data_W - w_min) * (u - l) / (w_max - w_min) )
+
+
+def compute_origin_data_weight(S:dataset.Dataset) -> np.array:
+    max_dist = max( abs(S.xl), abs(S.xu) )
+    W = np.empty(len(S.data))
+    
+    for i, dp in enumerate(S.data):
+        #W[i] = 1 / ((abs(dp.x) / max_dist) ** 4)
+        #print(f"Weight at {dp.x} is {W[i]}")
+        W[i] = 0. if abs(dp.x) > 0.5 else 1.
+    
+    return W
+
+
+def scale_y(Y:np.array) -> np.array:
+    Y_abs = np.abs(Y)
+    y_max = Y_abs.max()
+    return Y / y_max, y_max
+
+
+def unscale_polycoeffs(coeffs:np.array, scale_factor:float, xl:float=-1, xu:float=1) -> np.array:
+    P = np.poly1d( [1.] * coeffs.size )
+    for i, c in enumerate(coeffs):
+        P.c[i] = c
+
+    X = np.linspace(xl, xu, P.c.size)
+    Y = P(X)
+    Y_unscaled = Y * scale_factor
+    unscaled_coeffs = scipy_interp_lagrange(X, Y_unscaled).c
+    return np.zeros(coeffs.size) if unscaled_coeffs.size == 1 and unscaled_coeffs[0] == 0 else unscaled_coeffs

@@ -22,6 +22,7 @@ class DataKnowledge:
         self.derivs = {}
         self.sign = {}
         self.symm = {}
+        self.noroot = set()
     
     def add_deriv(self, d:int, xy:DataPoint):
         if d not in self.derivs.keys():
@@ -35,6 +36,9 @@ class DataKnowledge:
     
     def add_symm(self, d:int, x:float, iseven:bool=True):
         self.symm[d] = (x, iseven)
+    
+    def add_noroot(self, d:int):
+        self.noroot.add(d)
     
     def get_mesh(self, sample_size:int=20) -> np.array:
         deriv_points = []
@@ -575,14 +579,18 @@ class ABSDataset(Dataset):
         self.knowledge.add_deriv(0, DataPoint( 0., 0.))
         
         # known positivity/negativity
+        #self.knowledge.add_sign(0, self.xl, numbs.INFTY, '+')
         self.knowledge.add_sign(0, self.xl, self.xu, '+')
 
         # monotonically increasing/decreasing
         self.knowledge.add_sign(1, self.xl, peak_x, '+')
+        #self.knowledge.add_sign(1, peak_x, numbs.INFTY, '-')
         self.knowledge.add_sign(1, peak_x, self.xu, '-')
 
-        # convave up
-        self.knowledge.add_sign(2, 0.1, self.xu, '+')
+        # concavity
+        self.knowledge.add_sign(2, self.xl, peak_x, '-')
+        #self.knowledge.add_sign(2, peak_x, numbs.INFTY, '+')
+        self.knowledge.add_sign(2, peak_x, self.xu, '+')
     
     def func(self, x: float) -> float:
         m = 6.67 #407.75
@@ -593,3 +601,78 @@ class ABSDataset(Dataset):
         e = 0.52
         return m * g * d * np.sin(c * np.arctan(b * (1 - e) * x + e * np.arctan(b * x)))
 
+
+class OneOverXDataset(Dataset):
+    def __init__(self) -> None:
+        super().__init__()
+        self.xl = 1e-10
+        self.xu = 5.
+        self.yl = 0.
+        self.yu = 5.
+
+        #
+        # prior knowledge
+        #
+
+        # intersection points
+        self.knowledge.add_deriv(0, DataPoint( 1., 1.))
+        
+        # known positivity/negativity
+        self.knowledge.add_sign(0, self.xl, numbs.INFTY, '+')
+
+        # monotonically increasing/decreasing
+        self.knowledge.add_sign(1, self.xl, numbs.INFTY, '-')
+
+        # concavity
+        self.knowledge.add_sign(2, self.xl, numbs.INFTY, '+')
+    
+    def func(self, x: float) -> float:
+        return 1 / x
+
+
+class ABSDatasetScaled(Dataset):
+    def __init__(self) -> None:
+        super().__init__()
+        self.xl = 0.
+        self.xu = 1.
+        self.yl = 0.
+        self.yu = 10
+
+        self.__xl = 0.
+        self.__xu = 1.
+        self.__yl = 0.
+        self.__yu = 0.45
+
+        #
+        # prior knowledge
+        #
+
+        peak_x = 0.06182
+        peak_y = self.func(peak_x)
+
+        # intersection points
+        self.knowledge.add_deriv(0, DataPoint( 0., 0.))
+        
+        # known positivity/negativity
+        self.knowledge.add_sign(0, self.xl, numbs.INFTY, '+')
+
+        # monotonically increasing/decreasing
+        self.knowledge.add_sign(1, self.xl, peak_x, '+')
+        self.knowledge.add_sign(1, peak_x, numbs.INFTY, '-')
+
+        # concavity
+        self.knowledge.add_sign(2, self.xl, peak_x, '-')
+        self.knowledge.add_sign(2, peak_x, numbs.INFTY, '+')
+    
+    def func(self, x: float) -> float:
+        m = 6.67
+        g = 0.15
+        b = 55.56
+        c = 1.35
+        d = 0.4
+        e = 0.52
+        y = m * g * d * np.sin(c * np.arctan(b * (1 - e) * x + e * np.arctan(b * x)))
+        return self.__ymap(y)
+
+    def __ymap(self, y:float) -> float:  # TODO: put in super class.
+        return self.yl + (((y - self.__yl) / (self.__yu - self.__yl)) * (self.yu - self.yl)) 
