@@ -18,7 +18,7 @@ FIT_POLYDEG = 8
 
 class HistoryEntry:
     def __init__(self, msg:str, model_name:str,
-                 pulled_S:dataset.Dataset, pulled_constrs:dict[dict[qp.Constraints]], violated_constrs:list,
+                 pulled_S:dataset.Dataset, pulled_constrs:dict[qp.Constraints], violated_constrs:list,
                  fit_model):
         self.msg = msg
         self.model_name = model_name
@@ -32,7 +32,7 @@ class History:
         self.entries = []
     
     def log_pull(self, unkn_stree:backprop.UnknownSyntaxTree,
-                 pulled_S:dataset.Dataset, pulled_constrs:dict[dict[qp.Constraints]], violated_constrs:list=[]):
+                 pulled_S:dataset.Dataset, pulled_constrs:dict[qp.Constraints], violated_constrs:list=[]):
         self.entries.append(
             HistoryEntry(f"Pull from {unkn_stree}", unkn_stree.label, pulled_S, pulled_constrs, violated_constrs, unkn_stree.model))
 
@@ -51,9 +51,12 @@ def __fit_pulled_dataset(pulled_S:dict, pulled_constrs:dict[dict[qp.Constraints]
 
     data_W = utils.compute_data_weight(pulled_data, unknown_stree, global_stree)
 
-    P = np.poly1d( qp.qp_solve(unknown_stree.constrs, unknown_stree.model.c.size - 1, pulled_S[unkn_name], data_W, unknown_stree.coeffs_mask) ) \
-        if phase == 'data_fit' else \
-        np.poly1d( qp.qp_solve(pulled_constrs[unkn_name],  unknown_stree.model.c.size - 1, pulled_S[unkn_name], data_W, unknown_stree.coeffs_mask) )
+    weak_constrs = None if phase == 'data_fit' else pulled_constrs[unkn_name]
+    P = np.poly1d( qp.qp_solve(unknown_stree.constrs,
+                               unknown_stree.model.c.size - 1,
+                               pulled_S[unkn_name], data_W,
+                               unknown_stree.coeffs_mask,
+                               weak_constrs=weak_constrs) )
     P, _ = utils.simplify_poly(P, None)
     return P
 
@@ -82,12 +85,12 @@ def jump_backprop(stree_d0:backprop.SyntaxTree, stree_d1:backprop.SyntaxTree, sy
     best_r2 = None
 
     for phase in ['data_fit', 'data_knowledge_fit']:
-        if phase == 'data_knowledge_fit': continue  # TODO: manage how to activate it.
+        #if phase == 'data_knowledge_fit': continue  # TODO: manage how to activate it.
 
         for _ in range(max_rounds):
 
             # for each unknown model.
-            for unkn_name in sorted(synth_unkn_models.keys(), reverse=True):  # TODO: establish jumping policy/heuristic.
+            for unkn_name in sorted(synth_unkn_models.keys(), reverse=False):  # TODO: establish jumping policy/heuristic.
 
                 # pull dataset and constraints.
                 pulled_S = {}
@@ -141,21 +144,24 @@ def jump_backprop(stree_d0:backprop.SyntaxTree, stree_d1:backprop.SyntaxTree, sy
                         # TODO: what about symm constraints?! (use those from ASP?)
                         for (dp, relopt) in constrs.eq_ineq:
                             if relopt.opt != '=': continue
-                            stree.compute_output(dp.x)
+                            out = stree.compute_output(dp.x)
+                            if out == dp.y: continue
                             try:
                                 pulled_th, pulled_relopt = unknown_stree.pull_output(dp.y, relopt)
-                                print(f"Pulled th: {pulled_th}")
                                 pulled_constrs[unkn_name][derivdeg].eq_ineq \
                                     .append( (dataset.DataPoint(dp.x, pulled_th), pulled_relopt) )
                                 
                             except backprop.PullViolation:
                                 violated_constrs.append( (dataset.DataPoint(dp.x, dp.y), relopt) )
-
+                        
+                        if pulled_constrs[unkn_name][derivdeg].isempty():  # skip the rest.
+                            break
+                    
                     #
                     # fit pulled dataset.
                     #
                     fit_model = None
-                    if len(violated_constrs) == 0 or True:
+                    if len(violated_constrs) == 0:
                         fit_model = __fit_pulled_dataset(pulled_S, pulled_constrs, unknown_stree, unkn_name, stree, hist, phase)
                     else:
                         hist.log_pull(unknown_stree, pulled_S[unkn_name], pulled_constrs[unkn_name], violated_constrs)
@@ -166,6 +172,7 @@ def jump_backprop(stree_d0:backprop.SyntaxTree, stree_d1:backprop.SyntaxTree, sy
                     if fit_model is not None:
                         unknown_stree.set_unknown_model(unknown_stree.label, fit_model, unknown_stree.coeffs_mask, unknown_stree.constrs)  # keep the same coeffs mask and constraints.
                         hist.log_pull(unknown_stree, pulled_S[unkn_name], pulled_constrs[unkn_name])
+                        # TODO: set fit_model to others strees (i.e. derivatives).
             
             #
             # end unknown model jumping.
@@ -184,6 +191,7 @@ def jump_backprop(stree_d0:backprop.SyntaxTree, stree_d1:backprop.SyntaxTree, sy
                 best_r2 = r2
             else:
                 # stop rounds and go to next phase.
+                #stop = True
                 pass #break
 
     return hist, best_unkn_models, best_r2, best_k_mse

@@ -148,7 +148,7 @@ def compute_origin_data_weight(S:dataset.Dataset) -> np.array:
     return W
 
 
-def scale_y(Y:np.array) -> np.array:
+def scale_y(Y:np.array) -> tuple[np.array,float]:
     Y_abs = np.abs(Y)
     y_max = Y_abs.max()
     return Y / y_max, y_max
@@ -164,3 +164,9 @@ def unscale_polycoeffs(coeffs:np.array, scale_factor:float, xl:float=-1, xu:floa
     Y_unscaled = Y * scale_factor
     unscaled_coeffs = scipy_interp_lagrange(X, Y_unscaled).c
     return np.zeros(coeffs.size) if unscaled_coeffs.size == 1 and unscaled_coeffs[0] == 0 else unscaled_coeffs
+
+
+# pressure: percentage of the total weight (data + weak constraints) given by all weak constraints.
+# returns weight of a single weak constraint.
+def compute_weakconstr_weight(w_data:np.array, n_weak_constrs:int, pressure:float=0.2) -> float:
+    return ( (pressure/(1-pressure)) * w_data.sum() ) / n_weak_constrs

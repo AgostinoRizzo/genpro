@@ -17,6 +17,9 @@ class Constraints:
         self.eq_ineq:list[dataset.DataPoint, backprop.Relopt] = []
         self.symm:list[x1:float, x2:float, iseven:bool] = []
         self.noroot = False
+    
+    def isempty(self) -> bool:
+        return len(self.eq_ineq) == 0 and len(self.symm) == 0 and not self.noroot
 
 
 # TODO: open/closed interval (now open) + same constraints?! + interval with INFTY.
@@ -141,8 +144,16 @@ def add_qp_coeffs_mask_constraints(polydeg:int, coeffs_mask:list[float], lb:np.a
 
 
 # constrs: map (key=deriv degree) of Constraints
+# weak_constrs: (derivdeg => Constraints) not utilized when S is None
 # returns np.array of coefficients (in decreasing powers)
-def qp_solve(constrs:dict[Constraints], polydeg:int, S:dataset.Dataset=None, data_W:np.array=None, coeffs_mask:list[float]=None, s_val:float=1):
+def qp_solve(constrs:dict[Constraints],
+             polydeg:int,
+             S:dataset.Dataset=None,
+             data_W:np.array=None,
+             coeffs_mask:list[float]=None,
+             s_val:float=1,
+             weak_constrs:dict[int,Constraints]=None):
+    
     assert polydeg >= 0
     R = []; s = []; W = None
     G = []; h = []
@@ -161,20 +172,34 @@ def qp_solve(constrs:dict[Constraints], polydeg:int, S:dataset.Dataset=None, dat
         R = np.identity(nvars, dtype=float)
         s = np.full(nvars, s_val) #np.zeros(nvars)
     else:
+        # add data point errors.
         for dp in S.data:
             R.append( [dp.x ** p for p in range(polydeg, -1, -1)] )
             s.append( dp.y )
+        
+        # add weak constraints errors (when provided).
+        n_weak_constrs = 0
+        if weak_constrs is not None:
+            for derivdeg in weak_constrs.keys():
+                __G, __h, __A, __b = get_qp_constraints(weak_constrs[derivdeg], polydeg, derivdeg, lb, ub)
+                R += __A; s += __b
+                n_weak_constrs += len(__A)
+        
         R = np.array(R, dtype=float)
         s = np.array(s, dtype=float)
         s, Sy_scale_factor = utils.scale_y(s)
-        W = np.diag( utils.scale_data_weight( np.array([1 / S.compute_yvar(dp.x) for dp in S.data]) ) )
+
+        # add error weights (data points + weak constraints).
+        w_data       = np.array([1 / S.compute_yvar(dp.x) for dp in S.data])
+        w_weakconstr = np.full( n_weak_constrs, utils.compute_weakconstr_weight(w_data, n_weak_constrs) )
+        w            = np.concatenate( (w_data, w_weakconstr) )
+        W = np.diag( utils.scale_data_weight( w ) )
         #W = np.diag( utils.compute_origin_data_weight(S) )
         #if data_W is not None:
         #    W = np.diag( utils.scale_data_weight(data_W) )
     
     # define ineq (G, h), eq (A, b) and bounds (lb, ub) constraints.
-    for derivdeg in range(3):
-        if derivdeg not in constrs.keys(): continue
+    for derivdeg in constrs.keys():
         __G, __h, __A, __b = get_qp_constraints(constrs[derivdeg], polydeg, derivdeg, lb, ub)
         G += __G; h += __h
         A += __A; b += __b
@@ -185,6 +210,10 @@ def qp_solve(constrs:dict[Constraints], polydeg:int, S:dataset.Dataset=None, dat
     h = np.array(h, dtype=float) if len(h) > 0 else None
     A = np.array(A, dtype=float) if len(A) > 0 else None
     b = np.array(b, dtype=float) if len(b) > 0 else None
+
+    if Sy_scale_factor is not None:
+        if h is not None: h /= Sy_scale_factor
+        if b is not None: b /= Sy_scale_factor
 
     # TODO: manage this!
     if A is not None:
@@ -200,6 +229,9 @@ def qp_solve(constrs:dict[Constraints], polydeg:int, S:dataset.Dataset=None, dat
 
     import warnings
     warnings.filterwarnings("ignore")
+
+    print(f"A = {A}")
+    print(f"b = {b}")
 
     sol = qpsolvers_solve_ls(R, s, G, h, A, b, W=W, lb=None, ub=None, solver='clarabel', verbose=False)  # returns optimal sol if found, None otherwise.
     print(f"QP solution: {sol}\n")
