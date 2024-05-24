@@ -6,7 +6,7 @@
 % even_symm(ModelName, Input)
 % odd_symm(ModelName, Input)
 
-%#const infty=10.%100000.
+% # const infty=10.%100000.
 
 
 % syntax tree m(x) = A(x)/B(x)
@@ -48,7 +48,7 @@ tree_node(N) :- unkn_tree_node(N).
 %sign("B'", "+", 0, peak_x). sign("B'", "+", peak_x, infty).
 
 % prior knowledge (image).
-%#const peak_x=1.
+% # const peak_x=1.
 %sign("m", "+", -infty, -peak_x). sign("m", "+", -peak_x, 0).  % TODO: manage closed intervals (now are open).
 %sign("m", "-", 0, peak_x). sign("m", "-", peak_x, infty).
 %root("m", 0).
@@ -93,13 +93,13 @@ even_symm(G, X) :- odd_even_symm_and(_, G, X).
 root(N, Mid) | undef(N, Mid) :- sign(N, PN1, _, Mid), sign(N, PN2, Mid, _), PN1 != PN2.
 sign_change(N, Input) :- sign(N, PN1, _, Input), sign(N, PN2, Input, _), PN1!=PN2.
 :- root(N, Input),
-   sign(N,    PN1, _, Input), sign(N,    PN2, Input, _), PN1=PN2,
-   sign(N_pr, PN1, _, Input), sign(N_pr, PN2, Input, _), PN1=PN2,
+   sign(N,    PN, From1, Input), sign(N,    PN, Input, To1), From1!=Input, To1!=Input,
+   sign(N_pr, PN_pr, From2, Input), sign(N_pr, PN_pr, Input, To2), From2!=Input, To2!=Input,
    deriv(N, N_pr).
 :- root(N, _), noroot(N).
 % root + deriv.
-:- root(N, X), sign(N, PN1, X, _), sign(N_PR, PN2, X, _), deriv(N, N_PR), PN1!=PN2.
-:- root(N, X), sign(N, PN1, _, X), sign(N_PR, PN2, _, X), deriv(N, N_PR), PN1 =PN2.
+:- root(N, X), sign(N, PN1, X, To_N), sign(N_PR, PN2, X, To_N_PR), deriv(N, N_PR), PN1!=PN2, To_N!=X, To_N_PR!=X.
+:- root(N, X), sign(N, PN1, From_N, X), sign(N_PR, PN2, From_N_PR, X), deriv(N, N_PR), PN1 =PN2, From_N!=X, From_N_PR!=X.
 % symmetry
 :- even_symm(F, X1), even_symm(F, X2), X1!=X2.
 :- odd_symm(F, X1), odd_symm(F, X2), X1!=X2.
@@ -132,18 +132,18 @@ root_count(N, C) :- #count{Input : root(N, Input)}=C, tree_node(N).
 %
 % get knowledge abound unknown models
 %
-sign_unkn(N, PN, L, U) :- sign(N, PN, L, U), unkn_tree_node(N).
+sign_unkn(N, PN, L, U) :- sign(N, PN, L, U), unkn_tree_node(N), L<U.
 noroot_unkn(N) :- noroot(N), unkn_tree_node(N).
 root_unkn(N, Input) :- root(N, Input), unkn_tree_node(N).
 undef_unkn(N, Input) :- undef(N, Input), unkn_tree_node(N).
 even_symm_unkn(N, Input) :- even_symm(N, Input), unkn_tree_node(N).
 odd_symm_unkn(N, Input) :- odd_symm(N, Input), unkn_tree_node(N).
-%#show sign_unkn/4.
-%#show root_unkn/2.
-%#show noroot_unkn/1.
-%#show undef_unkn/2.
-%#show even_symm_unkn/2.
-%#show odd_symm_unkn/2.
+% #show sign_unkn/4.
+% #show root_unkn/2.
+% #show noroot_unkn/1.
+% #show undef_unkn/2.
+% #show even_symm_unkn/2.
+% #show odd_symm_unkn/2.
 
-%#show sign_changes/2.
-%#show even_symm/2.
+% #show sign_changes/2.
+% #show even_symm/2.

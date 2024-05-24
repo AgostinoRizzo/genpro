@@ -73,9 +73,13 @@ def check_constrs_sat(P:np.poly1d, constrs:dict[qp.Constraints]) -> bool:
 #       while keeping the satisfaction of constrs
 # it is assumed that P is compliant w.r.t. constrs
 def simplify_poly(P:np.poly1d, constrs:dict[qp.Constraints]) -> np.poly1d:
+    canBeZeroCoeffs = [True] * P.c.size
+    for derivdeg, constrs in constrs.items():
+        if constrs.noroot: canBeZeroCoeffs[-derivdeg-1] = False
+    
     coeffs_mask = []
     for i in range(P.c.size):
-        if abs(P.c[i]) < 1e-8:  # TODO: fix epsilon.
+        if abs(P.c[i]) < 1e-8 and canBeZeroCoeffs[i]:  # TODO: fix epsilon.
             P.c[i] = 0
             coeffs_mask.append(0)
         else:
@@ -170,3 +174,13 @@ def unscale_polycoeffs(coeffs:np.array, scale_factor:float, xl:float=-1, xu:floa
 # returns weight of a single weak constraint.
 def compute_weakconstr_weight(w_data:np.array, n_weak_constrs:int, pressure:float=0.2) -> float:
     return ( (pressure/(1-pressure)) * w_data.sum() ) / n_weak_constrs
+
+
+# returns:
+#   True  : a better than b.
+#   False : a is equal b or b is better than a.
+#   When r2 score under 0.1, knowledge comparison is ignored.
+def compare_fit(k_mse_a, r2_a, k_mse_b, r2_b) -> bool:
+    if k_mse_a < k_mse_b and r2_a >= 0.1: return True
+    if k_mse_b < k_mse_a and r2_b >= 0.1: return False
+    return r2_a > r2_b

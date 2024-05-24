@@ -57,8 +57,9 @@ def __fit_pulled_dataset(pulled_S:dict, pulled_constrs:dict[dict[qp.Constraints]
                                pulled_S[unkn_name], data_W,
                                unknown_stree.coeffs_mask,
                                weak_constrs=weak_constrs) )
-    P, _ = utils.simplify_poly(P, None)
-    return P
+    P, _ = utils.simplify_poly(P, unknown_stree.constrs)
+    P_d1 = np.polyder(P, m=1)
+    return P, P_d1
 
 
 # synth_unkn_models:dict of unknown model name to (unknown model:callable, constrs:dict).
@@ -73,9 +74,10 @@ def jump_backprop(stree_d0:backprop.SyntaxTree, stree_d1:backprop.SyntaxTree, sy
     # set all synth_unkn_models.
     #
     for synth_unkn in synth_unkn_models.keys():
-        unkn_model, coeffs_mask, constrs = synth_unkn_models[synth_unkn]
-        stree_d0.set_unknown_model(synth_unkn, unkn_model, coeffs_mask, constrs)
-        stree_d1.set_unknown_model(synth_unkn, unkn_model, coeffs_mask, constrs)
+        unkn_model, unkn_model_d1, coeffs_mask, constrs = synth_unkn_models[synth_unkn]
+        for stree in [stree_d0, stree_d1]:
+            stree.set_unknown_model(synth_unkn, unkn_model, coeffs_mask, constrs)
+            stree.set_unknown_model(synth_unkn + "'", unkn_model_d1)
     
     #
     # init best stree found.
@@ -96,83 +98,91 @@ def jump_backprop(stree_d0:backprop.SyntaxTree, stree_d1:backprop.SyntaxTree, sy
                 pulled_S = {}
                 pulled_constrs = {}
 
-                for (derivdeg, stree) in [(0, stree_d0)]:
-                            
-                    #unkn_stree_fullname = unkn_stree_label + ("'" * stree_derivdeg)
-                    #if stree.count_unknown_model(unknown_stree_fullname) != 1:
-                    #    print(f"Cannot pull from {unknown_stree_fullname} for derivative {str(derivdeg)}: no unique occurence")
-                    #    continue
+                for (derivdeg, stree) in [(0, stree_d0)]:  #[(0, stree_d0), (1, stree_d1)]:
 
-                    unknown_stree = stree.get_unknown_stree(unkn_name)
-                    print(f"Pulling from {unkn_name} w.r.t. derivative {str(derivdeg)} (phase = {phase})")
-
-                    #
-                    # pull dataset from 'unknown_stree' 
-                    #
-                    if derivdeg == 0:
-                        yl = 0; yu = 0
-                        pulled_S[unkn_name] = dataset.Dataset()
-                        pulled_S[unkn_name].xl = S.xl
-                        pulled_S[unkn_name].xu = S.xu
-
-                        for dp in S.data:
-                            stree.compute_output(dp.x)
-                            pulled_y, _ = unknown_stree.pull_output(dp.y)
-                            pulled_S[unkn_name].data \
-                                .append( dataset.DataPoint(dp.x, pulled_y) )
-                        
-                        pulled_S[unkn_name].remove_outliers()
-                        #pulled_S[unkn_name].minmax_scale_y()
-                        for dp in pulled_S[unkn_name].data:
-                            yl = min(yl, dp.y)
-                            yu = max(yu, dp.y)
-                        pulled_S[unkn_name].yl = yl
-                        pulled_S[unkn_name].yu = yu
-
-                        pulled_S[unkn_name].share_index(S)  # TODO: check if it is necessary here.
-
-                    #
-                    # pull constraints from 'unknown_stree' 
-                    #
                     if unkn_name not in pulled_constrs.keys():
                         pulled_constrs[unkn_name] = {}
-                    pulled_constrs[unkn_name][derivdeg] = qp.Constraints()
-                    violated_constrs = []
+                    violated_constrs = []                        
+                            
+                    for unkn_model_derivdeg in range(derivdeg + 1):
+                        if unkn_model_derivdeg > 0: continue # TODO: manage how to activate it.
 
-                    if phase == 'data_knowledge_fit':
-                        constrs = qp.get_constraints(S.knowledge, dict(), derivdeg, SAMPLE_SIZE)
-                        # TODO: what about symm constraints?! (use those from ASP?)
-                        for (dp, relopt) in constrs.eq_ineq:
-                            if relopt.opt != '=': continue
-                            out = stree.compute_output(dp.x)
-                            if out == dp.y: continue
-                            try:
-                                pulled_th, pulled_relopt = unknown_stree.pull_output(dp.y, relopt)
-                                pulled_constrs[unkn_name][derivdeg].eq_ineq \
-                                    .append( (dataset.DataPoint(dp.x, pulled_th), pulled_relopt) )
-                                
-                            except backprop.PullViolation:
-                                violated_constrs.append( (dataset.DataPoint(dp.x, dp.y), relopt) )
-                        
-                        if pulled_constrs[unkn_name][derivdeg].isempty():  # skip the rest.
-                            break
-                    
-                    #
-                    # fit pulled dataset.
-                    #
-                    fit_model = None
-                    if len(violated_constrs) == 0:
-                        fit_model = __fit_pulled_dataset(pulled_S, pulled_constrs, unknown_stree, unkn_name, stree, hist, phase)
-                    else:
-                        hist.log_pull(unknown_stree, pulled_S[unkn_name], pulled_constrs[unkn_name], violated_constrs)
-                    
-                    #
-                    # if model fit, then update the model of 'unknown_stree'.
-                    #
-                    if fit_model is not None:
-                        unknown_stree.set_unknown_model(unknown_stree.label, fit_model, unknown_stree.coeffs_mask, unknown_stree.constrs)  # keep the same coeffs mask and constraints.
-                        hist.log_pull(unknown_stree, pulled_S[unkn_name], pulled_constrs[unkn_name])
-                        # TODO: set fit_model to others strees (i.e. derivatives).
+                        unkn_name_d = unkn_name + ("'" * unkn_model_derivdeg)
+                        if stree.count_unknown_model(unkn_name_d) != 1:
+                            print(f"Cannot pull from {unkn_name_d} for derivative {str(derivdeg)}: no unique occurence")
+                            continue
+
+                        unknown_stree = stree.get_unknown_stree(unkn_name_d)
+                        print(f"Pulling from {unkn_name_d} w.r.t. derivative {str(derivdeg)} (phase = {phase})")
+
+                        #
+                        # pull dataset from 'unknown_stree' 
+                        #
+                        if derivdeg == 0:
+                            yl = 0; yu = 0
+                            pulled_S[unkn_name] = dataset.Dataset()
+                            pulled_S[unkn_name].xl = S.xl
+                            pulled_S[unkn_name].xu = S.xu
+
+                            for dp in S.data:
+                                stree.compute_output(dp.x)
+                                pulled_y, _ = unknown_stree.pull_output(dp.y)
+                                pulled_S[unkn_name].data \
+                                    .append( dataset.DataPoint(dp.x, pulled_y) )
+                            
+                            pulled_S[unkn_name].remove_outliers()
+                            #pulled_S[unkn_name].minmax_scale_y()
+                            for dp in pulled_S[unkn_name].data:
+                                yl = min(yl, dp.y)
+                                yu = max(yu, dp.y)
+                            pulled_S[unkn_name].yl = yl
+                            pulled_S[unkn_name].yu = yu
+
+                            pulled_S[unkn_name].share_index(S)  # TODO: check if it is necessary here.
+
+                        #
+                        # pull constraints from 'unknown_stree' 
+                        #
+                        if unkn_model_derivdeg not in pulled_constrs[unkn_name]:
+                            pulled_constrs[unkn_name][unkn_model_derivdeg] = qp.Constraints()
+                        if phase == 'data_knowledge_fit':
+                            constrs = qp.get_constraints(S.knowledge, dict(), derivdeg, SAMPLE_SIZE)
+                            # TODO: what about symm constraints?! (use those from ASP?)
+                            for (dp, relopt) in constrs.eq_ineq:
+                                out = stree.compute_output(dp.x)
+                                if relopt.check(out, dp.y): continue
+                                try:
+                                    pulled_th, pulled_relopt = unknown_stree.pull_output(dp.y, relopt)
+                                    pulled_constrs[unkn_name][unkn_model_derivdeg].eq_ineq \
+                                        .append( (dataset.DataPoint(dp.x, pulled_th), pulled_relopt) )
+                                    
+                                except backprop.PullViolation:
+                                    violated_constrs.append( (dataset.DataPoint(dp.x, dp.y), relopt) )
+                            
+                            if pulled_constrs[unkn_name][unkn_model_derivdeg].isempty():  # skip the rest (TODO).
+                                break
+
+                unknown_stree = stree_d0.get_unknown_stree(unkn_name)
+
+                #
+                # fit pulled dataset.
+                #
+                fit_model = None
+                fit_model_d1 = None
+                if len(violated_constrs) == 0:
+                    fit_model, fit_model_d1 = __fit_pulled_dataset(pulled_S, pulled_constrs, unknown_stree, unkn_name, stree, hist, phase)
+                else:
+                    hist.log_pull(unknown_stree, pulled_S[unkn_name], pulled_constrs[unkn_name], violated_constrs)
+                
+                #
+                # if model fit, then update the model of 'unknown_stree'.
+                #
+                if fit_model is not None:
+                    for stree in [stree_d0, stree_d1]:
+                        stree.set_unknown_model(unknown_stree.label, fit_model, unknown_stree.coeffs_mask, unknown_stree.constrs)  # keep the same coeffs mask and constraints.
+                        stree.set_unknown_model(unknown_stree.label + "'", fit_model_d1)
+                    hist.log_pull(unknown_stree, pulled_S[unkn_name], pulled_constrs[unkn_name])
+                    # TODO: set fit_model to others strees (i.e. derivatives).
             
             #
             # end unknown model jumping.
@@ -182,10 +192,10 @@ def jump_backprop(stree_d0:backprop.SyntaxTree, stree_d1:backprop.SyntaxTree, sy
             # compute model fitting.
             # r2 over data points is ok now since 'data_fit' is the only activated phase.
             #
-            _, r2, k_mse = S.evaluate(stree.compute_output)
-            if best_k_mse is None or k_mse < best_k_mse or (k_mse == best_k_mse and r2 > best_r2):
+            _, r2, k_mse = S.evaluate(stree_d0.compute_output)
+            if best_k_mse is None or utils.compare_fit(k_mse, r2, best_k_mse, best_r2):
                 for unkn_label in synth_unkn_models.keys():
-                    unkn_stree = stree.get_unknown_stree(unkn_label)
+                    unkn_stree = stree_d0.get_unknown_stree(unkn_label)
                     best_unkn_models[unkn_label] = unkn_stree.model
                 best_k_mse = k_mse
                 best_r2 = r2

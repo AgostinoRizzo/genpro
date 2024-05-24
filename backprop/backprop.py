@@ -143,19 +143,27 @@ class BinaryOperatorSyntaxTree(SyntaxTree):
         if is_left_const and is_right_const:
             return ConstantSyntaxTree( self.__operate(self.left.val, self.right.val) )
         
-        if self.operator == '*' and ( (is_left_const and self.left.val == 0) or (is_right_const and self.right.val == 0) ):
-            return ConstantSyntaxTree(0)
+        if self.operator == '*':
+            if (is_left_const and self.left.val == 0) or (is_right_const and self.right.val == 0):
+                return ConstantSyntaxTree(0)
+            if (is_left_const and self.left.val == 1):
+                return self.right
+            if (is_right_const and self.right.val == 1):
+                return self.left
         
         if self.operator == '+' or self.operator == '-':
             if is_left_const  and self.left.val  == 0: return self.right
             if is_right_const and self.right.val == 0: return self.left
         
-        if self.operator == '^' and is_right_const and \
-           type(self.left) is BinaryOperatorSyntaxTree and self.left.operator == '^' and \
-           type(self.left.right) is ConstantSyntaxTree:
-            self.right = ConstantSyntaxTree(self.right.val * self.left.right.val)
-            self.left = self.left.left
-            return self
+        if self.operator == '^' and is_right_const:
+            if self.right.val == 1:
+                return self.left
+            
+            if type(self.left) is BinaryOperatorSyntaxTree and self.left.operator == '^' and \
+               type(self.left.right) is ConstantSyntaxTree:
+                self.right = ConstantSyntaxTree(self.right.val * self.left.right.val)
+                self.left = self.left.left
+                return self
         
         return self
     

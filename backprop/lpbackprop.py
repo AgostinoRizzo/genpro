@@ -116,8 +116,9 @@ def synthesize_unknown(unkn_label:str, K:dataset.DataKnowledge, break_points:set
         
     P = np.poly1d(poly_coeffs)
     P, coeffs_mask = utils.simplify_poly(P, pulled_constrs)
+    P_d1 = np.polyder(P, m=1)
 
-    return (P, coeffs_mask, pulled_constrs)
+    return (P, P_d1, coeffs_mask, pulled_constrs)
 
 
 def synthesize_unknowns(stree:backprop.SyntaxTree, unknown_labels:list[str], break_points_map:dict, break_points_invmap:dict,  # invmap: from asp to float.
@@ -172,19 +173,22 @@ def lpbackprop(K:dataset.DataKnowledge, stree:backprop.SyntaxTree, onsynth_callb
     #
     stree = stree.simplify()
     stree_pr = stree.diff().simplify()
+    stree_pr2 = stree_pr.diff().simplify()
     aspSpecBuilder = ASPSpecBuilder()
     aspSpecBuilder.map_root(stree)
     aspSpecBuilder.map_root(stree_pr, 1)
+    aspSpecBuilder.map_root(stree_pr2, 2)
     stree.accept(aspSpecBuilder)
     stree_pr.accept(aspSpecBuilder)
+    stree_pr2.accept(aspSpecBuilder)
     stree_spec = aspSpecBuilder.spec
-    #print(stree_spec)
+    print(stree_spec)
 
     #
     # build ASP prior knowledge (K) specification.
     #
     K_spec, break_points_map, break_points_invmap = build_knowledge_spec(K)
-    #print(K_spec)
+    print(K_spec)
 
     #
     # invoke ASP solver with stree_spec and K_spec (knowledge backprop).
@@ -206,6 +210,7 @@ def lpbackprop(K:dataset.DataKnowledge, stree:backprop.SyntaxTree, onsynth_callb
     # set solving options.
     clingo_ctl.configuration.solve.models = 0  # compute all models.
     clingo_ctl.configuration.solve.opt_mode = 'optN'  # find optimum, then enumerate optimal models (models=0).
+    clingo_ctl.configuration.solve.project = 'show'
 
     # compute models and synthesize each unknown node in stree.
     unkn_collector = backprop.UnknownSyntaxTreeCollector()

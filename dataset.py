@@ -458,6 +458,8 @@ class MagmanDatasetScaled(Dataset):
         #self.knowledge.add_sign(2, self.xl, -0.4, '+')
         #self.knowledge.add_sign(2, 0.4, self.xu, '-')
         self.knowledge.add_sign(2, -numbs.INFTY, -0.4, '+')
+        self.knowledge.add_sign(2, -0.4, 0, '-')
+        self.knowledge.add_sign(2, 0, 0.4, '+')
         self.knowledge.add_sign(2, 0.4, numbs.INFTY, '-')
 
         # symmetry
@@ -578,6 +580,7 @@ class ABSDataset(Dataset):
         # intersection points
         self.knowledge.add_deriv(0, DataPoint(0., 0.))
         self.knowledge.add_deriv(0, DataPoint(peak_x, peak_y))
+        self.knowledge.add_deriv(1, DataPoint(peak_x, 0.))
         
         # known positivity/negativity
         #self.knowledge.add_sign(0, self.xl, numbs.INFTY, '+')
