@@ -159,6 +159,9 @@ class BinaryOperatorSyntaxTree(SyntaxTree):
             if self.right.val == 1:
                 return self.left
             
+            if self.right.val == 2 and type(self.left) is UnaryOperatorSyntaxTree and self.left.operator == 'sqrt':
+                return self.left.inner
+            
             if type(self.left) is BinaryOperatorSyntaxTree and self.left.operator == '^' and \
                type(self.left.right) is ConstantSyntaxTree:
                 self.right = ConstantSyntaxTree(self.right.val * self.left.right.val)
@@ -311,6 +314,115 @@ class BinaryOperatorSyntaxTree(SyntaxTree):
         visitor.visitBinaryOperator(self)
         self.left.accept(visitor)
         self.right.accept(visitor)
+
+
+class UnaryOperatorSyntaxTree(SyntaxTree):
+    def __init__(self, operator:str, inner:SyntaxTree):
+        super().__init__()
+        self.operator = operator
+        self.inner = inner
+    
+    def clone(self):
+        return UnaryOperatorSyntaxTree(self.operator, self.inner.clone())
+    
+    def compute_output(self, x) -> float:
+        self.output  = None
+        inner_output  = self.inner.compute_output(x)
+        if inner_output is None: return None
+        self.output = self.__operate(inner_output)
+        return self.output
+    
+    def set_parent(self, parent=None):
+        super().set_parent(parent)
+        self.inner.set_parent(self)
+
+    def simplify(self):
+        self.inner = self.inner.simplify()
+
+        if type(self.inner) is ConstantSyntaxTree:
+            return ConstantSyntaxTree( self.__operate(self.inner.val) )
+        
+        if self.operator == 'exp' and type(self.inner) is UnaryOperatorSyntaxTree and self.inner.operator == 'log':
+            return self.self.inner.inner
+        
+        if self.operator == 'log' and type(self.inner) is UnaryOperatorSyntaxTree and self.inner.operator == 'exp':
+            return self.self.inner.inner
+        
+        if self.operator == 'sqrt' and type(self.inner) is BinaryOperatorSyntaxTree and \
+           self.inner.operator == '^' and type(self.inner.right) is ConstantSyntaxTree and self.inner.right.val == 2:
+            return self.inner.left
+        
+        return self
+    
+    def __operate(self, inner:float) -> float:
+        if   self.operator == 'exp' : return math.exp (inner)
+        elif self.operator == 'log' : return math.log (inner)
+        elif self.operator == 'sqrt': return math.sqrt(inner)
+        raise RuntimeError(f"Operation not defined for operator {self.operator}.")
+    
+    def __operate_inv(self, output:float, output_relopt:Relopt): # -> float, Relopt
+        if self.operator == 'exp' : return math.log(output), output_relopt
+        if self.operator == 'log' : return math.exp(output), output_relopt
+        if self.operator == 'sqrt': return output ** 2, output_relopt
+        
+        raise RuntimeError(f"Inverse operation not defined for operator {self.operator}.")
+    
+    def __str__(self) -> str:
+        return f"{self.operator}({str(self.inner)})"
+    
+    def __eq__(self, other) -> bool:
+        if type(other) is not UnaryOperatorSyntaxTree: return False
+        return \
+            self.operator == other.operator and \
+            self.inner == other.inner
+    
+    def diff(self) -> SyntaxTree:
+        g = self.inner
+
+        if self.operator == 'exp':
+            return BinaryOperatorSyntaxTree( '*',
+                UnaryOperatorSyntaxTree('exp', g.clone() ),
+                g.diff()
+                )
+        
+        if self.operator == 'log':
+            return BinaryOperatorSyntaxTree( '/',
+                g.diff(),
+                g.clone()
+            )
+        
+        if self.operator == 'sqrt':
+            return BinaryOperatorSyntaxTree( '/',
+                g.diff(),
+                BinaryOperatorSyntaxTree( '*',
+                    ConstantSyntaxTree(2),
+                    UnaryOperatorSyntaxTree('sqrt', g.clone())
+                )
+            )
+        
+        raise RuntimeError(f"Differentiation not defined for operator {self.operator}.")
+    
+    def backprop_sign(self, symbmapper:SymbolMapper, lb:float=-numbs.INFTY, ub:float=numbs.INFTY, sign:str='+'):
+        raise RuntimeError(f"Sign backprop not defined for operator {self.operator}.")  # TODO: not utilized for now.
+
+    def pull_output(self, target_output:float, relopt:Relopt=Relopt('='), child=None): # -> float, Relopt
+        pulled_output, pulled_relopt = super().pull_output(target_output, relopt, child)
+        if child is None or pulled_output is None: return pulled_output, pulled_relopt
+        if id(child) == id(self.inner):  return self.__operate_inv(pulled_output, pulled_relopt)
+        raise RuntimeError('Invalid child.')
+    
+    def get_unknown_stree(self, unknown_stree_label:str):
+        return self.inner.get_unknown_stree(unknown_stree_label)
+
+    def set_unknown_model(self, model_label:str, model:callable, coeffs_mask:list[float]=None, constrs:dict=None):
+        self.inner.set_unknown_model(model_label, model, coeffs_mask, constrs)
+    
+    def count_unknown_model(self, model_label:str) -> int:
+        return self.inner.count_unknown_model(model_label)
+    
+    def accept(self, visitor):
+        visitor.visitBinaryOperator(self)
+        self.inner.accept(visitor)
 
 
 class ConstantSyntaxTree(SyntaxTree):

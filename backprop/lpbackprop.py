@@ -12,7 +12,9 @@ import qp
 
 
 ASP_ENCODINGS = ["lpbackprop/backprop.lp", "lpbackprop/add_sub_opt.lp",
-                 "lpbackprop/muldiv_opt.lp", "lpbackprop/pow_opt.lp"]
+                 "lpbackprop/muldiv_opt.lp", "lpbackprop/pow_opt.lp",
+                 "lpbackprop/exp_opt.lp", "lpbackprop/log_opt.lp",
+                 "lpbackprop/sqrt_opt.lp"]
 SAMPLE_SIZE = 20
 SYNTH_POLYDEG = 6
 
