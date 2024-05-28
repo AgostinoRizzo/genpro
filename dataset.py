@@ -16,6 +16,32 @@ class DataPoint:
         return math.sqrt((other.x-self.x)**2 + (other.y-self.y)**2)
 
 
+class Evaluation:
+    def __init__(self):
+        self.training  = {}
+        self.testing   = {}
+        self.knowledge = {}
+    
+    def __init__(self, training:dict, testing:dict, knowledge:dict):
+        self.training  = training
+        self.testing   = testing
+        self.knowledge = knowledge
+    
+    def better_than(self, other) -> bool:
+        if self .knowledge['mse'] < other.knowledge['mse'] and self .testing['r2'] >= 0.1: return True
+        if other.knowledge['mse'] < self .knowledge['mse'] and other.testing['r2'] >= 0.1: return False
+        if self .testing['r2'] > other.testing['r2']: return True
+        if other.testing['r2'] > self .testing['r2']: return False
+        return self.training['r2'] > other.training['r2']
+    
+    def __str__(self) -> str:
+        eval_str = ''
+        for eval_name, measure_map in [('Training', self.training), ('Testing', self.testing), ('Knowledge', self.knowledge)]:
+            eval_str += f"{eval_name}\n"
+            for measure, value in measure_map.items(): eval_str += f"\t{measure}: {value}\n"
+        return eval_str
+
+
 class DataKnowledge:
     def __init__(self, dataset=None) -> None:
         self.dataset = dataset
@@ -48,7 +74,7 @@ class DataKnowledge:
             np.linspace(self.dataset.xl, self.dataset.xu, max(0, sample_size - len(deriv_points))),
             np.array(deriv_points))).sort()
     
-    def evaluate(self, model:callable) -> float:
+    def evaluate(self, model:callable) -> dict:
         n = 0
         ssr = 0
 
@@ -83,7 +109,8 @@ class DataKnowledge:
                 model_y2 = compute_model_output(model, x0-(x-x0), derivdeg)
                 ssr += ( (model_y1 - model_y2) if iseven else (model_y1 + model_y2) ) ** 2
         
-        return ssr / n    
+        mse = ssr / n
+        return {'mse': mse, 'rmse': math.sqrt(mse)}
     
     def plot(self):
         if 0 in self.derivs.keys():
@@ -255,15 +282,19 @@ class Dataset:
     def inrange_xy(self, x:float, y:float, scale:float=1.5) -> bool:
         return self.inrange(DataPoint(x, y), scale)
     
-    def evaluate(self, model:callable) -> tuple[float,float,float]:  # TODO: for now just mse and r2 over training data.
-        ssr = 0.
-        for dp in self.data: ssr += (model(dp.x) - dp.y) ** 2  # TODO: can be done efficiently using numpy.
+    def evaluate(self, model:callable) -> Evaluation:
+        def compute_measures(data:list[DataPoint], data_sst:float) -> dict:
+            ssr = 0.
+            for dp in data: ssr += (model(dp.x) - dp.y) ** 2  # TODO: can be done efficiently using numpy.
+            mse   = ssr / len(data) if len(data) > 0. else 0.
+            r2    = 1 - (ssr / data_sst) if data_sst > 0. else 0.
+            return {'mse': mse, 'rmse': math.sqrt(mse), 'r2': r2}
         
-        mse   = ssr / len(self.data)
-        r2    = 1 - (ssr / self.data_sst)
-        k_mse = self.knowledge.evaluate(model)
-
-        return mse, r2, k_mse
+        return Evaluation(
+            compute_measures(self.data, self.data_sst),
+            compute_measures(self.test, self.test_sst),
+            self.knowledge.evaluate(model)
+        )
     
     def plot(self, plot_data: bool=True, width:int=10, height:int=8, plotref:bool=True):
         plt.figure(2, figsize=[width,height])

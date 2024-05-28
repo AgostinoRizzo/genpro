@@ -85,8 +85,7 @@ def jump_backprop(stree_d0:backprop.SyntaxTree, stree_d1:backprop.SyntaxTree, sy
     # init best stree found.
     #
     best_unkn_models = {}
-    best_k_mse = None
-    best_r2 = None
+    best_eval = None
 
     for phase in ['data_fit', 'data_knowledge_fit']:
         #if phase == 'data_knowledge_fit': continue  # TODO: manage how to activate it.
@@ -203,16 +202,15 @@ def jump_backprop(stree_d0:backprop.SyntaxTree, stree_d1:backprop.SyntaxTree, sy
             # compute model fitting.
             # r2 over data points is ok now since 'data_fit' is the only activated phase.
             #
-            _, r2, k_mse = S.evaluate(stree_d0.compute_output)
-            if best_k_mse is None or utils.compare_fit(k_mse, r2, best_k_mse, best_r2):
+            model_eval = S.evaluate(stree_d0.compute_output)
+            if best_eval is None or model_eval.better_than(best_eval):
                 for unkn_label in synth_unkn_models.keys():
                     unkn_stree = stree_d0.get_unknown_stree(unkn_label)
                     best_unkn_models[unkn_label] = unkn_stree.model
-                best_k_mse = k_mse
-                best_r2 = r2
+                best_eval = model_eval
             else:
                 # stop rounds and go to next phase.
                 #stop = True
                 pass #break
 
-    return hist, best_unkn_models, best_r2, best_k_mse
+    return hist, best_unkn_models, best_eval
