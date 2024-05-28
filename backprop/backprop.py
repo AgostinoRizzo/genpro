@@ -1,5 +1,7 @@
+import numpy as np
 import sympy
-import math
+import string
+import random
 import numbs
 
 class PropositionalConstraint:
@@ -86,6 +88,9 @@ class Relopt:  # immutable class
         if self.opt == '<' : return a <  b
         raise RuntimeError(f"Operator {self.opt} not supported.")
 
+
+class PullError(RuntimeError):
+    pass
 
 class PullViolation(RuntimeError):
     pass
@@ -180,7 +185,12 @@ class BinaryOperatorSyntaxTree(SyntaxTree):
     
     def __operate_inv(self, output:float, output_relopt:Relopt, get_left:bool=True): # -> float, Relopt
         if   self.operator == '/':
-            if get_left: return output * self.right.output, (output_relopt if self.right.output >= 0 else output_relopt.neg())
+            # get the numerator.
+            if get_left:
+                return  output * self.right.output,\
+                       (output_relopt if self.right.output >= 0 else output_relopt.neg())
+            
+            # get the denominator.
             if output != 0. and output_relopt.opt == '=':
                 return self.left.output / output,  (output_relopt if self.left.output >= 0 else output_relopt.neg())
             if output != 0. or output_relopt.opt == '=':
@@ -198,7 +208,7 @@ class BinaryOperatorSyntaxTree(SyntaxTree):
 
         elif self.operator == '+': return output - self.right.output if get_left else output - self.left.output, output_relopt
         elif self.operator == '-': return output + self.right.output if get_left else self.left.output - output, output_relopt
-        elif self.operator == '^': return output ** (1/self.right.output) if get_left else math.log(output, self.left.output), output_relopt
+        elif self.operator == '^': return output ** (1/self.right.output) if get_left else np.log(output, self.left.output), output_relopt
         
         raise RuntimeError(f"Inverse operation not defined for operator {self.operator}.")
     
@@ -291,11 +301,14 @@ class BinaryOperatorSyntaxTree(SyntaxTree):
         raise RuntimeError(f"Backprop not defined for operator {self.operator}.")
 
     def pull_output(self, target_output:float, relopt:Relopt=Relopt('='), child=None): # -> float, Relopt
-        pulled_output, pulled_relopt = super().pull_output(target_output, relopt, child)
-        if child is None or pulled_output is None: return pulled_output, pulled_relopt
-        if id(child) == id(self.left):  return self.__operate_inv(pulled_output, pulled_relopt, get_left=True)
-        if id(child) == id(self.right): return self.__operate_inv(pulled_output, pulled_relopt, get_left=False)
-        raise RuntimeError('Invalid child.')
+        try:
+            pulled_output, pulled_relopt = super().pull_output(target_output, relopt, child)
+            if child is None or pulled_output is None: return pulled_output, pulled_relopt
+            if id(child) == id(self.left):  return self.__operate_inv(pulled_output, pulled_relopt, get_left=True)
+            if id(child) == id(self.right): return self.__operate_inv(pulled_output, pulled_relopt, get_left=False)
+            raise RuntimeError('Invalid child.')
+        except Exception:
+            raise PullError()
     
     def get_unknown_stree(self, unknown_stree_label:str):
         stree = self.left.get_unknown_stree(unknown_stree_label)
@@ -343,10 +356,10 @@ class UnaryOperatorSyntaxTree(SyntaxTree):
             return ConstantSyntaxTree( self.__operate(self.inner.val) )
         
         if self.operator == 'exp' and type(self.inner) is UnaryOperatorSyntaxTree and self.inner.operator == 'log':
-            return self.self.inner.inner
+            return self.inner.inner
         
         if self.operator == 'log' and type(self.inner) is UnaryOperatorSyntaxTree and self.inner.operator == 'exp':
-            return self.self.inner.inner
+            return self.inner.inner
         
         if self.operator == 'sqrt' and type(self.inner) is BinaryOperatorSyntaxTree and \
            self.inner.operator == '^' and type(self.inner.right) is ConstantSyntaxTree and self.inner.right.val == 2:
@@ -355,14 +368,14 @@ class UnaryOperatorSyntaxTree(SyntaxTree):
         return self
     
     def __operate(self, inner:float) -> float:
-        if   self.operator == 'exp' : return math.exp (inner)
-        elif self.operator == 'log' : return math.log (inner)
-        elif self.operator == 'sqrt': return math.sqrt(inner)
+        if   self.operator == 'exp' : return np.exp (inner)
+        elif self.operator == 'log' : return np.log (inner)
+        elif self.operator == 'sqrt': return np.sqrt(inner)
         raise RuntimeError(f"Operation not defined for operator {self.operator}.")
     
     def __operate_inv(self, output:float, output_relopt:Relopt): # -> float, Relopt
-        if self.operator == 'exp' : return math.log(output), output_relopt
-        if self.operator == 'log' : return math.exp(output), output_relopt
+        if self.operator == 'exp' : return np.log(output), output_relopt
+        if self.operator == 'log' : return np.exp(output), output_relopt
         if self.operator == 'sqrt': return output ** 2, output_relopt
         
         raise RuntimeError(f"Inverse operation not defined for operator {self.operator}.")
@@ -406,10 +419,13 @@ class UnaryOperatorSyntaxTree(SyntaxTree):
         raise RuntimeError(f"Sign backprop not defined for operator {self.operator}.")  # TODO: not utilized for now.
 
     def pull_output(self, target_output:float, relopt:Relopt=Relopt('='), child=None): # -> float, Relopt
-        pulled_output, pulled_relopt = super().pull_output(target_output, relopt, child)
-        if child is None or pulled_output is None: return pulled_output, pulled_relopt
-        if id(child) == id(self.inner):  return self.__operate_inv(pulled_output, pulled_relopt)
-        raise RuntimeError('Invalid child.')
+        try:
+            pulled_output, pulled_relopt = super().pull_output(target_output, relopt, child)
+            if child is None or pulled_output is None: return pulled_output, pulled_relopt
+            if id(child) == id(self.inner):  return self.__operate_inv(pulled_output, pulled_relopt)
+            raise RuntimeError('Invalid child.')
+        except Exception:
+            raise PullError()
     
     def get_unknown_stree(self, unknown_stree_label:str):
         return self.inner.get_unknown_stree(unknown_stree_label)
@@ -421,7 +437,7 @@ class UnaryOperatorSyntaxTree(SyntaxTree):
         return self.inner.count_unknown_model(model_label)
     
     def accept(self, visitor):
-        visitor.visitBinaryOperator(self)
+        visitor.visitUnaryOperator(self)
         self.inner.accept(visitor)
 
 
@@ -505,6 +521,7 @@ class UnknownSyntaxTree(SyntaxTree):
 
 
 class SyntaxTreeVisitor:
+    def visitBinaryOperator(self, stree:UnaryOperatorSyntaxTree):  pass
     def visitBinaryOperator(self, stree:BinaryOperatorSyntaxTree): pass
     def visitConstant      (self, stree:ConstantSyntaxTree):       pass
     def visitUnknown       (self, stree:UnknownSyntaxTree):        pass
@@ -514,7 +531,45 @@ class UnknownSyntaxTreeCollector(SyntaxTreeVisitor):
     def __init__(self):
         self.unknown_labels = set()
     
+    def visitUnaryOperator (self, stree:UnaryOperatorSyntaxTree):  pass
     def visitBinaryOperator(self, stree:BinaryOperatorSyntaxTree): pass
     def visitConstant      (self, stree:ConstantSyntaxTree):       pass
     def visitUnknown       (self, stree:UnknownSyntaxTree):
         self.unknown_labels.add(stree.label)
+
+
+class SyntaxTreeGenerator:
+    BIN_OPERATORS = ['+','-','*','/','^']
+    UN_OPERATORS  = ['exp','log','sqrt']
+    OPERATORS     = BIN_OPERATORS + UN_OPERATORS
+
+    def __init__(self):
+        self.unkn_counter = 0
+    
+    def create_random(self, max_depth:int, n:int=1) -> list[SyntaxTree]:
+        assert max_depth >= 0 and n >= 0
+        strees = []
+        for _ in range(n):
+            self.unkn_counter = 0
+            strees.append( self.__create_random(max_depth) )
+        return strees
+
+    def __create_random(self, depth:int):
+        assert self.unkn_counter < len(string.ascii_uppercase)
+        if depth <= 0:
+            stree = UnknownSyntaxTree(string.ascii_uppercase[self.unkn_counter])
+            self.unkn_counter += 1
+            return stree
+        
+        operator = random.choice(SyntaxTreeGenerator.OPERATORS)
+        
+        stree = None
+        if operator in SyntaxTreeGenerator.UN_OPERATORS:
+            stree = UnaryOperatorSyntaxTree(operator, self.__create_random(depth - 1))
+
+        else:
+            stree = BinaryOperatorSyntaxTree(operator,
+                        self.__create_random(depth - 1),
+                        self.__create_random(depth - 1) if operator != '^' else ConstantSyntaxTree(2))
+        
+        return stree.simplify()

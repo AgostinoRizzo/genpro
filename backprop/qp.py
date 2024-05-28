@@ -230,8 +230,8 @@ def qp_solve(constrs:dict[Constraints],
     import warnings
     warnings.filterwarnings("ignore")
 
-    print(f"A = {A}")
-    print(f"b = {b}")
+    #print(f"A = {A}")
+    #print(f"b = {b}")
 
     sol = qpsolvers_solve_ls(R, s, G, h, A, b, W=W, lb=None, ub=None, solver='clarabel', verbose=False)  # returns optimal sol if found, None otherwise.
     print(f"QP solution: {sol}\n")

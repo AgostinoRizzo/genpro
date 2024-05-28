@@ -176,6 +176,8 @@ class Dataset:
     
     @staticmethod
     def __remove_outliers(data:list) -> list:
+        if len(data) == 0: return list()
+        
         Y = [dp.y for dp in data]
         Q1 = np.percentile(Y, 25, method='midpoint')
         Q3 = np.percentile(Y, 75, method='midpoint')

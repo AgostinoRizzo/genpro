@@ -40,10 +40,12 @@ class History:
 def __fit_pulled_dataset(pulled_S:dict, pulled_constrs:dict[dict[qp.Constraints]],
                          unknown_stree:backprop.UnknownSyntaxTree, unkn_name:str,
                          global_stree:backprop.SyntaxTree,
-                         hist:History, phase:str) -> callable:  # returns a fit model if successful, None otherwise.
+                         hist:History, phase:str) -> tuple[callable, callable]:  # returns a fit model (and its first derivative) if successful, None otherwise.
 
     pulled_data = pulled_S[unkn_name].data
-    if len(pulled_data) == 0: return None
+    if len(pulled_data) == 0:
+        print(f"-----> 0 data!!")
+        return None, None
 
     # TODO: use synth model in case no solution is returned.
     #P = np.poly1d( qp.qp_solve(pulled_constrs[unkn_name], FIT_POLYDEG, pulled_data) )
@@ -126,9 +128,14 @@ def jump_backprop(stree_d0:backprop.SyntaxTree, stree_d1:backprop.SyntaxTree, sy
 
                             for dp in S.data:
                                 stree.compute_output(dp.x)
-                                pulled_y, _ = unknown_stree.pull_output(dp.y)
-                                pulled_S[unkn_name].data \
-                                    .append( dataset.DataPoint(dp.x, pulled_y) )
+                                try:
+                                    pulled_y, _ = unknown_stree.pull_output(dp.y)
+                                    if type(pulled_y) is not float and not np.issubdtype(type(pulled_y), np.floating): continue  # TODO: invalid numerical backprop.
+                                    
+                                    pulled_S[unkn_name].data \
+                                        .append( dataset.DataPoint(dp.x, pulled_y) )
+                                except backprop.PullError:
+                                    pass # TODO: just ignore the data point? (now it is like this).
                             
                             pulled_S[unkn_name].remove_outliers()
                             #pulled_S[unkn_name].minmax_scale_y()
@@ -153,9 +160,13 @@ def jump_backprop(stree_d0:backprop.SyntaxTree, stree_d1:backprop.SyntaxTree, sy
                                 if relopt.check(out, dp.y): continue
                                 try:
                                     pulled_th, pulled_relopt = unknown_stree.pull_output(dp.y, relopt)
+                                    if type(pulled_th) is not float and not np.issubdtype(type(pulled_y), np.floating): continue  # TODO: invalid numerical backprop (raise PullViolation?!).
+                                    
                                     pulled_constrs[unkn_name][unkn_model_derivdeg].eq_ineq \
                                         .append( (dataset.DataPoint(dp.x, pulled_th), pulled_relopt) )
-                                    
+                                
+                                except backprop.PullError:
+                                    pass
                                 except backprop.PullViolation:
                                     violated_constrs.append( (dataset.DataPoint(dp.x, dp.y), relopt) )
                             

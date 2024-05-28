@@ -3,8 +3,8 @@
 %
 
 % sign
-sign(G, "+", L, U) :- un_tree_node(F, "log", G).  % independently from sign of F.
-:- un_tree_node(F, "log", G), not sign(G, "+", L, U).
+sign(G, "+", L, U) :- sign(Model, PN, L, U), un_tree_node(F, "log", G).  % independently from sign of F.
+:- sign(Model, PN, L, U), un_tree_node(F, "log", G), not sign(G, "+", L, U).
 
 % root
 % nothing here.

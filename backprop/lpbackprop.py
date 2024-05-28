@@ -9,6 +9,7 @@ import backprop
 import numbs
 import utils
 import qp
+import config
 
 
 ASP_ENCODINGS = ["lpbackprop/backprop.lp", "lpbackprop/add_sub_opt.lp",
@@ -25,32 +26,41 @@ class ASPSpecBuilder(backprop.SyntaxTreeVisitor): # TODO: avoid multiple facts f
         self.node_id = 1
         self.node_id_map = {}
 
+    def visitUnaryOperator(self, stree:backprop.UnaryOperatorSyntaxTree):
+        self.__map_node_id(stree)
+        self.__map_node_id(stree.inner)
+        self.spec += 'un_tree_node(' + \
+            f"\"{self.node_id_map[id(stree)]}\","+ \
+            f"\"{stree.operator}\"," + \
+            f"\"{self.node_id_map[id(stree.inner)]}\").\n"
+    
     def visitBinaryOperator(self, stree:backprop.BinaryOperatorSyntaxTree):
         self.__map_node_id(stree)
         self.__map_node_id(stree.left)
         self.__map_node_id(stree.right)
         self.spec += 'bin_tree_node(' + \
-            f"{self.node_id_map[id(stree)]},"+ \
+            f"\"{self.node_id_map[id(stree)]}\","+ \
             f"\"{stree.operator}\"," + \
-            f"{self.node_id_map[id(stree.left)]}," + \
-            f"{self.node_id_map[id(stree.right)]}).\n"
+            f"\"{self.node_id_map[id(stree.left)]}\"," + \
+            f"\"{self.node_id_map[id(stree.right)]}\").\n"
 
     def visitConstant(self, stree:backprop.ConstantSyntaxTree):
         self.__map_node_id(stree)
         self.spec += 'const_tree_node(' + \
-            f"{self.node_id_map[id(stree)]}).\n" + \
+            f"\"{self.node_id_map[id(stree)]}\").\n" + \
             f"const({stree.val}).\n"
     
     def visitUnknown(self, stree:backprop.UnknownSyntaxTree):
         self.__map_node_id(stree)
         self.spec += 'unkn_tree_node(' + \
-            f"{self.node_id_map[id(stree)]}).\n"
+            f"\"{self.node_id_map[id(stree)]}\").\n"
         self.spec += 'deriv(' + \
-            f"{self.node_id_map[id(stree)]}," + \
-            f"{self.node_id_map[id(stree)][:-1]}'\").\n"  # TODO: implement in clingo using some built-in function for all nodes.
+            f"\"{self.node_id_map[id(stree)]}\"," + \
+            f"\"{self.node_id_map[id(stree)]}'\").\n"  # TODO: implement in clingo using some built-in function for all nodes.
 
-    def map_root(self, stree:backprop.UnknownSyntaxTree, derivdeg:int=0):
-        self.node_id_map[id(stree)] = '"m' + ("'" * derivdeg) + '"'
+    def map_root(self, stree:backprop.SyntaxTree, derivdeg:int=0):
+        if type(stree) is not backprop.UnknownSyntaxTree:
+            self.node_id_map[id(stree)] = 'm' + ("'" * derivdeg)
 
     def __map_node_id(self, node):
         if id(node) in self.node_id_map.keys():
@@ -58,13 +68,13 @@ class ASPSpecBuilder(backprop.SyntaxTreeVisitor): # TODO: avoid multiple facts f
         if type(node) is backprop.ConstantSyntaxTree:
             self.node_id_map[id(node)] = int(node.val)  # TODO: improve int check
         elif type(node) is backprop.UnknownSyntaxTree:
-            self.node_id_map[id(node)] = f"\"{node.label}\""
+            self.node_id_map[id(node)] = f"{node.label}"
         else:
-            self.node_id_map[id(node)] = f"\"m{self.node_id}\""
+            self.node_id_map[id(node)] = f"m{self.node_id}"
             self.node_id += 1
 
 
-def build_knowledge_spec(K:dataset.DataKnowledge):  # -> spec:str, break_points_map:dict, break_points_invmap:dict
+def build_knowledge_spec(K:dataset.DataKnowledge, model_name:str):  # -> spec:str, break_points_map:dict, break_points_invmap:dict
     spec = ''
 
     # map all break points.
@@ -73,14 +83,14 @@ def build_knowledge_spec(K:dataset.DataKnowledge):  # -> spec:str, break_points_
 
     # root spec.
     for derivdeg in K.derivs.keys():
-        model_id = "'" * derivdeg
+        model_id = model_name + ("'" * derivdeg)
         for dp in K.derivs[derivdeg]:
             if dp.y == 0:  # just roots.
-                spec += f"root(\"m{model_id}\",{break_points_map[dp.x]}).\n"
+                spec += f"root(\"{model_id}\",{break_points_map[dp.x]}).\n"
     
     # sign spec.
     for derivdeg in K.sign.keys():
-        model_id = "'" * derivdeg
+        model_id =  model_name + ("'" * derivdeg)
         for (_l,_u,sign,th) in K.sign[derivdeg]:
             if th == 0:  # just pos or neg.
                 # for each sub-interval (contiguously) of (l,u) w.r.t. break_points.
@@ -89,17 +99,17 @@ def build_knowledge_spec(K:dataset.DataKnowledge):  # -> spec:str, break_points_
                 for i in range(len(subpoints) - 1):
                     l = subpoints[i]
                     u = subpoints[i + 1]
-                    spec += f"sign(\"m{model_id}\"," + \
+                    spec += f"sign(\"{model_id}\"," + \
                         f"\"{sign}\"," + \
                         f"{break_points_map[l]}," + \
                         f"{break_points_map[u]}).\n"
     
     # symmetry spec.
     for derivdeg in K.symm.keys():
-        model_id = "'" * derivdeg
+        model_id = model_name + ("'" * derivdeg)
         (x, iseven) = K.symm[derivdeg]
         spec += f"{ 'even' if iseven else 'odd' }_symm(" + \
-            f"\"m{model_id}\"," + \
+            f"\"{model_id}\"," + \
             f"{break_points_map[x]}).\n"
 
     spec += ":- tree_node(N), undef(N, _).\n"  # TODO
@@ -125,7 +135,7 @@ def synthesize_unknown(unkn_label:str, K:dataset.DataKnowledge, break_points:set
 
 def synthesize_unknowns(stree:backprop.SyntaxTree, unknown_labels:list[str], break_points_map:dict, break_points_invmap:dict,  # invmap: from asp to float.
                         asp_model, onsynth_callback:callable):  # passing unknown_labels for efficiency
-    if not asp_model.optimality_proven: return
+    
     print(f"--- ASP Model ---\n{asp_model}\n")
 
     # build knowledge from ASP model.
@@ -184,13 +194,13 @@ def lpbackprop(K:dataset.DataKnowledge, stree:backprop.SyntaxTree, onsynth_callb
     stree_pr.accept(aspSpecBuilder)
     stree_pr2.accept(aspSpecBuilder)
     stree_spec = aspSpecBuilder.spec
-    print(stree_spec)
+    #print(stree_spec)
 
     #
     # build ASP prior knowledge (K) specification.
     #
-    K_spec, break_points_map, break_points_invmap = build_knowledge_spec(K)
-    print(K_spec)
+    K_spec, break_points_map, break_points_invmap = build_knowledge_spec(K, aspSpecBuilder.node_id_map[id(stree)])
+    #print(K_spec)
 
     #
     # invoke ASP solver with stree_spec and K_spec (knowledge backprop).
@@ -219,8 +229,16 @@ def lpbackprop(K:dataset.DataKnowledge, stree:backprop.SyntaxTree, onsynth_callb
     stree.accept(unkn_collector)
     unknown_labels = unkn_collector.unknown_labels
     clingo_ctl.ground([('stree_spec', []), ('K_spec', []), ('show', []), ('base', [])])
-    print(clingo_ctl.solve(on_model= \
-        lambda asp_model: synthesize_unknowns(stree, unknown_labels, break_points_map, break_points_invmap, asp_model, onsynth_callback)))
+
+    nopt_models = 0
+    def on_model(asp_model):
+        nonlocal nopt_models
+        if not asp_model.optimality_proven: return
+        synthesize_unknowns(stree, unknown_labels, break_points_map, break_points_invmap, asp_model, onsynth_callback)
+        nopt_models += 1
+        return nopt_models < config.LPBACKPROP_MAX_NMODELS
+    
+    print(clingo_ctl.solve(on_model=on_model))
 
 
 
