@@ -301,12 +301,15 @@ class Dataset:
         plt.clf()
 
         if plot_data:
-            data_labeld = False
-            for dp in self.data:
-                if data_labeld: plt.plot(dp.x, dp.y, 'bo', markersize=2)
-                else:
-                    plt.plot(dp.x, dp.y, 'bo', markersize=2, label='Training data')
-                    data_labeld = True
+            def plot_data_points(data:list[DataPoint], marker:str, label:str):
+                data_labeld = False
+                for dp in data:
+                    if data_labeld: plt.plot(dp.x, dp.y, marker, markersize=2)
+                    else:
+                        plt.plot(dp.x, dp.y, marker, markersize=2, label=label)
+                        data_labeld = True
+            plot_data_points(self.data, 'bo', 'Training data')
+            plot_data_points(self.test, 'mo', 'Test data')
         
         self.knowledge.plot()
 
