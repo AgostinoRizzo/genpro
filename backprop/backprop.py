@@ -101,14 +101,14 @@ class SyntaxTree:
         self.parent = None
         self.output = None
     def clone(self): return None
-    def compute_output(self, x) -> float: return None
+    def compute_output(self, x:np.array) -> np.array: return None
     def set_parent(self, parent=None): self.parent = parent
     def simplify(self): return self
     def __str__(self) -> str: return ''
     def __eq__(self, other) -> bool: return False
     def diff(self): return None
     def backprop_sign(self, symbmapper:SymbolMapper, lb:float=-numbs.INFTY, ub:float=numbs.INFTY, sign:str='+'): pass
-    def pull_output(self, target_output:float, relopt:Relopt=Relopt('='), child=None): # -> float, Relopt
+    def pull_output(self, target_output:np.array, relopt:Relopt=Relopt('='), child=None) -> tuple[np.array, Relopt]:
         return (target_output, relopt) if self.parent is None else self.parent.pull_output(target_output, relopt, self)
     def get_unknown_stree(self, unknown_stree_label:str): return None
     def set_unknown_model(self, model_label:str, model:callable, coeffs_mask:list[float]=None, constrs:dict=None): pass
@@ -126,7 +126,7 @@ class BinaryOperatorSyntaxTree(SyntaxTree):
     def clone(self):
         return BinaryOperatorSyntaxTree(self.operator, self.left.clone(), self.right.clone())
     
-    def compute_output(self, x) -> float:
+    def compute_output(self, x:np.array) -> np.array:
         self.output  = None
         left_output  = self.left.compute_output(x)
         right_output = self.right.compute_output(x)
@@ -175,7 +175,7 @@ class BinaryOperatorSyntaxTree(SyntaxTree):
         
         return self
     
-    def __operate(self, left:float, right:float) -> float:
+    def __operate(self, left:np.array, right:np.array) -> np.array:
         if   self.operator == '/': return left / right
         elif self.operator == '*': return left * right
         elif self.operator == '+': return left + right
@@ -183,32 +183,38 @@ class BinaryOperatorSyntaxTree(SyntaxTree):
         elif self.operator == '^': return left ** right
         raise RuntimeError(f"Operation not defined for operator {self.operator}.")
     
-    def __operate_inv(self, output:float, output_relopt:Relopt, get_left:bool=True): # -> float, Relopt
+    def __operate_inv(self, output:np.array, output_relopt:Relopt, get_left:bool=True) -> tuple[np.array, Relopt]:
         if   self.operator == '/':
             # get the numerator.
             if get_left:
-                return  output * self.right.output,\
-                       (output_relopt if self.right.output >= 0 else output_relopt.neg())
+                return  output * self.right.output, \
+                       (output_relopt if np.all(self.right.output >= 0) else output_relopt.neg())  # TODO: check np.all
             
             # get the denominator.
-            if output != 0. and output_relopt.opt == '=':
-                return self.left.output / output,  (output_relopt if self.left.output >= 0 else output_relopt.neg())
-            if output != 0. or output_relopt.opt == '=':
+            if output_relopt.opt == '=':
+                return self.left.output / output, \
+                       output_relopt
+            
+            #raise RuntimeError(f"Inverse for {self.left.output}/x{output_relopt.opt}{output} not defined.")
+            return np.full(output.shape, np.nan), \
+                   output_relopt
+
+            """if output != 0. or output_relopt.opt == '=':
                 if output_relopt.opt == '=': raise PullViolation()
                 raise RuntimeError(f"Inverse for {self.left.output}/x{output_relopt.opt}{output} not defined.")
             if self.left.output >= 0.: return 0., output_relopt.strict()
-            return 0., output_relopt.neg().strict()
+            return 0., output_relopt.neg().strict()"""
             #if output == 0.: return numbs.INFTY, Relopt('=')
         
         elif self.operator == '*':
             num = output
             den = self.right.output if get_left else self.left.output
-            if den == 0.: raise PullViolation()
-            return (num / den), (output_relopt if den > 0 else output_relopt.neg())
+            return  num / den, \
+                   (output_relopt if np.all(den > 0) else output_relopt.neg())  # TODO: check np.all
 
-        elif self.operator == '+': return output - self.right.output if get_left else output - self.left.output, output_relopt
-        elif self.operator == '-': return output + self.right.output if get_left else self.left.output - output, output_relopt
-        elif self.operator == '^': return output ** (1/self.right.output) if get_left else np.log(output, self.left.output), output_relopt
+        elif self.operator == '+': return ((output - self.right.output) if get_left else (output - self.left.output)), output_relopt
+        elif self.operator == '-': return ((output + self.right.output) if get_left else (self.left.output - output)), output_relopt
+        elif self.operator == '^': return ((output ** (1/self.right.output)) if get_left else np.log(output, self.left.output)), output_relopt
         
         raise RuntimeError(f"Inverse operation not defined for operator {self.operator}.")
     
@@ -300,15 +306,12 @@ class BinaryOperatorSyntaxTree(SyntaxTree):
 
         raise RuntimeError(f"Backprop not defined for operator {self.operator}.")
 
-    def pull_output(self, target_output:float, relopt:Relopt=Relopt('='), child=None): # -> float, Relopt
-        try:
-            pulled_output, pulled_relopt = super().pull_output(target_output, relopt, child)
-            if child is None or pulled_output is None: return pulled_output, pulled_relopt
-            if id(child) == id(self.left):  return self.__operate_inv(pulled_output, pulled_relopt, get_left=True)
-            if id(child) == id(self.right): return self.__operate_inv(pulled_output, pulled_relopt, get_left=False)
-            raise RuntimeError('Invalid child.')
-        except Exception:
-            raise PullError()
+    def pull_output(self, target_output:np.array, relopt:Relopt=Relopt('='), child=None) -> tuple[np.array, Relopt]:
+        pulled_output, pulled_relopt = super().pull_output(target_output, relopt, child)
+        if child is None or pulled_output is None: return pulled_output, pulled_relopt
+        if id(child) == id(self.left):  return self.__operate_inv(pulled_output, pulled_relopt, get_left=True)
+        if id(child) == id(self.right): return self.__operate_inv(pulled_output, pulled_relopt, get_left=False)
+        raise RuntimeError('Invalid child.')
     
     def get_unknown_stree(self, unknown_stree_label:str):
         stree = self.left.get_unknown_stree(unknown_stree_label)
@@ -338,7 +341,7 @@ class UnaryOperatorSyntaxTree(SyntaxTree):
     def clone(self):
         return UnaryOperatorSyntaxTree(self.operator, self.inner.clone())
     
-    def compute_output(self, x) -> float:
+    def compute_output(self, x:np.array) -> np.array:
         self.output  = None
         inner_output  = self.inner.compute_output(x)
         if inner_output is None: return None
@@ -367,13 +370,13 @@ class UnaryOperatorSyntaxTree(SyntaxTree):
         
         return self
     
-    def __operate(self, inner:float) -> float:
+    def __operate(self, inner:np.array) -> np.array:
         if   self.operator == 'exp' : return np.exp (inner)
         elif self.operator == 'log' : return np.log (inner)
         elif self.operator == 'sqrt': return np.sqrt(inner)
         raise RuntimeError(f"Operation not defined for operator {self.operator}.")
     
-    def __operate_inv(self, output:float, output_relopt:Relopt): # -> float, Relopt
+    def __operate_inv(self, output:np.array, output_relopt:Relopt) -> tuple[np.array, Relopt]:
         if self.operator == 'exp' : return np.log(output), output_relopt
         if self.operator == 'log' : return np.exp(output), output_relopt
         if self.operator == 'sqrt': return output ** 2, output_relopt
@@ -418,14 +421,11 @@ class UnaryOperatorSyntaxTree(SyntaxTree):
     def backprop_sign(self, symbmapper:SymbolMapper, lb:float=-numbs.INFTY, ub:float=numbs.INFTY, sign:str='+'):
         raise RuntimeError(f"Sign backprop not defined for operator {self.operator}.")  # TODO: not utilized for now.
 
-    def pull_output(self, target_output:float, relopt:Relopt=Relopt('='), child=None): # -> float, Relopt
-        try:
-            pulled_output, pulled_relopt = super().pull_output(target_output, relopt, child)
-            if child is None or pulled_output is None: return pulled_output, pulled_relopt
-            if id(child) == id(self.inner):  return self.__operate_inv(pulled_output, pulled_relopt)
-            raise RuntimeError('Invalid child.')
-        except Exception:
-            raise PullError()
+    def pull_output(self, target_output:np.array, relopt:Relopt=Relopt('='), child=None) -> tuple[np.array, Relopt]:
+        pulled_output, pulled_relopt = super().pull_output(target_output, relopt, child)
+        if child is None or pulled_output is None: return pulled_output, pulled_relopt
+        if id(child) == id(self.inner):  return self.__operate_inv(pulled_output, pulled_relopt)
+        raise RuntimeError('Invalid child.')
     
     def get_unknown_stree(self, unknown_stree_label:str):
         return self.inner.get_unknown_stree(unknown_stree_label)
@@ -449,8 +449,8 @@ class ConstantSyntaxTree(SyntaxTree):
     def clone(self):
         return ConstantSyntaxTree(self.val)
     
-    def compute_output(self, x) -> float:
-        self.output = self.val
+    def compute_output(self, x:np.array) -> np.array:
+        self.output = np.full(x.shape, self.val)
         return self.output
     
     def __str__(self) -> str:
@@ -481,7 +481,7 @@ class UnknownSyntaxTree(SyntaxTree):
     def clone(self):
         return UnknownSyntaxTree(self.label)
     
-    def compute_output(self, x) -> float:
+    def compute_output(self, x:np.array) -> np.array:
         self.output = None
         if self.model is None:
             print("None model!!")

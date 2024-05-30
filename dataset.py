@@ -78,15 +78,16 @@ class DataKnowledge:
         n = 0
         ssr = 0
 
-        def compute_model_output(model:callable, x:float, deriv:int=0) -> float:  # TODO: use derivative stree directly.
+        def compute_model_output(model:callable, x:np.array, deriv:int=0) -> np.array:  # TODO: use derivative stree directly.
             if deriv == 0: return model(x)
             return (compute_model_output(model, x+numbs.STEPSIZE, deriv-1) - compute_model_output(model, x, deriv-1)) / numbs.STEPSIZE
         
         # intersection points.
         for derivdeg, dps in self.derivs.items():
             n += len(dps)
-            for dp in dps:
-                ssr += (compute_model_output(model, dp.x, derivdeg) - dp.y) ** 2
+            X = np.array( [dp.x for dp in dps] )
+            Y = np.array( [dp.y for dp in dps] )
+            ssr += np.sum( (compute_model_output(model, X, derivdeg) - Y) ** 2 )
         
         # positivity constraints.
         for derivdeg, constrs in self.sign.items():
@@ -96,18 +97,16 @@ class DataKnowledge:
                 if l > u: continue
                 X = np.linspace(l, u, 1 if l == u else 20)  # TODO: factorize sample size.
                 n += X.size
-                for x in X:
-                    model_y = compute_model_output(model, x, derivdeg)
-                    ssr += ( min(0, model_y - th) if sign == '+' else max(0, model_y - th) ) ** 2
+                model_Y = compute_model_output(model, X, derivdeg)
+                ssr += np.sum( ( np.minimum(0, model_Y - th) if sign == '+' else np.maximum(0, model_Y - th) ) ** 2 )
         
         # symmetry constraints.
         for derivdeg, (x0, iseven) in self.symm.items():
             X = np.linspace(x0 + numbs.EPSILON, numbs.INFTY, 20)  # TODO: factorize sample size.
             n += X.size
-            for x in X:
-                model_y1 = compute_model_output(model, x, derivdeg)
-                model_y2 = compute_model_output(model, x0-(x-x0), derivdeg)
-                ssr += ( (model_y1 - model_y2) if iseven else (model_y1 + model_y2) ) ** 2
+            model_Y1 = compute_model_output(model, X, derivdeg)
+            model_Y2 = compute_model_output(model, x0-(X-x0), derivdeg)
+            ssr += np.sum( ( (model_Y1 - model_Y2) if iseven else (model_Y1 + model_Y2) ) ** 2 )
         
         mse = ssr / n
         return {'mse': mse, 'rmse': math.sqrt(mse)}
@@ -328,6 +327,104 @@ class Dataset:
 
     def get_ylabal(self) -> str:
         return ''
+
+
+class NumpyDataset:
+    def __init__(self, S:Dataset=None, test:bool=False):
+        if S is None:
+            self.X = np.empty(0)
+            self.Y = np.empty(0)
+            self.xl = -1.; self.xu = 1.
+            self.yl =  0.; self.yu = 1.
+            self.knowledge = None
+        else:
+            XY = S.test if test else S.data
+            self.X = np.array( [dp.x for dp in XY] )
+            self.Y = np.array( [dp.y for dp in XY] )
+            self.xl = S.xl; self.xu = S.xu
+            self.yl = S.yl; self.yu = S.yu
+            self.knowledge = S.knowledge
+        self.sst = None
+        self.on_Y_changed()
+    
+    def get_size(self) -> int:
+        return self.X.size
+    
+    def is_empty(self) -> bool:
+        return self.X.size == 0
+    
+    def X_from(self, X):
+        if self.X.size == X.size: self.X[:] = X
+        else: self.X = np.copy(X)
+    
+    def Y_from(self, Y):
+        if self.Y.size == Y: self.Y[:] = Y
+        else: self.Y = np.copy(Y)
+        self.on_Y_changed()
+    
+    def clear(self):  # remove nan and inf values from X and Y.
+        # true are kept.
+        clear_mask =   np.isfinite(self.X)  &   np.isfinite(self.Y) & \
+                     (~np.isnan   (self.X)) & (~np.isnan   (self.Y))
+        self.X = self.X[clear_mask]
+        self.Y = self.Y[clear_mask]
+        self.on_Y_changed()
+    
+    def synchronize_X_limits(self):
+        if self.X.size > 0:
+            self.xl = self.X.min()
+            self.xu = self.X.max()
+    
+    def synchronize_Y_limits(self):
+        if self.Y.size > 0:
+            self.yl = self.Y.min()
+            self.yu = self.Y.max()
+    
+    def remove_outliers(self):
+        if self.is_empty(): return
+
+        Q1 = np.percentile(self.Y, 25, method='midpoint')
+        Q3 = np.percentile(self.Y, 75, method='midpoint')
+        IQR = Q3 - Q1
+        upper = Q3+70.5*IQR  # TODO: fix coeffs.
+        lower = Q1-70.5*IQR
+        
+        mask = (self.Y >= lower) & (self.Y <= upper)  # true are kept.
+        self.X = self.X[mask]
+        self.Y = self.Y[mask]
+
+        self.on_Y_changed()
+    
+    def compute_yvar(self, x0:float, dx_ratio:float=0.05) -> float:
+        h = (self.xu - self.xl) * dx_ratio * 0.5
+        l = x0 - h
+        u = x0 + h
+        Y = self.Y[ (self.X > l) & (self.X < u) ]
+        if Y.size <= 1: return numbs.EPSILON  # TODO: manage this situation (otherwise in qp.qp_solve we have a division by zero).
+        return np.var(Y)
+    
+    def on_Y_changed(self):
+        # update sst.
+        if self.is_empty():
+            self.sst = 0.
+            return
+        y_mean = self.Y.mean()
+        self.sst = np.sum( (self.Y - y_mean) ** 2 )
+    
+    def evaluate(self, model:callable) -> Evaluation:
+        n     = self.get_size()
+        ssr   = np.sum( (model(self.X) - self.Y) ** 2 )
+        mse   = 0. if n == 0 else ssr / n
+        r2    = 1 - (ssr / self.sst) if self.sst > 0. else 1.
+        return {'mse': mse, 'rmse': math.sqrt(mse), 'r2': r2}
+    
+    def plot(self, width:int=10, height:int=8, plotref:bool=True):
+        plt.figure(2, figsize=[width,height])
+        plt.clf()
+        plt.plot(self.X, self.Y, 'bo', markersize=2)
+        plt.xlim(self.xl, self.xu)
+        plt.ylim(self.yl, self.yu)
+        plt.grid()
 
 
 class MockDataset(Dataset):   

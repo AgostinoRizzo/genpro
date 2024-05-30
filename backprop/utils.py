@@ -115,23 +115,21 @@ def coeffs_softmax(c:np.array) -> np.array:
     return np.exp(c_norm) / np.sum(np.exp(c_norm))
 
 
-def compute_data_weight(data:list[dataset.DataPoint],
+def compute_data_weight(data:dataset.NumpyDataset,
                         local_stree:backprop.UnknownSyntaxTree,
                         global_stree:backprop.SyntaxTree) -> np.array:
-    data_W = np.empty(len(data))
-    for i, dp in enumerate(data):
-        local_model = local_stree.model
-        
-        local_stree.model = lambda x: dp.y
-        dy = global_stree.compute_output(dp.x)
+    
+    local_model = local_stree.model
+    
+    local_stree.model = lambda X: data.Y
+    DY = global_stree.compute_output(data.X)
 
-        local_stree.model = lambda x: dp.y + numbs.STEPSIZE
-        dy = abs(global_stree.compute_output(dp.x) - dy)
+    local_stree.model = lambda X: data.Y + numbs.STEPSIZE
+    DY = np.absolute(global_stree.compute_output(data.X) - DY)
 
-        data_W[i] = dy
-        local_stree.model = local_model
+    local_stree.model = local_model
 
-    return data_W
+    return DY
 
 
 def scale_data_weight(data_W:np.array, u:float=1., l:float=0.) -> np.array:

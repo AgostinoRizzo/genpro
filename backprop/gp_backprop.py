@@ -14,7 +14,7 @@ def random_population(popsize:int, max_depth:int) -> list[backprop.SyntaxTree]:
 
 
 # trees in population are changed (unknown models are set).
-def evaluate(population:list[backprop.SyntaxTree], S:dataset.Dataset) \
+def evaluate(population:list[backprop.SyntaxTree], S_train:dataset.NumpyDataset, S_test:dataset.NumpyDataset) \
     -> backprop.SyntaxTree:  # best (global) individual.
 
     best_global_stree = None
@@ -33,13 +33,13 @@ def evaluate(population:list[backprop.SyntaxTree], S:dataset.Dataset) \
             nonlocal best_local_eval
             
             hist, __best_local_unkn_models, __best_local_eval = \
-                jump_backprop.jump_backprop(stree, stree_pr, synth_unkn_models, S, max_rounds=1)
+                jump_backprop.jump_backprop(stree, stree_pr, synth_unkn_models, S_train, S_test, max_rounds=1)
 
             if best_local_eval is None or __best_local_eval.better_than(best_local_eval):
                 best_local_unkn_models = __best_local_unkn_models
                 best_local_eval = __best_local_eval
 
-        lpbackprop.lpbackprop(S.knowledge, stree, onsynth_callback)
+        lpbackprop.lpbackprop(S_train.knowledge, stree, onsynth_callback)
         
         if best_local_eval is not None:
             # set best unknown models of this tree.

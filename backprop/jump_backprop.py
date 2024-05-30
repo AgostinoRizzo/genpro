@@ -37,13 +37,12 @@ class History:
             HistoryEntry(f"Pull from {unkn_stree}", unkn_stree.label, pulled_S, pulled_constrs, violated_constrs, unkn_stree.model))
 
 
-def __fit_pulled_dataset(pulled_S:dict, pulled_constrs:dict[dict[qp.Constraints]],
+def __fit_pulled_dataset(pulled_S:dataset.NumpyDataset, pulled_constrs:dict[dict[qp.Constraints]],
                          unknown_stree:backprop.UnknownSyntaxTree, unkn_name:str,
                          global_stree:backprop.SyntaxTree,
                          hist:History, phase:str) -> tuple[callable, callable]:  # returns a fit model (and its first derivative) if successful, None otherwise.
 
-    pulled_data = pulled_S[unkn_name].data
-    if len(pulled_data) == 0:
+    if pulled_S.is_empty():
         print(f"-----> 0 data!!")
         return None, None
 
@@ -51,12 +50,12 @@ def __fit_pulled_dataset(pulled_S:dict, pulled_constrs:dict[dict[qp.Constraints]
     #P = np.poly1d( qp.qp_solve(pulled_constrs[unkn_name], FIT_POLYDEG, pulled_data) )
     assert type(unknown_stree.model) is np.poly1d
 
-    data_W = utils.compute_data_weight(pulled_data, unknown_stree, global_stree)
+    data_W = utils.compute_data_weight(pulled_S, unknown_stree, global_stree)
 
     weak_constrs = None if phase == 'data_fit' else pulled_constrs[unkn_name]
     P = np.poly1d( qp.qp_solve(unknown_stree.constrs,
                                unknown_stree.model.c.size - 1,
-                               pulled_S[unkn_name], data_W,
+                               pulled_S, data_W,
                                unknown_stree.coeffs_mask,
                                weak_constrs=weak_constrs) )
     P, _ = utils.simplify_poly(P, unknown_stree.constrs)
@@ -66,7 +65,7 @@ def __fit_pulled_dataset(pulled_S:dict, pulled_constrs:dict[dict[qp.Constraints]
 
 # synth_unkn_models:dict of unknown model name to (unknown model:callable, constrs:dict).
 def jump_backprop(stree_d0:backprop.SyntaxTree, stree_d1:backprop.SyntaxTree, synth_unkn_models:dict,
-                  S:dataset.Dataset, max_rounds:int=1):
+                  S_train:dataset.NumpyDataset, S_test:dataset.NumpyDataset, max_rounds:int=1):
 
     hist = History()
     stree_d0.set_parent()
@@ -121,30 +120,26 @@ def jump_backprop(stree_d0:backprop.SyntaxTree, stree_d1:backprop.SyntaxTree, sy
                         #
                         if derivdeg == 0:
                             yl = 0; yu = 0
-                            pulled_S[unkn_name] = dataset.Dataset()
-                            pulled_S[unkn_name].xl = S.xl
-                            pulled_S[unkn_name].xu = S.xu
+                            pulled_S[unkn_name] = dataset.NumpyDataset()
+                            pulled_S[unkn_name].xl = S_train.xl
+                            pulled_S[unkn_name].xu = S_train.xu
 
-                            for dp in S.data:
-                                stree.compute_output(dp.x)
-                                try:
-                                    pulled_y, _ = unknown_stree.pull_output(dp.y)
-                                    if type(pulled_y) is not float and not np.issubdtype(type(pulled_y), np.floating): continue  # TODO: invalid numerical backprop.
-                                    
-                                    pulled_S[unkn_name].data \
-                                        .append( dataset.DataPoint(dp.x, pulled_y) )
-                                except backprop.PullError:
-                                    pass # TODO: just ignore the data point? (now it is like this).
+                            stree.compute_output(S_train.X)
+                            #try:
+                            pulled_Y, _ = unknown_stree.pull_output(S_train.Y)
+                            #if type(pulled_y) is not float and not np.issubdtype(type(pulled_y), np.floating): continue  # TODO: invalid numerical backprop (use np masked array).
                             
+                            pulled_S[unkn_name].X_from(S_train.X)
+                            pulled_S[unkn_name].Y = pulled_Y
+                            pulled_S[unkn_name].on_Y_changed()
+
+                            #except backprop.PullError:
+                            #    pass # TODO: just ignore the data point? (now it is like this).
+                            
+                            pulled_S[unkn_name].clear()  # remove nan and inf values from X and Y.
                             pulled_S[unkn_name].remove_outliers()
                             #pulled_S[unkn_name].minmax_scale_y()
-                            for dp in pulled_S[unkn_name].data:
-                                yl = min(yl, dp.y)
-                                yu = max(yu, dp.y)
-                            pulled_S[unkn_name].yl = yl
-                            pulled_S[unkn_name].yu = yu
-
-                            pulled_S[unkn_name].share_index(S)  # TODO: check if it is necessary here.
+                            pulled_S[unkn_name].synchronize_Y_limits()
 
                         #
                         # pull constraints from 'unknown_stree' 
@@ -152,14 +147,15 @@ def jump_backprop(stree_d0:backprop.SyntaxTree, stree_d1:backprop.SyntaxTree, sy
                         if unkn_model_derivdeg not in pulled_constrs[unkn_name]:
                             pulled_constrs[unkn_name][unkn_model_derivdeg] = qp.Constraints()
                         if phase == 'data_knowledge_fit':
-                            constrs = qp.get_constraints(S.knowledge, dict(), derivdeg, SAMPLE_SIZE)
+                            constrs = qp.get_constraints(S_train.knowledge, dict(), derivdeg, SAMPLE_SIZE)
                             # TODO: what about symm constraints?! (use those from ASP?)
                             for (dp, relopt) in constrs.eq_ineq:
-                                out = stree.compute_output(dp.x)
+                                out = stree.compute_output(np.array([dp.x]))
                                 if relopt.check(out, dp.y): continue
                                 try:
-                                    pulled_th, pulled_relopt = unknown_stree.pull_output(dp.y, relopt)
-                                    if type(pulled_th) is not float and not np.issubdtype(type(pulled_y), np.floating): continue  # TODO: invalid numerical backprop (raise PullViolation?!).
+                                    pulled_th, pulled_relopt = unknown_stree.pull_output(np.array([dp.y]), relopt)
+                                    pulled_th = pulled_th[0]
+                                    if type(pulled_th) is not float and not np.issubdtype(type(pulled_th), np.floating): continue  # TODO: invalid numerical backprop (raise PullViolation?!).
                                     
                                     pulled_constrs[unkn_name][unkn_model_derivdeg].eq_ineq \
                                         .append( (dataset.DataPoint(dp.x, pulled_th), pulled_relopt) )
@@ -180,7 +176,7 @@ def jump_backprop(stree_d0:backprop.SyntaxTree, stree_d1:backprop.SyntaxTree, sy
                 fit_model = None
                 fit_model_d1 = None
                 if len(violated_constrs) == 0:
-                    fit_model, fit_model_d1 = __fit_pulled_dataset(pulled_S, pulled_constrs, unknown_stree, unkn_name, stree, hist, phase)
+                    fit_model, fit_model_d1 = __fit_pulled_dataset(pulled_S[unkn_name], pulled_constrs, unknown_stree, unkn_name, stree, hist, phase)
                 else:
                     hist.log_pull(unknown_stree, pulled_S[unkn_name], pulled_constrs[unkn_name], violated_constrs)
                 
@@ -202,7 +198,9 @@ def jump_backprop(stree_d0:backprop.SyntaxTree, stree_d1:backprop.SyntaxTree, sy
             # compute model fitting.
             # r2 over data points is ok now since 'data_fit' is the only activated phase.
             #
-            model_eval = S.evaluate(stree_d0.compute_output)
+            model_eval = dataset.Evaluation( S_train.evaluate(stree_d0.compute_output),
+                                             S_test.evaluate(stree_d0.compute_output),
+                                             S_train.knowledge.evaluate(stree_d0.compute_output) )
             if best_eval is None or model_eval.better_than(best_eval):
                 for unkn_label in synth_unkn_models.keys():
                     unkn_stree = stree_d0.get_unknown_stree(unkn_label)

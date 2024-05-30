@@ -136,7 +136,7 @@ def synthesize_unknown(unkn_label:str, K:dataset.DataKnowledge, break_points:set
 def synthesize_unknowns(stree:backprop.SyntaxTree, unknown_labels:list[str], break_points_map:dict, break_points_invmap:dict,  # invmap: from asp to float.
                         asp_model, onsynth_callback:callable):  # passing unknown_labels for efficiency
     
-    print(f"--- ASP Model ---\n{asp_model}\n")
+    print(f"\n--- ASP Model ---\n{asp_model}\n")
 
     # build knowledge from ASP model.
     unkn_knowledge_map = {}
