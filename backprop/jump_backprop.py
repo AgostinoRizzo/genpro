@@ -2,7 +2,8 @@ import sys
 import random
 import numpy as np
 from scipy.special import softmax
-from qpsolvers import solve_ls 
+from qpsolvers import solve_ls
+import logging
 sys.path.append('..')
 
 import dataset
@@ -43,7 +44,7 @@ def __fit_pulled_dataset(pulled_S:dataset.NumpyDataset, pulled_constrs:dict[dict
                          hist:History, phase:str) -> tuple[callable, callable]:  # returns a fit model (and its first derivative) if successful, None otherwise.
 
     if pulled_S.is_empty():
-        print(f"-----> 0 data!!")
+        logging.debug(f"-----> 0 data!!")
         return None, None
 
     # TODO: use synth model in case no solution is returned.
@@ -109,11 +110,11 @@ def jump_backprop(stree_d0:backprop.SyntaxTree, stree_d1:backprop.SyntaxTree, sy
 
                         unkn_name_d = unkn_name + ("'" * unkn_model_derivdeg)
                         if stree.count_unknown_model(unkn_name_d) != 1:
-                            print(f"Cannot pull from {unkn_name_d} for derivative {str(derivdeg)}: no unique occurence")
+                            logging.debug(f"Cannot pull from {unkn_name_d} for derivative {str(derivdeg)}: no unique occurence")
                             continue
 
                         unknown_stree = stree.get_unknown_stree(unkn_name_d)
-                        print(f"Pulling from {unkn_name_d} w.r.t. derivative {str(derivdeg)} (phase = {phase})")
+                        logging.debug(f"Pulling from {unkn_name_d} w.r.t. derivative {str(derivdeg)} (phase = {phase})")
 
                         #
                         # pull dataset from 'unknown_stree' 

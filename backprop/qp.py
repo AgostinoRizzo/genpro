@@ -4,6 +4,7 @@ sys.path.append('..')
 import numpy as np
 import sympy
 from qpsolvers import solve_ls as qpsolvers_solve_ls
+import logging
 import dataset
 import backprop
 import lpbackprop
@@ -61,8 +62,8 @@ def get_constraints(K:dataset.DataKnowledge, break_points:set, derivdeg:int=0, s
 # derivdeg: constraints about the derivdeg-th derivative
 def get_qp_constraints(constrs:Constraints, polydeg:int, derivdeg:int, lb:np.array, ub:np.array):
     if not (polydeg >= derivdeg):
-        print(f"polydeg = {polydeg}")
-        print(f"derivdeg = {derivdeg}")
+        logging.debug(f"polydeg = {polydeg}")
+        logging.debug(f"derivdeg = {derivdeg}")
     #assert polydeg >= derivdeg TODO: maybe it is not necessary to assert this.
     G = []; h = []
     A = []; b = []

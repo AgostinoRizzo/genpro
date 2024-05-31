@@ -148,3 +148,7 @@ odd_symm_unkn(N, Input) :- odd_symm(N, Input), unkn_tree_node(N).
 
 % #show sign_changes/2.
 % #show even_symm/2.
+
+#defined const/1.
+#defined un_tree_node/3.
+#defined bin_tree_node/4.

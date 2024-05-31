@@ -114,6 +114,7 @@ class SyntaxTree:
     def set_unknown_model(self, model_label:str, model:callable, coeffs_mask:list[float]=None, constrs:dict=None): pass
     def count_unknown_model(self, model_label:str) -> int: return 0
     def accept(self, visitor): pass
+    def to_sympy(self, dps:int=None): pass
 
 
 class BinaryOperatorSyntaxTree(SyntaxTree):
@@ -330,6 +331,17 @@ class BinaryOperatorSyntaxTree(SyntaxTree):
         visitor.visitBinaryOperator(self)
         self.left.accept(visitor)
         self.right.accept(visitor)
+    
+    def to_sympy(self, dps:int=None):
+        left_sympy  = self.left.to_sympy(dps)
+        right_sympy = self.right.to_sympy(dps)
+        if self.operator == '+': return left_sympy +  right_sympy
+        if self.operator == '-': return left_sympy -  right_sympy
+        if self.operator == '*': return left_sympy *  right_sympy
+        if self.operator == '/': return left_sympy /  right_sympy
+        if self.operator == '^': return left_sympy ** right_sympy
+        raise RuntimeError(f"Conversion to sympy not defined for operator {self.operator}.")
+
 
 
 class UnaryOperatorSyntaxTree(SyntaxTree):
@@ -371,9 +383,9 @@ class UnaryOperatorSyntaxTree(SyntaxTree):
         return self
     
     def __operate(self, inner:np.array) -> np.array:
-        if   self.operator == 'exp' : return np.exp (inner)
-        elif self.operator == 'log' : return np.log (inner)
-        elif self.operator == 'sqrt': return np.sqrt(inner)
+        if self.operator == 'exp' : return np.exp (inner)
+        if self.operator == 'log' : return np.log (inner)
+        if self.operator == 'sqrt': return np.sqrt(inner)
         raise RuntimeError(f"Operation not defined for operator {self.operator}.")
     
     def __operate_inv(self, output:np.array, output_relopt:Relopt) -> tuple[np.array, Relopt]:
@@ -439,6 +451,12 @@ class UnaryOperatorSyntaxTree(SyntaxTree):
     def accept(self, visitor):
         visitor.visitUnaryOperator(self)
         self.inner.accept(visitor)
+    
+    def to_sympy(self, dps:int=None):
+        if   self.operator == 'exp' : return sympy.exp (self.inner)
+        elif self.operator == 'log' : return sympy.log (self.inner)
+        elif self.operator == 'sqrt': return sympy.sqrt(self.inner)
+        raise RuntimeError(f"Conversion to sympy not defined for operator {self.operator}.")
 
 
 class ConstantSyntaxTree(SyntaxTree):
@@ -468,6 +486,9 @@ class ConstantSyntaxTree(SyntaxTree):
     
     def accept(self, visitor):
         visitor.visitConstant(self)
+    
+    def to_sympy(self, dps:int=None):
+        return sympy.Float(self.val, dps=dps)
         
 
 class UnknownSyntaxTree(SyntaxTree):
@@ -518,6 +539,20 @@ class UnknownSyntaxTree(SyntaxTree):
     
     def accept(self, visitor):
         visitor.visitUnknown(self)
+    
+    def to_sympy(self, dps:int=None):
+        x = sympy.Symbol('x')
+        if self.model is None or type(self.model) is not np.poly1d:
+            print(f"-----> Model of {self.label} is {self.model} of type {type(self.model)}")
+            return sympy.Function(self.label)(x)
+        if self.model.c.size == 0: return sympy.Integer(0)
+        P = sympy.Float(self.model.c[0], dps=dps) * (x**(self.model.c.size-1))
+        i = 1
+        for power in range(self.model.c.size-2, -1, -1):
+            P += sympy.Float(self.model.c[i], dps=dps) * (x**power)
+            i += 1
+        return P
+        #return sympy.polys.polytools.Poly(self.model.c, Symbol('x'), domain='R')
 
 
 class SyntaxTreeVisitor:

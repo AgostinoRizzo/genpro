@@ -3,6 +3,7 @@ sys.path.append('..')
 
 import clingo
 import numpy as np
+import logging
 
 import dataset
 import backprop
@@ -136,7 +137,7 @@ def synthesize_unknown(unkn_label:str, K:dataset.DataKnowledge, break_points:set
 def synthesize_unknowns(stree:backprop.SyntaxTree, unknown_labels:list[str], break_points_map:dict, break_points_invmap:dict,  # invmap: from asp to float.
                         asp_model, onsynth_callback:callable):  # passing unknown_labels for efficiency
     
-    print(f"\n--- ASP Model ---\n{asp_model}\n")
+    logging.debug(f"\n--- ASP Model ---\n{asp_model}\n")
 
     # build knowledge from ASP model.
     unkn_knowledge_map = {}
@@ -171,15 +172,18 @@ def synthesize_unknowns(stree:backprop.SyntaxTree, unknown_labels:list[str], bre
         elif atom.name == 'undef_unkn':
             raise RuntimeError('undef_unkn not implemented.')  # TODO
 
-    # synthetize each unknown model.
+    # synthesize each unknown model.
+    logging.debug('Synthesizing each unknown model...')
     synth_unkn_models = {}
     for unkn in unknown_labels:
         synth_unkn_models[unkn] = synthesize_unknown(unkn, unkn_knowledge_map[unkn], set(break_points_map.keys()))
+    logging.debug('End unknown model synthesizing')
         
     onsynth_callback(synth_unkn_models)    
 
 
-def lpbackprop(K:dataset.DataKnowledge, stree:backprop.SyntaxTree, onsynth_callback:callable):
+# returns True when the problem is satisfiable.
+def lpbackprop(K:dataset.DataKnowledge, stree:backprop.SyntaxTree, onsynth_callback:callable) -> bool:
     #
     # build ASP specification of stree and stree' (facts).
     #
@@ -194,13 +198,13 @@ def lpbackprop(K:dataset.DataKnowledge, stree:backprop.SyntaxTree, onsynth_callb
     stree_pr.accept(aspSpecBuilder)
     stree_pr2.accept(aspSpecBuilder)
     stree_spec = aspSpecBuilder.spec
-    #print(stree_spec)
+    #logging.debug(stree_spec)
 
     #
     # build ASP prior knowledge (K) specification.
     #
     K_spec, break_points_map, break_points_invmap = build_knowledge_spec(K, aspSpecBuilder.node_id_map[id(stree)])
-    #print(K_spec)
+    #logging.debug(K_spec)
 
     #
     # invoke ASP solver with stree_spec and K_spec (knowledge backprop).
@@ -228,6 +232,7 @@ def lpbackprop(K:dataset.DataKnowledge, stree:backprop.SyntaxTree, onsynth_callb
     unkn_collector = backprop.UnknownSyntaxTreeCollector()
     stree.accept(unkn_collector)
     unknown_labels = unkn_collector.unknown_labels
+    logging.debug('Clingo grounding...')
     clingo_ctl.ground([('stree_spec', []), ('K_spec', []), ('show', []), ('base', [])])
 
     nopt_models = 0
@@ -238,7 +243,10 @@ def lpbackprop(K:dataset.DataKnowledge, stree:backprop.SyntaxTree, onsynth_callb
         nopt_models += 1
         return nopt_models < config.LPBACKPROP_MAX_NMODELS
     
-    print(clingo_ctl.solve(on_model=on_model))
+    logging.debug('Clingo solving...')
+    solve_result = clingo_ctl.solve(on_model=on_model)
+    logging.debug(solve_result)
+    return solve_result.satisfiable
 
 
 

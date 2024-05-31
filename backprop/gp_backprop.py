@@ -19,9 +19,9 @@ def evaluate(population:list[backprop.SyntaxTree], S_train:dataset.NumpyDataset,
 
     best_global_stree = None
     best_global_eval = None
+    satisfiable = False
 
     for stree in population:  # trees in population are already simplified.
-        print(stree)
         stree_pr  = stree.diff().simplify()
         stree_pr2 = stree_pr.diff().simplify()
 
@@ -39,7 +39,8 @@ def evaluate(population:list[backprop.SyntaxTree], S_train:dataset.NumpyDataset,
                 best_local_unkn_models = __best_local_unkn_models
                 best_local_eval = __best_local_eval
 
-        lpbackprop.lpbackprop(S_train.knowledge, stree, onsynth_callback)
+        if lpbackprop.lpbackprop(S_train.knowledge, stree, onsynth_callback):
+            satisfiable = True
         
         if best_local_eval is not None:
             # set best unknown models of this tree.
@@ -52,6 +53,6 @@ def evaluate(population:list[backprop.SyntaxTree], S_train:dataset.NumpyDataset,
                 best_global_stree = stree
                 best_global_eval = best_local_eval
     
-    return best_global_stree, best_global_eval
+    return best_global_stree, best_global_eval, satisfiable
             
 

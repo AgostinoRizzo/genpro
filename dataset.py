@@ -295,7 +295,12 @@ class Dataset:
             self.knowledge.evaluate(model)
         )
     
-    def plot(self, plot_data: bool=True, width:int=10, height:int=8, plotref:bool=True):
+    def plot(self, plot_data:bool=True, plot_knowldege:bool=False,
+             width:int=10, height:int=8,
+             plotref:bool=True, model:callable=None,
+             zoomout:float=1.,
+             savename:str=None):
+        
         plt.figure(2, figsize=[width,height])
         plt.clf()
 
@@ -310,23 +315,44 @@ class Dataset:
             plot_data_points(self.data, 'bo', 'Training data')
             plot_data_points(self.test, 'mo', 'Test data')
         
-        self.knowledge.plot()
+        if plot_knowldege:
+            self.knowledge.plot()
+
+        xstep_zoomout = (self.xu - self.xl) * (zoomout - 1) * .5
+        ystep_zoomout = (self.yu - self.yl) * (zoomout - 1) * .5
+        xl = self.xl - xstep_zoomout
+        xu = self.xu + xstep_zoomout
+        yl = self.yl - ystep_zoomout
+        yu = self.yu + ystep_zoomout
+        sample_size = int(500 * zoomout)
 
         if plotref:
-            x = np.linspace(self.xl, self.xu, 100)
+            x = np.linspace(xl, xu, sample_size)
             plt.plot(x, self.func(x), linestyle='dashed', linewidth=2, color='black', label='Reference model')
-        plt.xlim(self.xl, self.xu)
-        plt.ylim(self.yl, self.yu)
+        
+        if model is not None:
+            x = np.linspace(xl, xu, sample_size)
+            plt.plot(x, model(x), linewidth=2, color='green', label='Model')
+        
+        plt.xlim(xl, xu)
+        plt.ylim(yl, yu)
         plt.grid()
         plt.legend(loc='upper right', fontsize=14)
         plt.xlabel(self.get_xlabel())
         plt.ylabel(self.get_ylabal())
+
+        if savename is not None:
+            plt.savefig(savename, bbox_inches='tight')
+    
+    def get_name(self) -> str:
+        return ''
     
     def get_xlabel(self) -> str:
         return ''
 
     def get_ylabal(self) -> str:
         return ''
+    
 
 
 class NumpyDataset:
@@ -437,6 +463,9 @@ class MockDataset(Dataset):
      
     def func(self, x: float) -> float:
         return (x**3 -2*x + 1) / (x*3 + x -1) #np.sin(x) + 1  #x / (x**2)#(x+2) / (x**2 + x + 1)
+    
+    def get_name(self) -> str:
+        return 'Mock'
 
 
 class PolyDataset(Dataset):   
@@ -454,6 +483,10 @@ class PolyDataset(Dataset):
     def func(self, x: float) -> float:
         return x **2
         #return 0.2*x**4 -1*x**2 + 1.3
+    
+    def get_name(self) -> str:
+        return 'Poly'
+
 
 class TrigonDataset(Dataset):   
     def __init__(self) -> None:
@@ -476,6 +509,9 @@ class TrigonDataset(Dataset):
      
     def func(self, x: float) -> float:
         return np.sin(x)
+    
+    def get_name(self) -> str:
+        return 'Trigon'
 
 
 class MagmanDataset(Dataset):
@@ -529,6 +565,9 @@ class MagmanDataset(Dataset):
             self.data.append(DataPoint(float(entry[0]), float(entry[1])))
         csvfile.close()
         self._on_data_changed()
+    
+    def get_name(self) -> str:
+        return 'Magman'
 
 
 class MagmanDatasetScaled(Dataset):
@@ -625,6 +664,9 @@ class MagmanDatasetScaled(Dataset):
     def __ymap(self, y:float) -> float:
         return self.yl + (((y - self.__yl) / (self.__yu - self.__yl)) * (self.yu - self.yl)) 
     
+    def get_name(self) -> str:
+        return 'Magman'
+    
     def get_xlabel(self) -> str:
         return 'distance [m] (x)'
 
@@ -693,6 +735,9 @@ class HEADataset(Dataset):
 
     def __func(self, x: float) -> float:
         return math.e**(-x) * x**3 * math.cos(x) * math.sin(x) * (math.cos(x) * math.sin(x)**2 - 1)
+    
+    def get_name(self) -> str:
+        return 'HEA'
 
 
 class ABSDataset(Dataset):
@@ -737,6 +782,9 @@ class ABSDataset(Dataset):
         d = 0.4
         e = 0.52
         return m * g * d * np.sin(c * np.arctan(b * (1 - e) * x + e * np.arctan(b * x)))
+    
+    def get_name(self) -> str:
+        return 'ABS'
 
 
 class OneOverXDataset(Dataset):
@@ -765,6 +813,9 @@ class OneOverXDataset(Dataset):
     
     def func(self, x: float) -> float:
         return 1 / x
+    
+    def get_name(self) -> str:
+        return '1/x'
 
 
 class ABSDatasetScaled(Dataset):
@@ -812,4 +863,7 @@ class ABSDatasetScaled(Dataset):
         return self.__ymap(y)
 
     def __ymap(self, y:float) -> float:  # TODO: put in super class.
-        return self.yl + (((y - self.__yl) / (self.__yu - self.__yl)) * (self.yu - self.yl)) 
+        return self.yl + (((y - self.__yl) / (self.__yu - self.__yl)) * (self.yu - self.yl))
+    
+    def get_name(self) -> str:
+        return 'ABS'
