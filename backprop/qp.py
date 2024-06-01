@@ -185,9 +185,10 @@ def qp_solve(constrs:dict[Constraints],
         if weak_constrs is not None:
             for derivdeg in weak_constrs.keys():
                 __G, __h, __A, __b = get_qp_constraints(weak_constrs[derivdeg], polydeg, derivdeg, lb, ub)
-                R = np.append(R, __A, axis=0)
-                s = np.append(s, __b, axis=0)
-                n_weak_constrs += len(__A)
+                if len(__A) > 0:
+                    R = np.append(R, __A, axis=0)
+                    s = np.append(s, __b, axis=0)
+                    n_weak_constrs += len(__A)
         
         s, Sy_scale_factor = utils.scale_y(s)
 

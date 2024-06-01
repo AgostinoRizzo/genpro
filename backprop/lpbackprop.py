@@ -198,13 +198,13 @@ def lpbackprop(K:dataset.DataKnowledge, stree:backprop.SyntaxTree, onsynth_callb
     stree_pr.accept(aspSpecBuilder)
     stree_pr2.accept(aspSpecBuilder)
     stree_spec = aspSpecBuilder.spec
-    #logging.debug(stree_spec)
+    logging.debug(stree_spec)
 
     #
     # build ASP prior knowledge (K) specification.
     #
     K_spec, break_points_map, break_points_invmap = build_knowledge_spec(K, aspSpecBuilder.node_id_map[id(stree)])
-    #logging.debug(K_spec)
+    logging.debug(K_spec)
 
     #
     # invoke ASP solver with stree_spec and K_spec (knowledge backprop).

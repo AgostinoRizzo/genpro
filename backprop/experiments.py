@@ -4,20 +4,34 @@ sys.path.append('..')
 
 import csv
 import dataset
+import dataset_feynman
+import dataset_hlab
 import gp_backprop
 import numbs
 import sympy
 
 
 BENCHMARKS:list[dataset.Dataset] = [
-    (dataset.MagmanDatasetScaled(), 'magman.csv'),
-    (dataset.MagmanDatasetScaled(), None)
+    (dataset.MagmanDatasetScaled(), 'magman.csv', 'data'),
+    #(dataset.MagmanDatasetScaled(), None, 'sample'),
+    #(dataset.ABSDataset(), 'abs.csv', 'data'),
+    #(dataset.ABSDataset(), 'abs-noise.csv', 'data-noise'),
+    #(dataset_feynman.FeynmanICh6Eq20a (), None, 'sample'),
+    #(dataset_feynman.FeynmanICh29Eq4  (), None, 'sample'),
+    #(dataset_feynman.FeynmanICh34Eq27 (), None, 'sample'),
+    #(dataset_feynman.FeynmanIICh8Eq31 (), None, 'sample'),
+    #(dataset_feynman.FeynmanIICh27Eq16(), None, 'sample'),
+    #(dataset_hlab.NguyenF1(), 'nguyen-f1.csv', 'data'),
+    #(dataset_hlab.NguyenF4(), 'nguyen-f4.csv', 'data'),
+    #(dataset_hlab.NguyenF7(), 'nguyen-f7.csv', 'data'),
+    #(dataset_hlab.Keijzer7(), 'keijzer-7.csv', 'data'),
+    #(dataset_hlab.Keijzer8(), 'keijzer-8.csv', 'data'),
 ]
 
-SAMPLE_SIZE = 250
+SAMPLE_SIZE = 200
 NOISE = 0.03
 
-POPSIZE = 50
+POPSIZE = 20
 MAX_STREE_DEPTH = 2
 
 
@@ -33,14 +47,15 @@ perftable = []
 logging.basicConfig(level=logging.INFO, format='')
 #logging.basicConfig(level=logging.DEBUG, format='%(asctime)s %(message)s')
 
-for S, datafile in BENCHMARKS:
+for S, datafile, desc in BENCHMARKS:
 
-    S_name = S.get_name() + ('' if datafile is None else '-data')
-    logging.info(f"\n--- Loading dataset {S_name} ({SAMPLE_SIZE} points) ---")
+    S_name = S.get_name() + '-' + desc
+    logging.info(f"\n--- SR Problem {S_name} ---")
     
     if datafile is None: S.sample(size=SAMPLE_SIZE, noise=NOISE, mesh=False)
-    else: S.load('../data/magman.csv')
+    else: S.load(f"../data/{datafile}")
     S.split()
+    logging.info(f"\n--- Dataset loaded (Train size: {len(S.data)}, Test size: {len(S.test)}) ---")
 
     S.index()
     numbs.init(S)

@@ -453,9 +453,10 @@ class UnaryOperatorSyntaxTree(SyntaxTree):
         self.inner.accept(visitor)
     
     def to_sympy(self, dps:int=None):
-        if   self.operator == 'exp' : return sympy.exp (self.inner)
-        elif self.operator == 'log' : return sympy.log (self.inner)
-        elif self.operator == 'sqrt': return sympy.sqrt(self.inner)
+        inner_sympy = self.inner.to_sympy(dps)
+        if   self.operator == 'exp' : return sympy.exp (inner_sympy)
+        elif self.operator == 'log' : return sympy.log (inner_sympy)
+        elif self.operator == 'sqrt': return sympy.sqrt(inner_sympy)
         raise RuntimeError(f"Conversion to sympy not defined for operator {self.operator}.")
 
 

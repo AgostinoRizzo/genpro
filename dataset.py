@@ -1,6 +1,7 @@
 import random
 import math
 import numpy as np
+import sympy
 import csv
 from sklearn.model_selection import train_test_split
 import matplotlib.pyplot as plt
@@ -140,6 +141,10 @@ class Dataset:
         self.xu = 1.
         self.yl = 0.
         self.yu = 1.
+        self._xl = self.xl  # used for scaling.
+        self._xu = self.xu
+        self._yl = self.yl
+        self._yu = self.yu
         self.knowledge = DataKnowledge(self)
         self.data_sst = 0.
         self.test_sst = 0.
@@ -160,7 +165,16 @@ class Dataset:
         self._on_data_changed()
     
     def load(self, filename:str):
-        raise RuntimeError('Load from CSV file not supported.')
+        csvfile = open(filename)
+        csvreader = csv.reader(csvfile)
+        for entry in csvreader:
+            x = float(entry[0])
+            y = float(entry[1])
+            if self.is_xscaled(): x = self._xmap(x)
+            if self.is_yscaled(): y = self._ymap(y)
+            self.data.append(DataPoint(x, y))
+        csvfile.close()
+        self._on_data_changed()
     
     def erase(self, x_from, x_to):
         self.test = []
@@ -271,6 +285,15 @@ class Dataset:
     def func(self, x:float) -> float:
         pass
 
+    def get_sympy(self):
+        return None
+    
+    def is_xscaled(self) -> bool:
+        return False
+    
+    def is_yscaled(self) -> bool:
+        return False
+
     def inrange(self, dp:DataPoint, scale:float=1.) -> bool:
         x_padd = (self.xu - self.xl) * scale
         y_padd = (self.yu - self.yl) * scale
@@ -280,6 +303,13 @@ class Dataset:
     
     def inrange_xy(self, x:float, y:float, scale:float=1.5) -> bool:
         return self.inrange(DataPoint(x, y), scale)
+    
+    def _xmap(self, x:float, toorigin:bool=False) -> float:
+        if toorigin: return self._xl + (((x - self.xl) / (self.xu - self.xl)) * (self._xu - self._xl))
+        return self.xl + (((x - self._xl) / (self._xu - self._xl)) * (self.xu - self.xl))
+    
+    def _ymap(self, y:float) -> float:
+        return self.yl + (((y - self._yl) / (self._yu - self._yl)) * (self.yu - self.yl))
     
     def evaluate(self, model:callable) -> Evaluation:
         def compute_measures(data:list[DataPoint], data_sst:float) -> dict:
@@ -348,10 +378,10 @@ class Dataset:
         return ''
     
     def get_xlabel(self) -> str:
-        return ''
+        return 'x'
 
     def get_ylabal(self) -> str:
-        return ''
+        return 'y'
     
 
 
@@ -558,16 +588,22 @@ class MagmanDataset(Dataset):
     def func(self, x: float) -> float:
         return -self.i*self.c1*x / (x**2 + self.c2)**3
     
-    def load(self, filename:str):
-        csvfile = open(filename)
-        csvreader = csv.reader(csvfile)
-        for entry in csvreader:
-            self.data.append(DataPoint(float(entry[0]), float(entry[1])))
-        csvfile.close()
-        self._on_data_changed()
+    def get_sympy(self):
+        x  = sympy.Symbol('x')
+        i  = sympy.Symbol('i')
+        c1 = sympy.Symbol('c1')
+        c2 = sympy.Symbol('c2')
+        return -i*c1*x / (x**2 + c2)**3
+        #return '-\frac{i \cdot c_1 \cdot x}{\left(x^2 + c_2\right)^3}'
     
     def get_name(self) -> str:
-        return 'Magman'
+        return 'magman'
+    
+    def get_xlabel(self) -> str:
+        return 'distance [m] (x)'
+
+    def get_ylabal(self) -> str:
+        return 'force [N] (y)'
 
 
 class MagmanDatasetScaled(Dataset):
@@ -578,10 +614,10 @@ class MagmanDatasetScaled(Dataset):
         self.yl = -2.
         self.yu = 2.
 
-        self.__xl = -0.075
-        self.__xu =  0.075
-        self.__yl = -0.25
-        self.__yu =  0.25
+        self._xl = -0.075
+        self._xu =  0.075
+        self._yl = -0.25
+        self._yu =  0.25
 
         #self.c1 = 1.4
         #self.c2 = 1.2
@@ -640,38 +676,37 @@ class MagmanDatasetScaled(Dataset):
         self.knowledge.add_symm(2, 0, iseven=False)
 
     def func(self, x: float) -> float:
-        x = self.__xmap(x, toorigin=True)
+        x = self._xmap(x, toorigin=True)
         y = -self.i*self.c1*x / (x**2 + self.c2)**3
-        return self.__ymap(y)
+        return self._ymap(y)
+    
+    def get_sympy(self):
+        x  = sympy.Symbol('x')
+        i  = sympy.Symbol('i')
+        c1 = sympy.Symbol('c1')
+        c2 = sympy.Symbol('c2')
+        return -i*c1*x / (x**2 + c2)**3
+        #return '-\frac{i \cdot c_1 \cdot x}{\left(x^2 + c_2\right)^3}'
 
     def deriv(self, x: float) -> float:
-        x = self.__xmap(x, toorigin=True)
+        x = self._xmap(x, toorigin=True)
         y = (6.4e-9 * x**2 - 3.904e-13) / (x**2 + 0.000305) ** 4
-        return self.__ymap(y)
-    
-    def load(self, filename:str):
-        csvfile = open(filename)
-        csvreader = csv.reader(csvfile)
-        for entry in csvreader:
-            self.data.append(DataPoint(self.__xmap(float(entry[0])), self.__ymap(float(entry[1]))))
-        csvfile.close()
-        self._on_data_changed()
-    
-    def __xmap(self, x:float, toorigin:bool=False) -> float:
-        if toorigin: return self.__xl + (((x - self.xl) / (self.xu - self.xl)) * (self.__xu - self.__xl))
-        return self.xl + (((x - self.__xl) / (self.__xu - self.__xl)) * (self.xu - self.xl))
-    
-    def __ymap(self, y:float) -> float:
-        return self.yl + (((y - self.__yl) / (self.__yu - self.__yl)) * (self.yu - self.yl)) 
+        return self._ymap(y)
     
     def get_name(self) -> str:
-        return 'Magman'
+        return 'magman'
     
     def get_xlabel(self) -> str:
         return 'distance [m] (x)'
 
     def get_ylabal(self) -> str:
         return 'force [N] (y)'
+    
+    def is_xscaled(self) -> bool:
+        return True
+    
+    def is_yscaled(self) -> bool:
+        return True
 
 
 """        
@@ -737,7 +772,7 @@ class HEADataset(Dataset):
         return math.e**(-x) * x**3 * math.cos(x) * math.sin(x) * (math.cos(x) * math.sin(x)**2 - 1)
     
     def get_name(self) -> str:
-        return 'HEA'
+        return 'hea'
 
 
 class ABSDataset(Dataset):
@@ -783,8 +818,25 @@ class ABSDataset(Dataset):
         e = 0.52
         return m * g * d * np.sin(c * np.arctan(b * (1 - e) * x + e * np.arctan(b * x)))
     
+    def get_sympy(self):
+        x = sympy.Symbol('kappa')
+        b = sympy.Symbol('b')
+        c = sympy.Symbol('c')
+        d = sympy.Symbol('d')
+        e = sympy.Symbol('e')
+        g = sympy.Symbol('g')
+        m = sympy.Symbol('m')
+        return m * g * d * sympy.sin(c * sympy.atan(b * (1 - e) * x + e * sympy.atan(b * x)))
+        #return 'm \cdot g \cdot d \cdot \sin\left( c \cdot \arctan\left( b \cdot (1-e)^x + e^{\arctan\left(b \cdot x\right)}\right)\right)'
+    
     def get_name(self) -> str:
-        return 'ABS'
+        return 'abs'
+    
+    def get_xlabel(self) -> str:
+        return 'k'
+
+    def get_ylabal(self) -> str:
+        return 'F(k) [N]'
 
 
 class OneOverXDataset(Dataset):
@@ -814,6 +866,11 @@ class OneOverXDataset(Dataset):
     def func(self, x: float) -> float:
         return 1 / x
     
+    def get_sympy(self):
+        x = sympy.Symbol('x')
+        return 1 / x
+        #return '\frac{1}{x}'
+    
     def get_name(self) -> str:
         return '1/x'
 
@@ -826,10 +883,8 @@ class ABSDatasetScaled(Dataset):
         self.yl = 0.
         self.yu = 10
 
-        self.__xl = 0.
-        self.__xu = 1.
-        self.__yl = 0.
-        self.__yu = 0.45
+        self._yl = 0.
+        self._yu = 0.45
 
         #
         # prior knowledge
@@ -860,10 +915,27 @@ class ABSDatasetScaled(Dataset):
         d = 0.4
         e = 0.52
         y = m * g * d * np.sin(c * np.arctan(b * (1 - e) * x + e * np.arctan(b * x)))
-        return self.__ymap(y)
-
-    def __ymap(self, y:float) -> float:  # TODO: put in super class.
-        return self.yl + (((y - self.__yl) / (self.__yu - self.__yl)) * (self.yu - self.yl))
+        return self._ymap(y)
+    
+    def get_sympy(self):
+        x = sympy.Symbol('kappa')
+        b = sympy.Symbol('b')
+        c = sympy.Symbol('c')
+        d = sympy.Symbol('d')
+        e = sympy.Symbol('e')
+        g = sympy.Symbol('g')
+        m = sympy.Symbol('m')
+        return m * g * d * sympy.sin(c * sympy.atan(b * (1 - e) * x + e * sympy.atan(b * x)))
+        #return 'm \cdot g \cdot d \cdot \sin\left( c \cdot \arctan\left( b \cdot (1-e)^x + e^{\arctan\left(b \cdot x\right)}\right)\right)'
     
     def get_name(self) -> str:
-        return 'ABS'
+        return 'abs'
+    
+    def get_xlabel(self) -> str:
+        return 'k'
+
+    def get_ylabal(self) -> str:
+        return 'F(k) [N]'
+    
+    def is_yscaled(self) -> bool:
+        return True
