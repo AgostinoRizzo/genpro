@@ -41,11 +41,11 @@ class History:
 def __fit_pulled_dataset(pulled_S:dataset.NumpyDataset, pulled_constrs:dict[dict[qp.Constraints]],
                          unknown_stree:backprop.UnknownSyntaxTree, unkn_name:str,
                          global_stree:backprop.SyntaxTree,
-                         hist:History, phase:str) -> tuple[callable, callable]:  # returns a fit model (and its first derivative) if successful, None otherwise.
+                         hist:History, phase:str) -> tuple[callable,callable,callable]:  # returns a fit model (and its first derivative) if successful, None otherwise.
 
     if pulled_S.is_empty():
         logging.debug(f"-----> 0 data!!")
-        return None, None
+        return None, None, None
 
     # TODO: use synth model in case no solution is returned.
     #P = np.poly1d( qp.qp_solve(pulled_constrs[unkn_name], FIT_POLYDEG, pulled_data) )
@@ -61,25 +61,28 @@ def __fit_pulled_dataset(pulled_S:dataset.NumpyDataset, pulled_constrs:dict[dict
                                weak_constrs=weak_constrs) )
     P, _ = utils.simplify_poly(P, unknown_stree.constrs)
     P_d1 = np.polyder(P, m=1)
-    return P, P_d1
+    P_d2 = np.polyder(P, m=2)
+    return P, P_d1, P_d2
 
 
 # synth_unkn_models:dict of unknown model name to (unknown model:callable, constrs:dict).
-def jump_backprop(stree_d0:backprop.SyntaxTree, stree_d1:backprop.SyntaxTree, synth_unkn_models:dict,
+def jump_backprop(stree_d0:backprop.SyntaxTree, stree_d1:backprop.SyntaxTree, stree_d2:backprop.SyntaxTree, synth_unkn_models:dict,
                   S_train:dataset.NumpyDataset, S_test:dataset.NumpyDataset, max_rounds:int=1):
 
     hist = History()
     stree_d0.set_parent()
     stree_d1.set_parent()
+    stree_d2.set_parent()
 
     #
     # set all synth_unkn_models.
     #
     for synth_unkn in synth_unkn_models.keys():
-        unkn_model, unkn_model_d1, coeffs_mask, constrs = synth_unkn_models[synth_unkn]
-        for stree in [stree_d0, stree_d1]:
+        unkn_model, unkn_model_d1, unkn_model_d2, coeffs_mask, constrs = synth_unkn_models[synth_unkn]
+        for stree in [stree_d0, stree_d1, stree_d2]:
             stree.set_unknown_model(synth_unkn, unkn_model, coeffs_mask, constrs)
-            stree.set_unknown_model(synth_unkn + "'", unkn_model_d1)
+            stree.set_unknown_model(synth_unkn + "'" , unkn_model_d1)
+            stree.set_unknown_model(synth_unkn + "''", unkn_model_d2)
     
     #
     # init best stree found.
@@ -176,8 +179,9 @@ def jump_backprop(stree_d0:backprop.SyntaxTree, stree_d1:backprop.SyntaxTree, sy
                 #
                 fit_model = None
                 fit_model_d1 = None
+                fit_model_d2 = None
                 if len(violated_constrs) == 0:
-                    fit_model, fit_model_d1 = __fit_pulled_dataset(pulled_S[unkn_name], pulled_constrs, unknown_stree, unkn_name, stree, hist, phase)
+                    fit_model, fit_model_d1, fit_model_d2 = __fit_pulled_dataset(pulled_S[unkn_name], pulled_constrs, unknown_stree, unkn_name, stree, hist, phase)
                 else:
                     hist.log_pull(unknown_stree, pulled_S[unkn_name], pulled_constrs[unkn_name], violated_constrs)
                 
@@ -185,9 +189,10 @@ def jump_backprop(stree_d0:backprop.SyntaxTree, stree_d1:backprop.SyntaxTree, sy
                 # if model fit, then update the model of 'unknown_stree'.
                 #
                 if fit_model is not None:
-                    for stree in [stree_d0, stree_d1]:
+                    for stree in [stree_d0, stree_d1, stree_d2]:
                         stree.set_unknown_model(unknown_stree.label, fit_model, unknown_stree.coeffs_mask, unknown_stree.constrs)  # keep the same coeffs mask and constraints.
-                        stree.set_unknown_model(unknown_stree.label + "'", fit_model_d1)
+                        stree.set_unknown_model(unknown_stree.label + "'" , fit_model_d1)
+                        stree.set_unknown_model(unknown_stree.label + "''", fit_model_d2)
                     hist.log_pull(unknown_stree, pulled_S[unkn_name], pulled_constrs[unkn_name])
                     # TODO: set fit_model to others strees (i.e. derivatives).
             
@@ -201,7 +206,9 @@ def jump_backprop(stree_d0:backprop.SyntaxTree, stree_d1:backprop.SyntaxTree, sy
             #
             model_eval = dataset.Evaluation( S_train.evaluate(stree_d0.compute_output),
                                              S_test.evaluate(stree_d0.compute_output),
-                                             S_train.knowledge.evaluate(stree_d0.compute_output) )
+                                             S_train.knowledge.evaluate( (stree_d0.compute_output,
+                                                                          stree_d1.compute_output,
+                                                                          stree_d2.compute_output) ) )
             if best_eval is None or model_eval.better_than(best_eval):
                 for unkn_label in synth_unkn_models.keys():
                     unkn_stree = stree_d0.get_unknown_stree(unkn_label)

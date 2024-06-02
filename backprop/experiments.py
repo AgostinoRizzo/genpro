@@ -40,7 +40,7 @@ perftable_header = [
     'Problem'  , 'Nops',
     'Train-MSE', 'Train-RMSE', 'Train-R2',
     'Test-MSE' , 'Test-RMSE' , 'Test-R2' ,
-    'K-MSE'    , 'K-RMSE'
+    'K-MSE0',    'K-MSE1',     'K-MSE2'
     ]
 perftable = []
 
@@ -67,32 +67,42 @@ for S, datafile, desc in BENCHMARKS:
     population = gp_backprop.random_population(popsize=POPSIZE, max_depth=MAX_STREE_DEPTH)
     
     logging.info(f"--- Evaluating current population ---")
-    best_stree, best_eval, satisfiable = gp_backprop.evaluate(population, S_train, S_test)
+    sorted_population, eval_map, satisfiable = gp_backprop.evaluate(population, S_train, S_test)
+    best_stree = sorted_population[0]
+    best_eval = eval_map[id(best_stree)]
 
-    if best_stree is None:
-        logging.info(f"--- No syntax tree found: problem is {'satisfiable' if satisfiable else 'unsatisfiable'} ---")
-    else:
-            
-        logging.info("--- Best syntax tree ---")
-        logging.info(best_stree)
-        logging.info(best_eval)
-        
-        sympy_expr = best_stree.to_sympy()
-        sympy_expr_simpl = best_stree.to_sympy(dps=2)
-        
-        nops = sympy_expr_simpl.count_ops(visual=False)
-        perftable.append([
-            S_name, nops,
-            best_eval.training ['mse'], best_eval.training ['rmse'], best_eval.training['r2'],
-            best_eval.testing  ['mse'], best_eval.testing  ['rmse'], best_eval.testing ['r2'],
-            best_eval.knowledge['mse'], best_eval.knowledge['rmse']
-            ])
+    logging.info(f"--- Evaluation was {'satisfiable' if satisfiable else 'unsatisfiable'} ---")
+    logging.info("--- Best syntax tree ---")
+    logging.info(best_stree)
+    logging.info(best_eval)
+    for i in range(len(sorted_population)):
+        logging.info(sorted_population[i])
+        logging.info(eval_map[id(sorted_population[i])])
+    
+    logging.info(f"--- Expanding top strees ---")
+    expanded_strees, eval_map, satisfiable = gp_backprop.expand(sorted_population[:5], S_train, S_test)
+    best_stree = expanded_strees[0]
+    best_eval = eval_map[id(best_stree)]
+    for i in range(len(expanded_strees)):
+        logging.info(expanded_strees[i])
+        logging.info(eval_map[id(expanded_strees[i])])
+    
+    sympy_expr = best_stree.to_sympy()
+    sympy_expr_simpl = best_stree.to_sympy(dps=2)
+    
+    nops = sympy_expr_simpl.count_ops(visual=False)
+    perftable.append([
+        S_name, nops,
+        best_eval.training ['mse'] , best_eval.training ['rmse'], best_eval.training ['r2'],
+        best_eval.testing  ['mse'] , best_eval.testing  ['rmse'], best_eval.testing  ['r2'],
+        best_eval.knowledge['mse0'], best_eval.knowledge['mse1'], best_eval.knowledge['mse2']
+        ])
 
-        exprs += f"% {S_name}\n{sympy.latex(sympy_expr)}\n{sympy.latex(sympy_expr_simpl)}\n\n"
+    exprs += f"% {S_name}\n{sympy.latex(sympy_expr)}\n{sympy.latex(sympy_expr_simpl)}\n\n"
 
-        logging.info(f"--- Saving plots in results/{S_name}.pdf and results/{S_name}-wide.pdf ---")
-        S.plot(width=8, height=7, model=best_stree.compute_output, savename=f"results/{S_name}.pdf")
-        S.plot(width=8, height=7, model=best_stree.compute_output, zoomout=4., savename=f"results/{S_name}-wide.pdf")
+    logging.info(f"--- Saving plots in results/{S_name}.pdf and results/{S_name}-wide.pdf ---")
+    S.plot(width=8, height=7, model=best_stree.compute_output, savename=f"results/{S_name}.pdf")
+    S.plot(width=8, height=7, model=best_stree.compute_output, zoomout=4., savename=f"results/{S_name}-wide.pdf")
 
 # save performance table as csv file.
 logging.info(f"\n--- Saving performance table in results/perf.csv ---")

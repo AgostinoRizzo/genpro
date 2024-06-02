@@ -119,8 +119,15 @@ sign_change(N, Input) :- sign(N, PN1, _, Input), sign(N, PN2, Input, _), PN1!=PN
 %
 sign_changes(N, C) :- #count{Mid : sign(N, PN1, _, Mid), sign(N, PN2, Mid, _), PN1!=PN2}=C, tree_node(N).
 root_count(N, C) :- #count{Input : root(N, Input)}=C, tree_node(N).
-:~ W=#sum{C,N: sign_changes(N, C), unkn_tree_node(N)}. [W@2]
-:~ W=#sum{C,N: root_count(N, C), unkn_tree_node(N)}. [W@1]
+%:~ W=#sum{C,N: sign_changes(N, C), unkn_tree_node(N)}. [W@2]
+%:~ W=#sum{C,N: root_count(N, C), unkn_tree_node(N)}. [W@1]
+%#minimize{C,N: sign_changes(N, C), unkn_tree_node(N)}.
+%#minimize{C,N: root_count(N, C), unkn_tree_node(N)}.
+unkn_complex(N0, C) :- unkn_tree_node(N0), deriv(N0, N1), deriv(N1, N2),
+                       sign_changes(N0, C0), sign_changes(N1, C1), sign_changes(N2, C2),
+                       C=C0+C1+C2.
+%:~ W=#max{C: unkn_complex(_, C)}. [W@2]
+#minimize{C: unkn_complex(_, C)}.
 
 %
 % join sign intervals.
@@ -152,3 +159,10 @@ odd_symm_unkn(N, Input) :- odd_symm(N, Input), unkn_tree_node(N).
 #defined const/1.
 #defined un_tree_node/3.
 #defined bin_tree_node/4.
+#defined const_tree_node/2.
+
+%parentof(P, C) :- un_tree_node(P, _, C).
+%parentof(P, C) :- bin_tree_node(P, _, C, _).
+%parentof(P, C) :- bin_tree_node(P, _, _, C).
+%:- parentof(P, C), sign_changes(P, Pchanges), sign_changes(C, Cchanges), Cchanges>Pchanges+1.
+%:- parentof(P, C), root_count(P, Proots), root_count(C, Croots), Croots>Proots+1.

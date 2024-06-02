@@ -574,6 +574,16 @@ class UnknownSyntaxTreeCollector(SyntaxTreeVisitor):
         self.unknown_labels.add(stree.label)
 
 
+class SyntaxTreeNodeCounter(SyntaxTreeVisitor):
+    def __init__(self):
+        self.nnodes = 0
+    
+    def visitUnaryOperator (self, stree:UnaryOperatorSyntaxTree):  self.nnodes += 1
+    def visitBinaryOperator(self, stree:BinaryOperatorSyntaxTree): self.nnodes += 1
+    def visitConstant      (self, stree:ConstantSyntaxTree):       self.nnodes += 1
+    def visitUnknown       (self, stree:UnknownSyntaxTree):        self.nnodes += 1
+
+
 class SyntaxTreeGenerator:
     BIN_OPERATORS = ['+','-','*','/','^']
     UN_OPERATORS  = ['exp','log','sqrt']
@@ -582,12 +592,17 @@ class SyntaxTreeGenerator:
     def __init__(self):
         self.unkn_counter = 0
     
-    def create_random(self, max_depth:int, n:int=1) -> list[SyntaxTree]:
+    def create_random(self, max_depth:int, n:int=1, check_duplicates:bool=True) -> list[SyntaxTree]:
         assert max_depth >= 0 and n >= 0
         strees = []
         for _ in range(n):
             self.unkn_counter = 0
-            strees.append( self.__create_random(max_depth) )
+            new_stree = self.__create_random(random.randint(0, max_depth))
+            if check_duplicates:
+                while new_stree in strees:
+                    self.unkn_counter = 0
+                    new_stree = self.__create_random(random.randint(0, max_depth))
+            strees.append(new_stree)
         return strees
 
     def __create_random(self, depth:int):

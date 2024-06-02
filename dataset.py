@@ -29,8 +29,10 @@ class Evaluation:
         self.knowledge = knowledge
     
     def better_than(self, other) -> bool:
-        if self .knowledge['mse'] < other.knowledge['mse'] and self .testing['r2'] >= 0.1: return True
-        if other.knowledge['mse'] < self .knowledge['mse'] and other.testing['r2'] >= 0.1: return False
+        for derivdeg in range(3):
+            mse = 'mse' + str(derivdeg)
+            if self .knowledge[mse] < other.knowledge[mse] and self .testing['r2'] >= 0.1: return True
+            if other.knowledge[mse] < self .knowledge[mse] and other.testing['r2'] >= 0.1: return False
         if self .testing['r2'] > other.testing['r2']: return True
         if other.testing['r2'] > self .testing['r2']: return False
         return self.training['r2'] > other.training['r2']
@@ -75,20 +77,16 @@ class DataKnowledge:
             np.linspace(self.dataset.xl, self.dataset.xu, max(0, sample_size - len(deriv_points))),
             np.array(deriv_points))).sort()
     
-    def evaluate(self, model:callable) -> dict:
-        n = 0
-        ssr = 0
+    def evaluate(self, model:tuple[callable,callable,callable]) -> dict:
+        n   = {0: 0, 1: 0, 2: 0}
+        ssr = {0: 0, 1: 0, 2: 0}
 
-        def compute_model_output(model:callable, x:np.array, deriv:int=0) -> np.array:  # TODO: use derivative stree directly.
-            if deriv == 0: return model(x)
-            return (compute_model_output(model, x+numbs.STEPSIZE, deriv-1) - compute_model_output(model, x, deriv-1)) / numbs.STEPSIZE
-        
         # intersection points.
         for derivdeg, dps in self.derivs.items():
-            n += len(dps)
+            n[derivdeg] += len(dps)
             X = np.array( [dp.x for dp in dps] )
             Y = np.array( [dp.y for dp in dps] )
-            ssr += np.sum( (compute_model_output(model, X, derivdeg) - Y) ** 2 )
+            ssr[derivdeg] += np.sum( (model[derivdeg](X) - Y) ** 2 )
         
         # positivity constraints.
         for derivdeg, constrs in self.sign.items():
@@ -97,20 +95,19 @@ class DataKnowledge:
                 u = _u - numbs.EPSILON
                 if l > u: continue
                 X = np.linspace(l, u, 1 if l == u else 20)  # TODO: factorize sample size.
-                n += X.size
-                model_Y = compute_model_output(model, X, derivdeg)
-                ssr += np.sum( ( np.minimum(0, model_Y - th) if sign == '+' else np.maximum(0, model_Y - th) ) ** 2 )
+                n[derivdeg] += X.size
+                model_Y = model[derivdeg](X)
+                ssr[derivdeg] += np.sum( ( np.minimum(0, model_Y - th) if sign == '+' else np.maximum(0, model_Y - th) ) ** 2 )
         
         # symmetry constraints.
         for derivdeg, (x0, iseven) in self.symm.items():
             X = np.linspace(x0 + numbs.EPSILON, numbs.INFTY, 20)  # TODO: factorize sample size.
-            n += X.size
-            model_Y1 = compute_model_output(model, X, derivdeg)
-            model_Y2 = compute_model_output(model, x0-(X-x0), derivdeg)
-            ssr += np.sum( ( (model_Y1 - model_Y2) if iseven else (model_Y1 + model_Y2) ) ** 2 )
+            n[derivdeg] += X.size
+            model_Y1 = model[derivdeg](X)
+            model_Y2 = model[derivdeg](x0-(X-x0))
+            ssr[derivdeg] += np.sum( ( (model_Y1 - model_Y2) if iseven else (model_Y1 + model_Y2) ) ** 2 )
         
-        mse = ssr / n
-        return {'mse': mse, 'rmse': math.sqrt(mse)}
+        return {'mse0': ssr[0]/n[0], 'mse1': ssr[1]/n[1], 'mse2': ssr[2]/n[2]}
     
     def plot(self):
         if 0 in self.derivs.keys():
