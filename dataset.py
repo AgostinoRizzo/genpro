@@ -322,6 +322,22 @@ class Dataset:
             self.knowledge.evaluate(model)
         )
     
+    def evaluate_extra(self, model:callable) -> dict:
+        dx = (self.xu - self.xl) / 2
+        X = np.linspace(self.xl - dx, self.xu + dx, 500)  # TODO: factorize sample size.
+        Y = self.func(X)
+        Y_pred = model(X)
+
+        ssr = np.sum((Y_pred - Y) ** 2)
+        sst = np.sum((Y - Y.mean()) ** 2)
+
+        mse  = ssr / Y.size
+        rmse = math.sqrt(mse)
+        r2   = 1 - (ssr / sst)
+
+        return {'mse': mse, 'rmse': rmse, 'r2': r2}
+
+    
     def plot(self, plot_data:bool=True, plot_knowldege:bool=False,
              width:int=10, height:int=8,
              plotref:bool=True, model:callable=None,

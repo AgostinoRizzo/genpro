@@ -8,6 +8,7 @@ import jump_backprop
 import utils
 import gp
 import logging
+import config
 
 
 def random_population(popsize:int, max_depth:int, check_duplicates:bool=True) -> list[backprop.SyntaxTree]:
@@ -58,7 +59,7 @@ def expand(population:list[backprop.SyntaxTree], S_train:dataset.NumpyDataset, S
             nonlocal best_eval
             
             hist, __best_unkn_models, __best_eval = \
-                jump_backprop.jump_backprop(stree, stree_pr, stree_pr2, synth_unkn_models, S_train, S_test, max_rounds=1)
+                jump_backprop.jump_backprop(stree, stree_pr, stree_pr2, synth_unkn_models, S_train, S_test, max_rounds=config.MAX_BACKJUMP_ROUNDS)
 
             if best_eval is None or __best_eval.better_than(best_eval):
                 best_unkn_models = __best_unkn_models
