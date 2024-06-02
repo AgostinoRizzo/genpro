@@ -7,6 +7,7 @@ import dataset
 import dataset_feynman
 import dataset_hlab
 import gp_backprop
+import gp
 import numbs
 import sympy
 
@@ -33,6 +34,13 @@ NOISE = 0.03
 
 POPSIZE = 20
 MAX_STREE_DEPTH = 2
+GENERATIONS = 10
+GROUP_SIZE = 5  # tournament selector.
+MUTATION_RATE = 0.15
+ELITISM = 1
+
+NBESTS = 5
+RSEED = 0
 
 
 exprs = ''
@@ -66,21 +74,30 @@ for S, datafile, desc in BENCHMARKS:
     logging.info(f"--- Generating initial population ({POPSIZE} individuals) ---")
     population = gp_backprop.random_population(popsize=POPSIZE, max_depth=MAX_STREE_DEPTH)
     
-    logging.info(f"--- Evaluating current population ---")
-    sorted_population, eval_map, satisfiable = gp_backprop.evaluate(population, S_train, S_test)
-    best_stree = sorted_population[0]
+    logging.info(f"--- Evolve current population ({GENERATIONS} generations) ---")
+    symb_regressor = \
+         gp.GP(population, GENERATIONS, S_train, S_test,
+               evaluator=gp_backprop.KnowledgeBackpropEvaluator(S.knowledge),
+               selector=gp.TournamentSelector(GROUP_SIZE),
+               crossover=gp.SubTreeCrossover(),
+               mutator=gp.Mutator(MAX_STREE_DEPTH),
+               mutrate=MUTATION_RATE,
+               elitism=ELITISM,
+               nbests=NBESTS,
+               rseed=RSEED)
+    bests, eval_map = symb_regressor.evolve()
+    best_stree = bests[0]
     best_eval = eval_map[id(best_stree)]
 
-    logging.info(f"--- Evaluation was {'satisfiable' if satisfiable else 'unsatisfiable'} ---")
     logging.info("--- Best syntax tree ---")
     logging.info(best_stree)
     logging.info(best_eval)
-    for i in range(len(sorted_population)):
-        logging.info(sorted_population[i])
-        logging.info(eval_map[id(sorted_population[i])])
+    for i in range(1, len(bests)):
+        logging.info(bests[i])
+        logging.info(eval_map[id(bests[i])])
     
     logging.info(f"--- Expanding top strees ---")
-    expanded_strees, eval_map, satisfiable = gp_backprop.expand(sorted_population[:5], S_train, S_test)
+    expanded_strees, eval_map, satisfiable = gp_backprop.expand(bests, S_train, S_test)
     best_stree = expanded_strees[0]
     best_eval = eval_map[id(best_stree)]
     for i in range(len(expanded_strees)):

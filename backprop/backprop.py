@@ -103,6 +103,7 @@ class SyntaxTree:
     def clone(self): return None
     def compute_output(self, x:np.array) -> np.array: return None
     def set_parent(self, parent=None): self.parent = parent
+    def validate(self) -> bool: return True
     def simplify(self): return self
     def __str__(self) -> str: return ''
     def __eq__(self, other) -> bool: return False
@@ -118,6 +119,8 @@ class SyntaxTree:
 
 
 class BinaryOperatorSyntaxTree(SyntaxTree):
+    OPERATORS = ['+', '-', '*', '/', '^']
+
     def __init__(self, operator:str, left:SyntaxTree, right:SyntaxTree):
         super().__init__()
         self.operator = operator
@@ -139,6 +142,10 @@ class BinaryOperatorSyntaxTree(SyntaxTree):
         super().set_parent(parent)
         self.left.set_parent(self)
         self.right.set_parent(self)
+    
+    def validate(self) -> bool:
+        if self.operator != '^': return True
+        return type(self.right) is ConstantSyntaxTree and self.right.val == 2  # TODO: only ^2 managed.
 
     def simplify(self):
         self.left = self.left.simplify()
@@ -345,6 +352,8 @@ class BinaryOperatorSyntaxTree(SyntaxTree):
 
 
 class UnaryOperatorSyntaxTree(SyntaxTree):
+    OPERATORS = ['exp', 'log', 'sqrt']
+
     def __init__(self, operator:str, inner:SyntaxTree):
         super().__init__()
         self.operator = operator
@@ -566,7 +575,6 @@ class SyntaxTreeVisitor:
 class UnknownSyntaxTreeCollector(SyntaxTreeVisitor):
     def __init__(self):
         self.unknown_labels = set()
-    
     def visitUnaryOperator (self, stree:UnaryOperatorSyntaxTree):  pass
     def visitBinaryOperator(self, stree:BinaryOperatorSyntaxTree): pass
     def visitConstant      (self, stree:ConstantSyntaxTree):       pass
@@ -577,17 +585,33 @@ class UnknownSyntaxTreeCollector(SyntaxTreeVisitor):
 class SyntaxTreeNodeCounter(SyntaxTreeVisitor):
     def __init__(self):
         self.nnodes = 0
-    
     def visitUnaryOperator (self, stree:UnaryOperatorSyntaxTree):  self.nnodes += 1
     def visitBinaryOperator(self, stree:BinaryOperatorSyntaxTree): self.nnodes += 1
     def visitConstant      (self, stree:ConstantSyntaxTree):       self.nnodes += 1
     def visitUnknown       (self, stree:UnknownSyntaxTree):        self.nnodes += 1
 
 
+class SyntaxTreeNodeSelector(SyntaxTreeVisitor):
+    def __init__(self, ith:int):
+        self.ith = ith
+        self.i = 0
+        self.node = None
+    def visitUnaryOperator(self, stree:UnaryOperatorSyntaxTree):
+        if self.i == self.ith: self.node = stree
+        self.i += 1
+    def visitBinaryOperator(self, stree:BinaryOperatorSyntaxTree):
+        if self.i == self.ith: self.node = stree
+        self.i += 1
+    def visitConstant(self, stree:ConstantSyntaxTree):
+        if self.i == self.ith: self.node = stree
+        self.i += 1
+    def visitUnknown(self, stree:UnknownSyntaxTree):
+        if self.i == self.ith: self.node = stree
+        self.i += 1
+
+
 class SyntaxTreeGenerator:
-    BIN_OPERATORS = ['+','-','*','/','^']
-    UN_OPERATORS  = ['exp','log','sqrt']
-    OPERATORS     = BIN_OPERATORS + UN_OPERATORS
+    OPERATORS = BinaryOperatorSyntaxTree.OPERATORS + UnaryOperatorSyntaxTree.OPERATORS
 
     def __init__(self):
         self.unkn_counter = 0
@@ -615,12 +639,12 @@ class SyntaxTreeGenerator:
         operator = random.choice(SyntaxTreeGenerator.OPERATORS)
         
         stree = None
-        if operator in SyntaxTreeGenerator.UN_OPERATORS:
+        if operator in UnaryOperatorSyntaxTree.OPERATORS:
             stree = UnaryOperatorSyntaxTree(operator, self.__create_random(depth - 1))
 
         else:
             stree = BinaryOperatorSyntaxTree(operator,
                         self.__create_random(depth - 1),
-                        self.__create_random(depth - 1) if operator != '^' else ConstantSyntaxTree(2))
+                        self.__create_random(depth - 1) if operator != '^' else ConstantSyntaxTree(2))  # TODO: only ^2 managed.
         
         return stree.simplify()
