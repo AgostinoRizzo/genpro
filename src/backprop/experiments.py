@@ -1,18 +1,15 @@
-import sys
-sys.path.append('..')
-
 import logging
 import csv
 import random
 import time
+import sympy
 
 import dataset
 import dataset_feynman
 import dataset_hlab
-import gp_backprop
-import gp
-import numbs
-import sympy
+
+from backprop import gp_backprop
+from backprop import gp
 
 
 BENCHMARKS:list[dataset.Dataset] = [
@@ -81,7 +78,6 @@ for S, datafile, addnoise, desc in BENCHMARKS:
     logging.info(f"\n--- Dataset loaded (Train size: {len(S.data)}, Test size: {len(S.test)}) ---")
 
     S.index()
-    numbs.init(S)
 
     S_train = dataset.NumpyDataset(S)
     S_test  = dataset.NumpyDataset(S, test=True)

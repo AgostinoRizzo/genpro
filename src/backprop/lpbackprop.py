@@ -1,22 +1,19 @@
-import sys
-sys.path.append('..')
-
 import clingo
 import numpy as np
 import logging
 
 import dataset
-import backprop
-import numbs
-import utils
-import qp
-import config
+import numlims
+from backprop import backprop
+from backprop import utils
+from backprop import qp
+from backprop import config
+from backprop import models
 
 
-ASP_ENCODINGS = ["lpbackprop/backprop.lp", "lpbackprop/add_sub_opt.lp",
-                 "lpbackprop/muldiv_opt.lp", "lpbackprop/pow_opt.lp",
-                 "lpbackprop/exp_opt.lp", "lpbackprop/log_opt.lp",
-                 "lpbackprop/sqrt_opt.lp"]
+ASP_ENCODINGS_DIR = "backprop/lpbackprop/"
+ASP_ENCODINGS = ["backprop.lp", "add_sub_opt.lp", "muldiv_opt.lp", "pow_opt.lp",
+                 "exp_opt.lp", "log_opt.lp", "sqrt_opt.lp"]
 SAMPLE_SIZE = 20
 SYNTH_POLYDEG = 6
 
@@ -134,32 +131,34 @@ def build_knowledge_spec(K:dataset.DataKnowledge, model_name:str):  # -> spec:st
     return spec, break_points_map, break_points_invmap
 
 
-# returns a model (e.g. polynomial), constraints:dict.
 def synthesize_unknown(unkn_label:str, K:dataset.DataKnowledge, break_points:set):
+    """
+    returns a model (e.g. polynomial), constraints:dict.
+    """
+
     pulled_constrs = {}
     for derivdeg in range(3):
         pulled_constrs[derivdeg] = qp.get_constraints(K, break_points, derivdeg, SAMPLE_SIZE)
     
-    poly_coeffs_pos = qp.qp_solve(pulled_constrs, SYNTH_POLYDEG, s_val= 1)  # in decreasing power.
-    poly_coeffs_neg = qp.qp_solve(pulled_constrs, SYNTH_POLYDEG, s_val=-1)
+    poly_coeffs_pos = qp.qp_solve(pulled_constrs, SYNTH_POLYDEG, K.numlims, s_val= 1)  # in decreasing power.
+    poly_coeffs_neg = qp.qp_solve(pulled_constrs, SYNTH_POLYDEG, K.numlims, s_val=-1)
     poly_coeffs = poly_coeffs_pos if np.sum(poly_coeffs_pos**2) >= np.sum(poly_coeffs_neg**2) else poly_coeffs_neg
         
-    P = np.poly1d(poly_coeffs)
-    P, coeffs_mask = utils.simplify_poly(P, pulled_constrs)
-    P_d1 = np.polyder(P, m=1)
-    P_d2 = np.polyder(P, m=2)
+    P = models.ModelFactory.create_poly(SYNTH_POLYDEG)
+    P.set_coeffs(poly_coeffs)
+    P.simplify_from_qp(pulled_constrs)
 
-    return (P, P_d1, P_d2, coeffs_mask, pulled_constrs)
+    return (P, None, pulled_constrs)  # TODO:coeffs_mask=None and pulled_constrs refer to the 0th derivative (image).
 
 
-def synthesize_unknowns(stree:backprop.SyntaxTree, unknown_labels:list[str], break_points_map:dict, break_points_invmap:dict,  # invmap: from asp to float.
-                        asp_model, onsynth_callback:callable):  # passing unknown_labels for efficiency
+def synthesize_unknowns(unknown_labels:list[str], break_points_map:dict, break_points_invmap:dict,  # invmap: from asp to float.
+                        asp_model, onsynth_callback, K_origin:dataset.DataKnowledge):  # passing unknown_labels for efficiency
     
     logging.debug(f"\n--- ASP Model ---\n{asp_model}\n")
 
     # build knowledge from ASP model.
     unkn_knowledge_map = {}
-    for unkn in unknown_labels: unkn_knowledge_map[unkn] = dataset.DataKnowledge()
+    for unkn in unknown_labels: unkn_knowledge_map[unkn] = dataset.DataKnowledge(limits=K_origin.dataset.numlims)
 
     for atom in asp_model.symbols(shown=True):
         unkn = atom.arguments[0].string
@@ -201,27 +200,25 @@ def synthesize_unknowns(stree:backprop.SyntaxTree, unknown_labels:list[str], bre
 
 
 # returns True when the problem is satisfiable + best model cost.
-def lpbackprop(K:dataset.DataKnowledge, stree:backprop.SyntaxTree, onsynth_callback:callable) -> bool:
+def lpbackprop(K:dataset.DataKnowledge, stree:backprop.SyntaxTree, onsynth_callback) -> bool:
     #
     # build ASP specification of stree and stree' (facts).
     #
-    stree = stree.simplify()
-    stree_pr = stree.diff().simplify()
-    stree_pr2 = stree_pr.diff().simplify()
+    # TODO: take stree_map from outside?!
+    stree_map = {(): stree.simplify()}  # TODO: generate all derivatives (multivar).
+    stree_map.update( {(0,): stree.diff().simplify()} )
+    stree_map.update( {(0,0): stree_map[(0,)].diff().simplify()} )
+
     aspSpecBuilder = ASPSpecBuilder()
-    aspSpecBuilder.map_root(stree)
-    aspSpecBuilder.map_root(stree_pr, 1)
-    aspSpecBuilder.map_root(stree_pr2, 2)
-    stree.accept(aspSpecBuilder)
-    stree_pr.accept(aspSpecBuilder)
-    stree_pr2.accept(aspSpecBuilder)
+    for deriv, stree in stree_map.items(): aspSpecBuilder.map_root(stree, len(deriv))
+    for deriv, stree in stree_map.items(): stree.accept(aspSpecBuilder)
     stree_spec = aspSpecBuilder.spec
     #logging.debug(stree_spec)
 
     #
     # build ASP prior knowledge (K) specification.
     #
-    K_spec, break_points_map, break_points_invmap = build_knowledge_spec(K, aspSpecBuilder.node_id_map[id(stree)])
+    K_spec, break_points_map, break_points_invmap = build_knowledge_spec(K, aspSpecBuilder.node_id_map[id(stree_map[()])])
     #logging.debug(K_spec)
 
     #
@@ -230,7 +227,7 @@ def lpbackprop(K:dataset.DataKnowledge, stree:backprop.SyntaxTree, onsynth_callb
         
     # set encodings.
     clingo_ctl = clingo.Control()
-    for enc in ASP_ENCODINGS: clingo_ctl.load(enc)
+    for enc in ASP_ENCODINGS: clingo_ctl.load(ASP_ENCODINGS_DIR + enc)
     clingo_ctl.add('stree_spec', [], stree_spec)  # ASP facts (stree).
     clingo_ctl.add('K_spec'    , [], K_spec    )  # ASP facts (knowledge).
     clingo_ctl.add('show'      , [], """
@@ -254,7 +251,7 @@ def lpbackprop(K:dataset.DataKnowledge, stree:backprop.SyntaxTree, onsynth_callb
     unknown_labels = None
     if onsynth_callback is not None:
         unkn_collector = backprop.UnknownSyntaxTreeCollector()
-        stree.accept(unkn_collector)
+        stree_map[()].accept(unkn_collector)
         unknown_labels = unkn_collector.unknown_labels
     
     logging.debug('Clingo grounding...')
@@ -276,7 +273,7 @@ def lpbackprop(K:dataset.DataKnowledge, stree:backprop.SyntaxTree, onsynth_callb
             return True
         
         if not asp_model.optimality_proven: return
-        synthesize_unknowns(stree, unknown_labels, break_points_map, break_points_invmap, asp_model, onsynth_callback)
+        synthesize_unknowns(unknown_labels, break_points_map, break_points_invmap, asp_model, onsynth_callback, K)
         nopt_models += 1
         return nopt_models < config.LPBACKPROP_MAX_NMODELS
     
@@ -285,7 +282,7 @@ def lpbackprop(K:dataset.DataKnowledge, stree:backprop.SyntaxTree, onsynth_callb
     logging.debug(solve_result)
     
     nodes_counter = backprop.SyntaxTreeNodeCounter()
-    stree.accept(nodes_counter)
+    stree_map[()].accept(nodes_counter)
     if best_model_cost is None:  # when unsat.
         best_model_cost = AspModelCost([1e5+nodes_counter.nnodes])  # TODO: manage 1e5 + ...
     else:  # when sat, add number of nodes as additional metric.

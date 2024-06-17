@@ -1,19 +1,17 @@
-import sys
-sys.path.append('..')
+import logging
 
 import dataset
-import backprop
-import lpbackprop
-import jump_backprop
-import utils
-import gp
-import logging
-import config
+from backprop import backprop
+from backprop import lpbackprop
+from backprop import jump_backprop
+from backprop import utils
+from backprop import gp
+from backprop import config
 
 
-def random_population(popsize:int, max_depth:int, check_duplicates:bool=True) -> list[backprop.SyntaxTree]:
+def random_population(popsize:int, max_depth:int, check_duplicates:bool=True, randstate:int=None) -> list[backprop.SyntaxTree]:
     assert popsize >= 1
-    return backprop.SyntaxTreeGenerator().create_random(max_depth, popsize, check_duplicates)
+    return backprop.SyntaxTreeGenerator(randstate).create_random(max_depth, popsize, check_duplicates)
 
 
 class KnowledgeBackpropEvaluator(gp.Evaluator):
@@ -26,7 +24,7 @@ class KnowledgeBackpropEvaluator(gp.Evaluator):
 
 
 def evaluate(population:list[backprop.SyntaxTree], S_train:dataset.NumpyDataset, S_test:dataset.NumpyDataset) \
-    -> tuple[list[backprop.SyntaxTree], dict, bool]:
+    -> tuple[list[backprop.SyntaxTree], dict]:
     
     cost_map = {}
     evaluator = KnowledgeBackpropEvaluator(S_train.knowledge)

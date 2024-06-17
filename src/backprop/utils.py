@@ -1,20 +1,14 @@
-import sys
-sys.path.append('..')
-
 from scipy.interpolate import lagrange as scipy_interp_lagrange
 import numpy as np
+
 import dataset
-import numbs
-import backprop
-import lpbackprop
-import qp
 
 
 def map_break_points(K:dataset.DataKnowledge) -> dict:
     break_points = set()
     break_points.add(0)
-    break_points.add( numbs.INFTY)
-    break_points.add(-numbs.INFTY)
+    break_points.add( K.numlims.INFTY)
+    break_points.add(-K.numlims.INFTY)
 
     for vals in K.derivs.values():
         for dp in vals:
@@ -48,8 +42,8 @@ def map_break_points(K:dataset.DataKnowledge) -> dict:
     return break_points_map, break_points_invmap
 
 
-# constrs: map (key=deriv degree) of Constraints.
-def check_constrs_sat(P:np.poly1d, constrs:dict[qp.Constraints]) -> bool:
+# constrs:dict[qp.Constraints] map (key=deriv degree) of Constraints.
+def check_constrs_sat(P:np.poly1d, constrs:dict) -> bool:
     for derivdeg in constrs.keys():
         _P = np.polyder( P, m=derivdeg ) if derivdeg > 0 else P
 
@@ -68,11 +62,11 @@ def check_constrs_sat(P:np.poly1d, constrs:dict[qp.Constraints]) -> bool:
     return True
 
 
-# constrs: map (key=deriv degree) of Constraints.
+# constrs:dict[qp.Constraints] map (key=deriv degree) of Constraints.
 # returns a simplified version of P by removing (=0) some coefficients
 #       while keeping the satisfaction of constrs
 # it is assumed that P is compliant w.r.t. constrs
-def simplify_poly(P:np.poly1d, constrs:dict[qp.Constraints]) -> np.poly1d:
+def simplify_poly(P:np.poly1d, constrs:dict) -> np.poly1d:
     canBeZeroCoeffs = [True] * P.c.size
     for derivdeg, constrs in constrs.items():
         if constrs.noroot: canBeZeroCoeffs[-derivdeg-1] = False
@@ -116,15 +110,16 @@ def coeffs_softmax(c:np.array) -> np.array:
 
 
 def compute_data_weight(data:dataset.NumpyDataset,
-                        local_stree:backprop.UnknownSyntaxTree,
-                        global_stree:backprop.SyntaxTree) -> np.array:
+                        local_stree, #:backprop.UnknownSyntaxTree,
+                        global_stree #:backprop.SyntaxTree
+                       ) -> np.array:
     
     local_model = local_stree.model
     
     local_stree.model = lambda X: data.Y
     DY = global_stree.compute_output(data.X)
 
-    local_stree.model = lambda X: data.Y + numbs.STEPSIZE
+    local_stree.model = lambda X: data.Y + data.numlims.STEPSIZE
     DY = np.absolute(global_stree.compute_output(data.X) - DY)
 
     local_stree.model = local_model

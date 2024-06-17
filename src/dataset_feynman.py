@@ -1,7 +1,6 @@
 import numpy as np
 import sympy
 import dataset
-import numbs
 
 SPEED_OF_LIGHT = 2.99792458e8
 PLANCK_CONSTANT = 6.626e-34
@@ -16,6 +15,8 @@ class FeynmanICh6Eq20a(dataset.Dataset):
         self.yl =  0.
         self.yu =  0.5
 
+        INFTY = self.numlims.INFTY
+
         # intersection points
         self.knowledge.add_deriv(0, dataset.DataPoint(0, self.func(0)))
         self.knowledge.add_deriv(0, dataset.DataPoint(self.xl, self.func(self.xl)))
@@ -25,16 +26,16 @@ class FeynmanICh6Eq20a(dataset.Dataset):
         self.knowledge.add_deriv(1, dataset.DataPoint(0, 0))
         
         # known positivity/negativity
-        self.knowledge.add_sign(0, -numbs.INFTY, numbs.INFTY, '+')
+        self.knowledge.add_sign(0, -INFTY, INFTY, '+')
     
         # monotonically increasing/decreasing
-        self.knowledge.add_sign(1, -numbs.INFTY, 0, '+')
-        self.knowledge.add_sign(1, 0, numbs.INFTY, '-')
+        self.knowledge.add_sign(1, -INFTY, 0, '+')
+        self.knowledge.add_sign(1, 0, INFTY, '-')
 
         # concavity/convexity
-        self.knowledge.add_sign(2, -numbs.INFTY, -1, '+')
+        self.knowledge.add_sign(2, -INFTY, -1, '+')
         self.knowledge.add_sign(2, -1, 1, '-')
-        self.knowledge.add_sign(2, 1, numbs.INFTY, '+')
+        self.knowledge.add_sign(2, 1, INFTY, '+')
 
         # symmetry
         self.knowledge.add_symm(0, 0, iseven=True )
@@ -66,15 +67,17 @@ class FeynmanICh29Eq4(dataset.Dataset):
         self._yl = 0
         self._yu = 4e-9
 
+        INFTY = self.numlims.INFTY
+
         # intersection points
         self.knowledge.add_deriv(0, dataset.DataPoint(0, 0))
         
         # known positivity/negativity
-        self.knowledge.add_sign(0, -numbs.INFTY, 0, '-')
-        self.knowledge.add_sign(0, 0, numbs.INFTY, '+')
+        self.knowledge.add_sign(0, -INFTY, 0, '-')
+        self.knowledge.add_sign(0, 0, INFTY, '+')
     
         # monotonically increasing/decreasing
-        self.knowledge.add_sign(1, -numbs.INFTY, numbs.INFTY, '+')
+        self.knowledge.add_sign(1, -INFTY, INFTY, '+')
 
         # symmetry
         self.knowledge.add_symm(0, 0, iseven=False)
@@ -112,15 +115,17 @@ class FeynmanICh34Eq27(dataset.Dataset):
         self._yl = 0
         self._yu = 1.1e-34
 
+        INFTY = self.numlims.INFTY
+
         # intersection points
         self.knowledge.add_deriv(0, dataset.DataPoint(0, 0))
         
         # known positivity/negativity
-        self.knowledge.add_sign(0, -numbs.INFTY, 0, '-')
-        self.knowledge.add_sign(0, 0, numbs.INFTY, '+')
+        self.knowledge.add_sign(0, -INFTY, 0, '-')
+        self.knowledge.add_sign(0, 0, INFTY, '+')
     
         # monotonically increasing/decreasing
-        self.knowledge.add_sign(1, -numbs.INFTY, numbs.INFTY, '+')
+        self.knowledge.add_sign(1, -INFTY, INFTY, '+')
 
         # symmetry
         self.knowledge.add_symm(0, 0, iseven=False)
@@ -158,18 +163,20 @@ class FeynmanIICh8Eq31(dataset.Dataset):
         self._yl = 0
         self._yu = 4.5e-12
 
+        INFTY = self.numlims.INFTY
+
         # intersection points
         self.knowledge.add_deriv(0, dataset.DataPoint(0, 0))
         
         # known positivity/negativity
-        self.knowledge.add_sign(0, -numbs.INFTY, numbs.INFTY, '+')
+        self.knowledge.add_sign(0, -INFTY, INFTY, '+')
     
         # monotonically increasing/decreasing
-        self.knowledge.add_sign(1, -numbs.INFTY, 0, '-')
-        self.knowledge.add_sign(1, 0, numbs.INFTY, '+')
+        self.knowledge.add_sign(1, -INFTY, 0, '-')
+        self.knowledge.add_sign(1, 0, INFTY, '+')
 
         # concavity/convexity
-        self.knowledge.add_sign(2, -numbs.INFTY, numbs.INFTY, '+')
+        self.knowledge.add_sign(2, -INFTY, INFTY, '+')
 
         # symmetry
         self.knowledge.add_symm(0, 0, iseven=True )
@@ -207,18 +214,20 @@ class FeynmanIICh27Eq16(dataset.Dataset):
         self._yl = 0
         self._yu = 0.003
 
+        INFTY = self.numlims.INFTY
+
         # intersection points
         self.knowledge.add_deriv(0, dataset.DataPoint(0, 0))
         
         # known positivity/negativity
-        self.knowledge.add_sign(0, -numbs.INFTY, numbs.INFTY, '+')
+        self.knowledge.add_sign(0, -INFTY, INFTY, '+')
     
         # monotonically increasing/decreasing
-        self.knowledge.add_sign(1, -numbs.INFTY, 0, '-')
-        self.knowledge.add_sign(1, 0, numbs.INFTY, '+')
+        self.knowledge.add_sign(1, -INFTY, 0, '-')
+        self.knowledge.add_sign(1, 0, INFTY, '+')
 
         # concavity/convexity
-        self.knowledge.add_sign(2, -numbs.INFTY, numbs.INFTY, '+')
+        self.knowledge.add_sign(2, -INFTY, INFTY, '+')
 
         # symmetry
         self.knowledge.add_symm(0, 0, iseven=True )

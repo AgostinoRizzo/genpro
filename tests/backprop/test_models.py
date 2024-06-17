@@ -10,14 +10,23 @@ def test_poly_coeffsize(deg, nvars):
     poly = models.ModelFactory.create_poly(deg, nvars)
     if nvars == 1: assert type(poly) is models.Poly1d
     else: assert type(poly) is models.Polynd
-
+    
     coeffs = poly.get_coeffs()
+    actual_coeffs_size = math.comb(nvars+deg, deg)
     assert coeffs.ndim == 1
-    assert coeffs.size == math.comb(nvars+deg, deg)
+    assert coeffs.size == actual_coeffs_size
     assert np.count_nonzero(coeffs) == 0
 
     if nvars > 1:
         assert poly.C.shape == (deg+1,)*nvars
+        assert len(poly.cidx) == nvars
+        for i_var in range(nvars):
+            assert poly.cidx[i_var].size == actual_coeffs_size
+        for i_coeff in range(actual_coeffs_size):
+            coeffidx_sum = 0
+            for i_var in range(nvars):
+                coeffidx_sum += poly.cidx[i_var][i_coeff]
+            assert coeffidx_sum <= deg
 
 
 @pytest.mark.parametrize("poly_str,c,x,y,y_pr,y_pr2", [
@@ -196,3 +205,36 @@ def test_poly5d(poly_str, deg, c_map, x, y, y_x0x4, y_x3x2, y_x2x1):
     [0.0, -598967582.7200001, -10.869229644090389, -159432299.99999997],
     [0.0, -1557315715.0720003, -0.0031968322482618786, 597871125.0])
 """
+
+
+@pytest.mark.parametrize("deg,coeffs,out", [
+    (4, [], '0'),
+    (2, [0, 0, 0], '0'),
+    (0, [2], '2.00'),
+    (1, [1,2], '1.0*x + 2.0'),
+    (2, [-8.21, 4, 2], '-8.21*x**2 + 4.0*x + 2.0'),
+    ])
+def test_to_sympy_poly1d(deg, coeffs, out):
+    poly = models.ModelFactory.create_poly(deg)
+    for cidx, c in enumerate(coeffs):
+        poly.set_coeff(cidx, c)
+
+    actual = set(str(poly.to_sympy(dps=3)).split(' + '))
+    expected = set(out.split(' + '))
+    assert actual == expected
+
+
+@pytest.mark.parametrize("deg,nvars,coeffs,out", [
+    (2, 2, {(0,0): 2}, '2.00'),
+    (5, 2, {(0,0): 2, (1,0): 1}, '2.0 + 1.0*x0'),
+    (5, 2, {(0,0): 2, (1,0): 1, (0,1): 3, (2,1): 4, (2,2): 5}, '2.0 + 1.0*x0 + 3.0*x1 + 4.0*x0**2*x1 + 5.0*x0**2*x1**2'),
+    (1, 3, {(0,0,0): 2, (1,0,0): 1, (0,1,0): 1, (0,0,1): 1}, '2.0 + 1.0*x0 + 1.0*x1 + 1.0*x2'),
+    ])
+def test_to_sympy_polynd(deg, nvars, coeffs, out):
+    poly = models.ModelFactory.create_poly(deg, nvars)
+    for cidx, c in coeffs.items():
+        poly.set_coeff(cidx, c)
+    
+    actual = set(str(poly.to_sympy(dps=3)).split(' + '))
+    expected = set(out.split(' + '))
+    assert actual == expected

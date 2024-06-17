@@ -5,7 +5,7 @@ import sympy
 import csv
 from sklearn.model_selection import train_test_split
 import matplotlib.pyplot as plt
-import numbs
+import numlims
 
 
 class DataPoint:
@@ -46,12 +46,14 @@ class Evaluation:
 
 
 class DataKnowledge:
-    def __init__(self, dataset=None) -> None:
+    def __init__(self, dataset=None, limits:numlims.NumericLimits=None) -> None:
+        assert dataset is None or limits is None
         self.dataset = dataset
         self.derivs = {}
         self.sign = {}
         self.symm = {}
         self.noroot = set()
+        self.numlims = limits if dataset is None else dataset.numlims
     
     def add_deriv(self, d:int, xy:DataPoint):
         if d not in self.derivs.keys():
@@ -77,7 +79,7 @@ class DataKnowledge:
             np.linspace(self.dataset.xl, self.dataset.xu, max(0, sample_size - len(deriv_points))),
             np.array(deriv_points))).sort()
     
-    def evaluate(self, model:tuple[callable,callable,callable]) -> dict:
+    def evaluate(self, model_map:dict) -> dict:
         n   = {0: 0, 1: 0, 2: 0}
         ssr = {0: 0, 1: 0, 2: 0}
 
@@ -86,25 +88,25 @@ class DataKnowledge:
             n[derivdeg] += len(dps)
             X = np.array( [dp.x for dp in dps] )
             Y = np.array( [dp.y for dp in dps] )
-            ssr[derivdeg] += np.sum( (model[derivdeg](X) - Y) ** 2 )
+            ssr[derivdeg] += np.sum( (model_map[(0,)*derivdeg](X) - Y) ** 2 )
         
         # positivity constraints.
         for derivdeg, constrs in self.sign.items():
             for (_l,_u,sign,th) in constrs:
-                l = _l + numbs.EPSILON
-                u = _u - numbs.EPSILON
+                l = _l + self.numlims.EPSILON
+                u = _u - self.numlims.EPSILON
                 if l > u: continue
                 X = np.linspace(l, u, 1 if l == u else 20)  # TODO: factorize sample size.
                 n[derivdeg] += X.size
-                model_Y = model[derivdeg](X)
+                model_Y = model_map[(0,)*derivdeg](X)
                 ssr[derivdeg] += np.sum( ( np.minimum(0, model_Y - th) if sign == '+' else np.maximum(0, model_Y - th) ) ** 2 )
         
         # symmetry constraints.
         for derivdeg, (x0, iseven) in self.symm.items():
-            X = np.linspace(x0 + numbs.EPSILON, numbs.INFTY, 20)  # TODO: factorize sample size.
+            X = np.linspace(x0 + self.numlims.EPSILON, self.numlims.INFTY, 20)  # TODO: factorize sample size.
             n[derivdeg] += X.size
-            model_Y1 = model[derivdeg](X)
-            model_Y2 = model[derivdeg](x0-(X-x0))
+            model_Y1 = model_map[(0,)*derivdeg](X)
+            model_Y2 = model_map[(0,)*derivdeg](x0-(X-x0))
             ssr[derivdeg] += np.sum( ( (model_Y1 - model_Y2) if iseven else (model_Y1 + model_Y2) ) ** 2 )
         
         return {'mse0': (ssr[0]/n[0]) if n[0] > 0. else 0.,
@@ -133,17 +135,19 @@ def compute_sst(dpoints:list) -> float:
 
 
 class Dataset:
-    def __init__(self) -> None:
+    def __init__(self, xl:float=-1, xu:float=1) -> None:
         self.data = []
         self.test = []
-        self.xl = -1.
-        self.xu = 1.
+        self.xl = xl
+        self.xu = xu
         self.yl = 0.
         self.yu = 1.
         self._xl = self.xl  # used for scaling.
         self._xu = self.xu
         self._yl = self.yl
         self._yu = self.yu
+        self.numlims = numlims.NumericLimits()
+        self.numlims.set_bounds(self.xl, self.xu)
         self.knowledge = DataKnowledge(self)
         self.data_sst = 0.
         self.test_sst = 0.
@@ -183,9 +187,9 @@ class Dataset:
         self.data = new_data
         self._on_data_changed()
 
-    def split(self, train_size:float=0.7, seed:int=0):
+    def split(self, train_size:float=0.7, randstate:int=0):  # TODO: remove init val of randstate
         if len(self.data) > 1:
-            train, test = train_test_split(self.data, train_size=train_size, random_state=seed)
+            train, test = train_test_split(self.data, train_size=train_size, random_state=randstate)
             self.data = list(train)
             self.test = list(test)
             self._on_data_changed()
@@ -275,7 +279,7 @@ class Dataset:
         Y = []
         for dp in self.data:
             if dp.x > l and dp.x < u: Y.append(dp.y)
-        if len(Y) <= 1: return numbs.EPSILON  # TODO: manage this situation (otherwise in qp.qp_solve we have a division by zero).
+        if len(Y) <= 1: return self.numlims.EPSILON  # TODO: manage this situation (otherwise in qp.qp_solve we have a division by zero).
         return np.var( np.array(Y) )
     
     def _on_data_changed(self):
@@ -311,7 +315,7 @@ class Dataset:
     def _ymap(self, y:float) -> float:
         return self.yl + (((y - self._yl) / (self._yu - self._yl)) * (self.yu - self.yl))
     
-    def evaluate(self, model:callable) -> Evaluation:
+    def evaluate(self, model) -> Evaluation:
         def compute_measures(data:list[DataPoint], data_sst:float) -> dict:
             ssr = 0.
             for dp in data: ssr += (model(dp.x) - dp.y) ** 2  # TODO: can be done efficiently using numpy.
@@ -324,7 +328,7 @@ class Dataset:
             compute_measures(self.test, self.test_sst) # TODO(take derivatives of model): self.knowledge.evaluate(model)
         )
     
-    def evaluate_extra(self, model:callable) -> dict:
+    def evaluate_extra(self, model) -> dict:
         dx = (self.xu - self.xl) / 2
         X = np.linspace(self.xl - dx, self.xu + dx, 500)  # TODO: factorize sample size.
         Y = self.func(X)
@@ -340,7 +344,6 @@ class Dataset:
         r2   = 1 - (ssr / sst)
 
         return {'mse': mse, 'rmse': rmse, 'r2': r2}
-
     
     def plot(self, plot_data:bool=True, plot_knowldege:bool=False,
              width:int=10, height:int=8,
@@ -410,6 +413,8 @@ class NumpyDataset:
             self.xl = -1.; self.xu = 1.
             self.yl =  0.; self.yu = 1.
             self.knowledge = None
+            self.numlims = numlims.NumericLimits()
+            self.numlims.set_bounds(self.xl, self.xu)
         else:
             XY = S.test if test else S.data
             self.X = np.array( [dp.x for dp in XY] )
@@ -417,6 +422,7 @@ class NumpyDataset:
             self.xl = S.xl; self.xu = S.xu
             self.yl = S.yl; self.yu = S.yu
             self.knowledge = S.knowledge
+            self.numlims = S.numlims
         self.sst = None
         self.on_Y_changed()
     
@@ -473,7 +479,7 @@ class NumpyDataset:
         l = x0 - h
         u = x0 + h
         Y = self.Y[ (self.X > l) & (self.X < u) ]
-        if Y.size <= 1: return numbs.EPSILON  # TODO: manage this situation (otherwise in qp.qp_solve we have a division by zero).
+        if Y.size <= 1: return self.numlims.EPSILON  # TODO: manage this situation (otherwise in qp.qp_solve we have a division by zero).
         return np.var(Y)
     
     def on_Y_changed(self):
@@ -502,11 +508,9 @@ class NumpyDataset:
 
 class MockDataset(Dataset):   
     def __init__(self) -> None:
-        super().__init__()
-        self.xl = 0.#0.8
-        self.xu = 1.#10
-        self.yl = 0.#-1
-        self.yu = 1.#9
+        super().__init__(xl=0., xu=1.)
+        self.yl = 0.
+        self.yu = 1.
      
     def func(self, x: float) -> float:
         return (x**3 -2*x + 1) / (x*3 + x -1) #np.sin(x) + 1  #x / (x**2)#(x+2) / (x**2 + x + 1)
@@ -517,15 +521,9 @@ class MockDataset(Dataset):
 
 class PolyDataset(Dataset):   
     def __init__(self) -> None:
-        super().__init__()
-        """self.xl = -2.5
-        self.xu = 2.5
-        self.yl = 0.
-        self.yu = 1.5"""
-        self.xl = 0.01
-        self.xu =  4
-        self.yl =  0.01
-        self.yu =  16
+        super().__init__(xl=0.01, xu=4.)
+        self.yl = 0.01
+        self.yu = 16.
      
     def func(self, x: float) -> float:
         return x **2
@@ -537,9 +535,7 @@ class PolyDataset(Dataset):
 
 class TrigonDataset(Dataset):   
     def __init__(self) -> None:
-        super().__init__()
-        self.xl = -5.
-        self.xu = 5.
+        super().__init__(xl=-5., xu=5.)
         self.yl = -1.
         self.yu = 1.
 
@@ -563,9 +559,7 @@ class TrigonDataset(Dataset):
 
 class MagmanDataset(Dataset):
     def __init__(self) -> None:
-        super().__init__()
-        self.xl = -0.075
-        self.xu =  0.075
+        super().__init__(xl=-0.075, xu=0.075)
         self.yl = -0.25
         self.yu =  0.25
         
@@ -627,9 +621,7 @@ class MagmanDataset(Dataset):
 
 class MagmanDatasetScaled(Dataset):
     def __init__(self) -> None:
-        super().__init__()
-        self.xl = -2.
-        self.xu = 2.
+        super().__init__(xl=-2., xu=2.)
         self.yl = -2.
         self.yu = 2.
 
@@ -667,29 +659,30 @@ class MagmanDatasetScaled(Dataset):
         #
         # positivity/negativity contraints
         #
-        
+        INFTY = self.numlims.INFTY
+
         # known positivity/negativity
         #self.knowledge.add_sign(0, self.xl, -0.001, '+')
         #self.knowledge.add_sign(0, 0.001, self.xu, '-')
-        self.knowledge.add_sign(0, -numbs.INFTY, 0, '+')
-        self.knowledge.add_sign(0, 0, numbs.INFTY, '-')
+        self.knowledge.add_sign(0, -INFTY, 0, '+')
+        self.knowledge.add_sign(0, 0, INFTY, '-')
     
         # monotonically increasing/decreasing
         #self.knowledge.add_sign(1, self.xl, -peak_x, '+')
         #self.knowledge.add_sign(1, -peak_x, peak_x, '-')
         #self.knowledge.add_sign(1, peak_x, self.xu, '+')
-        self.knowledge.add_sign(1, -numbs.INFTY, -peak_x, '+')
+        self.knowledge.add_sign(1, -INFTY, -peak_x, '+')
         self.knowledge.add_sign(1, -peak_x, peak_x, '-')
-        self.knowledge.add_sign(1, peak_x, numbs.INFTY, '+')
+        self.knowledge.add_sign(1, peak_x, INFTY, '+')
 
         # concavity/convexity
         #self.knowledge.add_sign(2, self.xl, -0.4, '+')
         #self.knowledge.add_sign(2, 0.4, self.xu, '-')
         
-        self.knowledge.add_sign(2, -numbs.INFTY, -infl_x, '+')
+        self.knowledge.add_sign(2, -INFTY, -infl_x, '+')
         self.knowledge.add_sign(2, -infl_x, 0, '-')
         self.knowledge.add_sign(2, 0, infl_x, '+')
-        self.knowledge.add_sign(2, infl_x, numbs.INFTY, '-')
+        self.knowledge.add_sign(2, infl_x, INFTY, '-')
 
         # symmetry
         self.knowledge.add_symm(0, 0, iseven=False)
@@ -783,9 +776,7 @@ class MagmanDataset(Dataset):
 
 class HEADataset(Dataset):
     def __init__(self) -> None:
-        super().__init__()
-        self.xl = 0.
-        self.xu = 10.
+        super().__init__(xl=0., xu=10.)
         self.yl = -1.
         self.yu = 1.
     
@@ -804,9 +795,7 @@ class HEADataset(Dataset):
 
 class ABSDataset(Dataset):
     def __init__(self) -> None:
-        super().__init__()
-        self.xl = 0.
-        self.xu = 1.
+        super().__init__(xl=0., xu=1.)
         self.yl = 0.
         self.yu = 0.45
 
@@ -831,17 +820,17 @@ class ABSDataset(Dataset):
         self.knowledge.add_deriv(1, DataPoint(peak_x, 0.))
         
         # known positivity/negativity
-        #self.knowledge.add_sign(0, self.xl, numbs.INFTY, '+')
+        #self.knowledge.add_sign(0, self.xl, self.numlims.INFTY, '+')
         self.knowledge.add_sign(0, self.xl, self.xu, '+')
 
         # monotonically increasing/decreasing
         self.knowledge.add_sign(1, self.xl, peak_x, '+')
-        #self.knowledge.add_sign(1, peak_x, numbs.INFTY, '-')
+        #self.knowledge.add_sign(1, peak_x, self.numlims.INFTY, '-')
         self.knowledge.add_sign(1, peak_x, self.xu, '-')
 
         # concavity
         self.knowledge.add_sign(2, self.xl, infl_x, '-')
-        #self.knowledge.add_sign(2, peak_x, numbs.INFTY, '+')
+        #self.knowledge.add_sign(2, peak_x, self.numlims.INFTY, '+')
         self.knowledge.add_sign(2, infl_x, self.xu, '+')
     
     def func(self, x: float) -> float:
@@ -872,9 +861,7 @@ class ABSDataset(Dataset):
 
 class OneOverXDataset(Dataset):
     def __init__(self) -> None:
-        super().__init__()
-        self.xl = 1e-10
-        self.xu = 5.
+        super().__init__(xl=1e-10, xu=5.)
         self.yl = 0.
         self.yu = 5.
 
@@ -886,13 +873,13 @@ class OneOverXDataset(Dataset):
         self.knowledge.add_deriv(0, DataPoint( 1., 1.))
         
         # known positivity/negativity
-        self.knowledge.add_sign(0, self.xl, numbs.INFTY, '+')
+        self.knowledge.add_sign(0, self.xl, self.numlims.INFTY, '+')
 
         # monotonically increasing/decreasing
-        self.knowledge.add_sign(1, self.xl, numbs.INFTY, '-')
+        self.knowledge.add_sign(1, self.xl, self.numlims.INFTY, '-')
 
         # concavity
-        self.knowledge.add_sign(2, self.xl, numbs.INFTY, '+')
+        self.knowledge.add_sign(2, self.xl, self.numlims.INFTY, '+')
     
     def func(self, x: float) -> float:
         return 1 / x
@@ -908,9 +895,7 @@ class OneOverXDataset(Dataset):
 
 class ABSDatasetScaled(Dataset):
     def __init__(self) -> None:
-        super().__init__()
-        self.xl = 0.
-        self.xu = 1.
+        super().__init__(xl=0., xu=1.)
         self.yl = 0.
         self.yu = 10
 
@@ -940,15 +925,15 @@ class ABSDatasetScaled(Dataset):
         self.knowledge.add_deriv(1, DataPoint(peak_x, 0.))
         
         # known positivity/negativity
-        self.knowledge.add_sign(0, self.xl, numbs.INFTY, '+')
+        self.knowledge.add_sign(0, self.xl, self.numlims.INFTY, '+')
 
         # monotonically increasing/decreasing
         self.knowledge.add_sign(1, self.xl, peak_x, '+')
-        self.knowledge.add_sign(1, peak_x, numbs.INFTY, '-')
+        self.knowledge.add_sign(1, peak_x, self.numlims.INFTY, '-')
 
         # concavity
         self.knowledge.add_sign(2, self.xl, infl_x, '-')
-        self.knowledge.add_sign(2, infl_x, numbs.INFTY, '+')
+        self.knowledge.add_sign(2, infl_x, self.numlims.INFTY, '+')
     
     def func(self, x: float) -> float:
         x = self._xmap(x, toorigin=True)

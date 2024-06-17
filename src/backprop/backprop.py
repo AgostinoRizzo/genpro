@@ -2,10 +2,10 @@ import numpy as np
 import sympy
 import string
 import random
-import numbs
+import numlims
 
 class PropositionalConstraint:
-    def __init__(self, f, g, opt:str='>', lb:float=-numbs.INFTY, ub:float=numbs.INFTY):
+    def __init__(self, f, g, opt:str='>', lb:float=-numlims.INFTY, ub:float=numlims.INFTY):
         self.f = f
         self.g = g
         self.opt = opt
@@ -13,8 +13,8 @@ class PropositionalConstraint:
         self.ub = ub
     
     def __str__(self) -> str:
-        lb_str = numbs.tostr(self.lb)
-        ub_str = numbs.tostr(self.ub)
+        lb_str = numlims.tostr(self.lb)
+        ub_str = numlims.tostr(self.ub)
         return f"{self.f}{self.opt}{self.g} [{lb_str},{ub_str}]"
     
     def is_equivalent(self, other) -> bool:
@@ -102,21 +102,23 @@ class SyntaxTree:
         self.output = None
     def clone(self): return None
     def compute_output(self, x:np.array) -> np.array: return None
+    def __call__(self, x): return self.compute_output(x)
     def set_parent(self, parent=None): self.parent = parent
     def validate(self) -> bool: return True
     def simplify(self): return self
     def __str__(self) -> str: return ''
     def __eq__(self, other) -> bool: return False
     def diff(self): return None
-    def backprop_sign(self, symbmapper:SymbolMapper, lb:float=-numbs.INFTY, ub:float=numbs.INFTY, sign:str='+'): pass
+    def backprop_sign(self, symbmapper:SymbolMapper, lb:float=-numlims.INFTY, ub:float=numlims.INFTY, sign:str='+'): pass
     def pull_output(self, target_output:np.array, relopt:Relopt=Relopt('='), child=None) -> tuple[np.array, Relopt]:
         return (target_output, relopt) if self.parent is None else self.parent.pull_output(target_output, relopt, self)
     def get_unknown_stree(self, unknown_stree_label:str): return None
-    def set_unknown_model(self, model_label:str, model:callable, coeffs_mask:list[float]=None, constrs:dict=None): pass
-    def set_all_unknown_models(self, model:callable): pass
+    def set_unknown_model(self, model_label:str, model, coeffs_mask:list[float]=None, constrs:dict=None): pass
+    def set_all_unknown_models(self, model): pass
     def count_unknown_model(self, model_label:str) -> int: return 0
     def accept(self, visitor): pass
     def to_sympy(self, dps:int=None): pass
+    def get_max_depth(self) -> int: return 0
 
 
 class BinaryOperatorSyntaxTree(SyntaxTree):
@@ -215,7 +217,7 @@ class BinaryOperatorSyntaxTree(SyntaxTree):
                 raise RuntimeError(f"Inverse for {self.left.output}/x{output_relopt.opt}{output} not defined.")
             if self.left.output >= 0.: return 0., output_relopt.strict()
             return 0., output_relopt.neg().strict()"""
-            #if output == 0.: return numbs.INFTY, Relopt('=')
+            #if output == 0.: return numlims.INFTY, Relopt('=')
         
         elif self.operator == '*':
             num = output
@@ -279,7 +281,7 @@ class BinaryOperatorSyntaxTree(SyntaxTree):
         
         raise RuntimeError(f"Differentiation not defined for operator {self.operator}.")
     
-    def backprop_sign(self, symbmapper:SymbolMapper, lb:float=-numbs.INFTY, ub:float=numbs.INFTY, sign:str='+'):
+    def backprop_sign(self, symbmapper:SymbolMapper, lb:float=-numlims.INFTY, ub:float=numlims.INFTY, sign:str='+'):
         f = self.left
         g = self.right
         f_pos = f.backprop_sign(symbmapper, lb, ub, '+')
@@ -329,11 +331,11 @@ class BinaryOperatorSyntaxTree(SyntaxTree):
         if stree is not None: return stree
         return self.right.get_unknown_stree(unknown_stree_label)
 
-    def set_unknown_model(self, model_label:str, model:callable, coeffs_mask:list[float]=None, constrs:dict=None):
+    def set_unknown_model(self, model_label:str, model, coeffs_mask:list[float]=None, constrs:dict=None):
         self.left .set_unknown_model(model_label, model, coeffs_mask, constrs)
         self.right.set_unknown_model(model_label, model, coeffs_mask, constrs)
     
-    def set_all_unknown_models(self, model:callable):
+    def set_all_unknown_models(self, model):
         self.left .set_all_unknown_models(model_label, model)
         self.right.set_all_unknown_models(model_label, model)
     
@@ -355,6 +357,9 @@ class BinaryOperatorSyntaxTree(SyntaxTree):
         if self.operator == '/': return left_sympy /  right_sympy
         if self.operator == '^': return left_sympy ** right_sympy
         raise RuntimeError(f"Conversion to sympy not defined for operator {self.operator}.")
+    
+    def get_max_depth(self) -> int:
+        return 1 + max(self.left.get_max_depth(), self.right.get_max_depth())
 
 
 
@@ -446,7 +451,7 @@ class UnaryOperatorSyntaxTree(SyntaxTree):
         
         raise RuntimeError(f"Differentiation not defined for operator {self.operator}.")
     
-    def backprop_sign(self, symbmapper:SymbolMapper, lb:float=-numbs.INFTY, ub:float=numbs.INFTY, sign:str='+'):
+    def backprop_sign(self, symbmapper:SymbolMapper, lb:float=-numlims.INFTY, ub:float=numlims.INFTY, sign:str='+'):
         raise RuntimeError(f"Sign backprop not defined for operator {self.operator}.")  # TODO: not utilized for now.
 
     def pull_output(self, target_output:np.array, relopt:Relopt=Relopt('='), child=None) -> tuple[np.array, Relopt]:
@@ -458,10 +463,10 @@ class UnaryOperatorSyntaxTree(SyntaxTree):
     def get_unknown_stree(self, unknown_stree_label:str):
         return self.inner.get_unknown_stree(unknown_stree_label)
 
-    def set_unknown_model(self, model_label:str, model:callable, coeffs_mask:list[float]=None, constrs:dict=None):
+    def set_unknown_model(self, model_label:str, model, coeffs_mask:list[float]=None, constrs:dict=None):
         self.inner.set_unknown_model(model_label, model, coeffs_mask, constrs)
     
-    def set_all_unknown_models(self, model:callable):
+    def set_all_unknown_models(self, model):
         self.inner.set_all_unknown_models(model)
     
     def count_unknown_model(self, model_label:str) -> int:
@@ -477,6 +482,9 @@ class UnaryOperatorSyntaxTree(SyntaxTree):
         elif self.operator == 'log' : return sympy.log (inner_sympy)
         elif self.operator == 'sqrt': return sympy.sqrt(inner_sympy)
         raise RuntimeError(f"Conversion to sympy not defined for operator {self.operator}.")
+    
+    def get_max_depth(self) -> int:
+        return 1 + self.inner.get_max_depth()
 
 
 class ConstantSyntaxTree(SyntaxTree):
@@ -501,7 +509,7 @@ class ConstantSyntaxTree(SyntaxTree):
     def diff(self) -> SyntaxTree:
         return ConstantSyntaxTree(0)
     
-    def backprop_sign(self, symbmapper:SymbolMapper, lb:float=-numbs.INFTY, ub:float=numbs.INFTY, sign:str='+'):
+    def backprop_sign(self, symbmapper:SymbolMapper, lb:float=-numlims.INFTY, ub:float=numlims.INFTY, sign:str='+'):
         return self.val > 0 if sign == '+' else self.val < 0
     
     def accept(self, visitor):
@@ -509,6 +517,9 @@ class ConstantSyntaxTree(SyntaxTree):
     
     def to_sympy(self, dps:int=None):
         return sympy.Float(self.val, dps=dps)
+    
+    def get_max_depth(self) -> int:
+        return 0
         
 
 class UnknownSyntaxTree(SyntaxTree):
@@ -525,8 +536,8 @@ class UnknownSyntaxTree(SyntaxTree):
     def compute_output(self, x:np.array) -> np.array:
         self.output = None
         if self.model is None:
-            print("None model!!")
-            return None
+            raise RuntimeError('None unknown model.')
+            #return None
         self.output = self.model(x)
         return self.output
     
@@ -540,7 +551,7 @@ class UnknownSyntaxTree(SyntaxTree):
     def diff(self) -> SyntaxTree:
         return UnknownSyntaxTree(f"{self.label}'")
     
-    def backprop_sign(self, symbmapper:SymbolMapper, lb:float=-numbs.INFTY, ub:float=numbs.INFTY, sign:str='+'):
+    def backprop_sign(self, symbmapper:SymbolMapper, lb:float=-numlims.INFTY, ub:float=numlims.INFTY, sign:str='+'):
         constr = PropositionalConstraint( self, ConstantSyntaxTree(0), '>' if sign == '+' else '<', lb, ub )
         return symbmapper.map_as_symbol(constr)
     
@@ -548,13 +559,13 @@ class UnknownSyntaxTree(SyntaxTree):
         if self.label == unknown_stree_label: return self
         return None
 
-    def set_unknown_model(self, model_label:str, model:callable, coeffs_mask:list[float]=None, constrs:dict=None):
+    def set_unknown_model(self, model_label:str, model, coeffs_mask:list[float]=None, constrs:dict=None):
         if self.label == model_label:
             self.model = model
             self.coeffs_mask = coeffs_mask
             self.constrs = constrs
     
-    def set_all_unknown_models(self, model:callable):
+    def set_all_unknown_models(self, model):
         self.model = model
     
     def count_unknown_model(self, model_label:str) -> int:
@@ -564,18 +575,13 @@ class UnknownSyntaxTree(SyntaxTree):
         visitor.visitUnknown(self)
     
     def to_sympy(self, dps:int=None):
-        x = sympy.Symbol('x')
-        if self.model is None or type(self.model) is not np.poly1d:
-            print(f"-----> Model of {self.label} is {self.model} of type {type(self.model)}")
+        if self.model is None:
+            x = sympy.Symbol('x')
             return sympy.Function(self.label)(x)
-        if self.model.c.size == 0: return sympy.Integer(0)
-        P = sympy.Float(self.model.c[0], dps=dps) * (x**(self.model.c.size-1))
-        i = 1
-        for power in range(self.model.c.size-2, -1, -1):
-            P += sympy.Float(self.model.c[i], dps=dps) * (x**power)
-            i += 1
-        return P
-        #return sympy.polys.polytools.Poly(self.model.c, Symbol('x'), domain='R')
+        return self.model.to_sympy(dps)
+    
+    def get_max_depth(self) -> int:
+        return 0  # TODO: is it ok? or consider self.model?
 
 
 class SyntaxTreeVisitor:
@@ -626,19 +632,20 @@ class SyntaxTreeNodeSelector(SyntaxTreeVisitor):
 class SyntaxTreeGenerator:
     OPERATORS = BinaryOperatorSyntaxTree.OPERATORS + UnaryOperatorSyntaxTree.OPERATORS
 
-    def __init__(self):
+    def __init__(self, randstate:int=None):
         self.unkn_counter = 0
+        self.randgen = random.Random() if randstate is None else random.Random(randstate)
     
     def create_random(self, max_depth:int, n:int=1, check_duplicates:bool=True) -> list[SyntaxTree]:
         assert max_depth >= 0 and n >= 0
         strees = []
         for _ in range(n):
             self.unkn_counter = 0
-            new_stree = self.__create_random(random.randint(0, max_depth))
+            new_stree = self.__create_random(self.randgen.randint(0, max_depth))
             if check_duplicates:
                 while new_stree in strees:
                     self.unkn_counter = 0
-                    new_stree = self.__create_random(random.randint(0, max_depth))
+                    new_stree = self.__create_random(self.randgen.randint(0, max_depth))
             strees.append(new_stree)
         return strees
 
@@ -649,7 +656,7 @@ class SyntaxTreeGenerator:
             self.unkn_counter += 1
             return stree
         
-        operator = random.choice(SyntaxTreeGenerator.OPERATORS)
+        operator = self.randgen.choice(SyntaxTreeGenerator.OPERATORS)
         
         stree = None
         if operator in UnaryOperatorSyntaxTree.OPERATORS:

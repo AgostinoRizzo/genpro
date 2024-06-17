@@ -1,12 +1,9 @@
-import sys
-sys.path.append('..')
-
 from functools import cmp_to_key
 import random
 import logging
 
 import dataset
-import backprop
+from backprop import backprop
 
 
 def sort_population(population:list[backprop.SyntaxTree], eval_map:dict) -> list[backprop.SyntaxTree]:

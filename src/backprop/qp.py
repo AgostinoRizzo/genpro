@@ -1,16 +1,15 @@
-import sys
-sys.path.append('..')
-
 import numpy as np
 import sympy
 from qpsolvers import solve_ls as qpsolvers_solve_ls
 import logging
+
 import dataset
-import backprop
-import lpbackprop
-import numbs
-import utils
-from test import test_qp
+import numlims
+from backprop import backprop
+from backprop import lpbackprop
+from backprop import utils
+from backprop import models
+from backprop.test import test_qp
 
 
 class Constraints:
@@ -25,6 +24,7 @@ class Constraints:
 
 # TODO: open/closed interval (now open) + same constraints?! + interval with INFTY.
 def get_constraints(K:dataset.DataKnowledge, break_points:set, derivdeg:int=0, sample_size=10) -> Constraints:
+    EPSILON = K.numlims.EPSILON
     constrs = Constraints()
 
     # eq constrs.
@@ -35,8 +35,8 @@ def get_constraints(K:dataset.DataKnowledge, break_points:set, derivdeg:int=0, s
     # ieq constrs.
     if derivdeg in K.sign.keys():
         for (_l,_u,sign,th) in K.sign[derivdeg]:
-            l = _l + numbs.EPSILON  # open interval
-            u = _u - numbs.EPSILON
+            l = _l + EPSILON  # open interval
+            u = _u - EPSILON
             if l < u:  # avoid l==u and l>u
                 X = np.linspace(l, u, sample_size).tolist()
                 for x in X:
@@ -45,7 +45,7 @@ def get_constraints(K:dataset.DataKnowledge, break_points:set, derivdeg:int=0, s
     # symm constrs.
     if derivdeg in K.symm.keys() and derivdeg == 0:
         (x_0, iseven) = K.symm[derivdeg]
-        X = [] #np.linspace(x_0 + numbs.EPSILON, numbs.INFTY, sample_size).tolist()
+        X = [] #np.linspace(x_0 + EPSILON, INFTY, sample_size).tolist()
         for bp in break_points:
             if bp > x_0:
                 X.append(bp)
@@ -60,7 +60,7 @@ def get_constraints(K:dataset.DataKnowledge, break_points:set, derivdeg:int=0, s
 
 
 # derivdeg: constraints about the derivdeg-th derivative
-def get_qp_constraints(constrs:Constraints, polydeg:int, derivdeg:int, lb:np.array, ub:np.array):
+def get_qp_constraints(constrs:Constraints, polydeg:int, derivdeg:int, lb:np.array, ub:np.array, limits:numlims.NumericLimits):
     if not (polydeg >= derivdeg):
         logging.debug(f"polydeg = {polydeg}")
         logging.debug(f"derivdeg = {derivdeg}")
@@ -68,9 +68,11 @@ def get_qp_constraints(constrs:Constraints, polydeg:int, derivdeg:int, lb:np.arr
     G = []; h = []
     A = []; b = []
 
-    P = np.polyder( np.poly1d([1] * (polydeg+1)), m=derivdeg )
-    P_c = np.array(P.c)
-    for i in range(P.c.size): P.c[i] = 0
+    P = models.ModelFactory.create_poly(polydeg)
+    P.set_coeffs(1.)
+    P = P.get_deriv( (0,)*derivdeg )
+    P_c = np.copy(P.get_coeffs())
+    P.set_coeffs(0.)
 
     # define ineq constraints (G, h) as G <= h (using G <= h-epsilon for G < h)
     some_positiv_constr = False
@@ -84,10 +86,10 @@ def get_qp_constraints(constrs:Constraints, polydeg:int, derivdeg:int, lb:np.arr
                 G_row.append(0)
                 continue
             c_idx = polydeg-p
-            P.c[c_idx] = P_c[c_idx]
+            P.set_coeff(c_idx, P_c[c_idx])
             G_row.append( P(dp.x) * flip_sign )
-            P.c[c_idx] = 0
-        h.append( (dp.y * flip_sign) - (numbs.INEQ_EPSILON if relopt.opt in ['>', '<'] else 0) )
+            P.set_coeff(c_idx, 0)
+        h.append( (dp.y * flip_sign) - (limits.INEQ_EPSILON if relopt.opt in ['>', '<'] else 0) )
         G.append(G_row)
 
     # define eq constraints (A, b)
@@ -99,9 +101,9 @@ def get_qp_constraints(constrs:Constraints, polydeg:int, derivdeg:int, lb:np.arr
                 A_row.append(0)
                 continue
             c_idx = polydeg-p
-            P.c[c_idx] = P_c[c_idx]
+            P.set_coeff(c_idx, P_c[c_idx])
             A_row.append( P(dp.x) )
-            P.c[c_idx] = 0
+            P.set_coeff(c_idx, 0)
         b.append(dp.y)
         A.append(A_row)
     
@@ -115,22 +117,22 @@ def get_qp_constraints(constrs:Constraints, polydeg:int, derivdeg:int, lb:np.arr
                 A_row.append(0)
                 continue
             c_idx = polydeg-p
-            P.c[c_idx] = P_c[c_idx]
+            P.set_coeff(c_idx, P_c[c_idx])
             A_row.append( P(x1) - P(x2) if iseven else P(x1) + P(x2) )
-            P.c[c_idx] = 0
+            P.set_coeff(c_idx, 0)
         b.append(0)
         A.append(A_row)
     
     # define noroot constraints as lb or ub in the last coefficient (TODO: it is a soft check).
     if constrs.noroot:
-        if some_positiv_constr: lb[-1] = max(lb[-1], numbs.INEQ_EPSILON)
-        else: ub[-1] = min(ub[-1], -numbs.INEQ_EPSILON)
+        if some_positiv_constr: lb[-1] = max(lb[-1], limits.INEQ_EPSILON)
+        else: ub[-1] = min(ub[-1], -limits.INEQ_EPSILON)
 
     return G, h, A, b
 
 
 # coeffs_mask: (0,>0,<0).
-def add_qp_coeffs_mask_constraints(polydeg:int, coeffs_mask:list[float], lb:np.array, ub:np.array):
+def add_qp_coeffs_mask_constraints(polydeg:int, coeffs_mask:list[float], lb:np.array, ub:np.array, limits:numlims.NumericLimits):
     ncoeffs = len(coeffs_mask)
     assert polydeg == ncoeffs - 1
 
@@ -141,10 +143,10 @@ def add_qp_coeffs_mask_constraints(polydeg:int, coeffs_mask:list[float], lb:np.a
             ub[i] = 0
         
         elif coeffs_mask[i] > 0:
-            lb[i] = max(lb[i], numbs.INEQ_EPSILON)
+            lb[i] = max(lb[i], limits.INEQ_EPSILON)
         
         else:
-            ub[i] = min(ub[i], -numbs.INEQ_EPSILON)
+            ub[i] = min(ub[i], -limits.INEQ_EPSILON)
 
 
 # constrs: map (key=deriv degree) of Constraints
@@ -152,6 +154,7 @@ def add_qp_coeffs_mask_constraints(polydeg:int, coeffs_mask:list[float], lb:np.a
 # returns np.array of coefficients (in decreasing powers)
 def qp_solve(constrs:dict[Constraints],
              polydeg:int,
+             limits:numlims.NumericLimits,
              S:dataset.NumpyDataset=None,
              data_W:np.array=None,
              coeffs_mask:list[float]=None,
@@ -164,8 +167,8 @@ def qp_solve(constrs:dict[Constraints],
     A = []; b = []
 
     nvars = polydeg + 1
-    lb = np.full(nvars, -numbs.INFTY)
-    ub = np.full(nvars,  numbs.INFTY)
+    lb = np.full(nvars, -limits.INFTY)
+    ub = np.full(nvars,  limits.INFTY)
 
     Sy_scale_factor = None
     
@@ -184,7 +187,7 @@ def qp_solve(constrs:dict[Constraints],
         n_weak_constrs = 0
         if weak_constrs is not None:
             for derivdeg in weak_constrs.keys():
-                __G, __h, __A, __b = get_qp_constraints(weak_constrs[derivdeg], polydeg, derivdeg, lb, ub)
+                __G, __h, __A, __b = get_qp_constraints(weak_constrs[derivdeg], polydeg, derivdeg, lb, ub, limits)
                 if len(__A) > 0:
                     R = np.append(R, __A, axis=0)
                     s = np.append(s, __b, axis=0)
@@ -203,7 +206,7 @@ def qp_solve(constrs:dict[Constraints],
     
     # define ineq (G, h), eq (A, b) and bounds (lb, ub) constraints.
     for derivdeg in constrs.keys():
-        __G, __h, __A, __b = get_qp_constraints(constrs[derivdeg], polydeg, derivdeg, lb, ub)
+        __G, __h, __A, __b = get_qp_constraints(constrs[derivdeg], polydeg, derivdeg, lb, ub, limits)
         G += __G; h += __h
         A += __A; b += __b
     if coeffs_mask is not None:  # TODO: we should remove the variable in case of coeffs[i] == 0.

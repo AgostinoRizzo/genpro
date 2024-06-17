@@ -1,5 +1,5 @@
 import itertools
-import backprop
+from backprop import backprop
 
 def _merge_pair(c1, c2) -> list:
     dp_y_1, relopt_1 = c1

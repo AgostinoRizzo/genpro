@@ -52,8 +52,8 @@ def test_evaluate_knowledge(S):
     func_pr = sympy.lambdify(x, func_pr, 'numpy')
     func_pr2 = sympy.lambdify(x, func_pr2, 'numpy')
 
-    model = (func, func_pr, func_pr2)
-    K_eval = K.evaluate(model)
+    model_map = {(): func, (0,): func_pr, (0,0): func_pr2}
+    K_eval = K.evaluate(model_map)
 
     assert K_eval['mse0'] == pytest.approx(0., abs=APPROX_ABS)
     assert K_eval['mse1'] == pytest.approx(0., abs=APPROX_ABS)
