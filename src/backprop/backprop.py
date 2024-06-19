@@ -101,7 +101,7 @@ class SyntaxTree:
         self.parent = None
         self.output = None
     def clone(self): return None
-    def compute_output(self, x:np.array) -> np.array: return None
+    def compute_output(self, x): return None
     def __call__(self, x): return self.compute_output(x)
     def set_parent(self, parent=None): self.parent = parent
     def validate(self) -> bool: return True
@@ -133,7 +133,7 @@ class BinaryOperatorSyntaxTree(SyntaxTree):
     def clone(self):
         return BinaryOperatorSyntaxTree(self.operator, self.left.clone(), self.right.clone())
     
-    def compute_output(self, x:np.array) -> np.array:
+    def compute_output(self, x):
         self.output  = None
         left_output  = self.left.compute_output(x)
         right_output = self.right.compute_output(x)
@@ -374,7 +374,7 @@ class UnaryOperatorSyntaxTree(SyntaxTree):
     def clone(self):
         return UnaryOperatorSyntaxTree(self.operator, self.inner.clone())
     
-    def compute_output(self, x:np.array) -> np.array:
+    def compute_output(self, x):
         self.output  = None
         inner_output  = self.inner.compute_output(x)
         if inner_output is None: return None
@@ -495,8 +495,8 @@ class ConstantSyntaxTree(SyntaxTree):
     def clone(self):
         return ConstantSyntaxTree(self.val)
     
-    def compute_output(self, x:np.array) -> np.array:
-        self.output = np.full(x.shape, self.val)
+    def compute_output(self, x):
+        self.output = np.full(x.shape[0], self.val)
         return self.output
     
     def __str__(self) -> str:
@@ -533,7 +533,7 @@ class UnknownSyntaxTree(SyntaxTree):
     def clone(self):
         return UnknownSyntaxTree(self.label)
     
-    def compute_output(self, x:np.array) -> np.array:
+    def compute_output(self, x):
         self.output = None
         if self.model is None:
             raise RuntimeError('None unknown model.')

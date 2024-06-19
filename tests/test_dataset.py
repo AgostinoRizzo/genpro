@@ -7,7 +7,9 @@ import dataset_hlab
 
 
 # mock empty dataset.
-class EmptyDataset(dataset.Dataset):
+class EmptyDataset(dataset.Dataset1d):
+    def __init__(self):
+        super().__init__(xl=-1., xu=1.)
     def sample(self, size:int=100, noise:float=0., mesh:bool=False):
         pass
     def func(self, x):

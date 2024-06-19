@@ -7,11 +7,9 @@ PLANCK_CONSTANT = 6.626e-34
 ELECTRIC_CONSTANT = 8.854e-12
 
 
-class FeynmanICh6Eq20a(dataset.Dataset):
+class FeynmanICh6Eq20a(dataset.Dataset1d):
     def __init__(self) -> None:
-        super().__init__()
-        self.xl = -4.
-        self.xu =  4.
+        super().__init__(xl=-4., xu=4.)
         self.yl =  0.
         self.yu =  0.5
 
@@ -56,11 +54,9 @@ class FeynmanICh6Eq20a(dataset.Dataset):
         return 'theta (x)'
 
 
-class FeynmanICh29Eq4(dataset.Dataset):
+class FeynmanICh29Eq4(dataset.Dataset1d):
     def __init__(self) -> None:
-        super().__init__()
-        self.xl = 0.
-        self.xu = 1.
+        super().__init__(xl=0., xu=1.)
         self.yl = 0
         self.yu = 1
 
@@ -104,11 +100,9 @@ class FeynmanICh29Eq4(dataset.Dataset):
         return True
 
 
-class FeynmanICh34Eq27(dataset.Dataset):
+class FeynmanICh34Eq27(dataset.Dataset1d):
     def __init__(self) -> None:
-        super().__init__()
-        self.xl = 0.
-        self.xu = 1.
+        super().__init__(xl=0., xu=1.)
         self.yl = 0
         self.yu = 1
 
@@ -152,11 +146,9 @@ class FeynmanICh34Eq27(dataset.Dataset):
         return True
 
 
-class FeynmanIICh8Eq31(dataset.Dataset):
+class FeynmanIICh8Eq31(dataset.Dataset1d):
     def __init__(self) -> None:
-        super().__init__()
-        self.xl = 0.
-        self.xu = 1.
+        super().__init__(xl=0., xu=1.)
         self.yl = 0
         self.yu = 1
 
@@ -203,11 +195,9 @@ class FeynmanIICh8Eq31(dataset.Dataset):
         return True
 
 
-class FeynmanIICh27Eq16(dataset.Dataset):
+class FeynmanIICh27Eq16(dataset.Dataset1d):
     def __init__(self) -> None:
-        super().__init__()
-        self.xl = 0.
-        self.xu = 1.
+        super().__init__(xl=0., xu=1.)
         self.yl = 0
         self.yu = 1
 

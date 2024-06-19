@@ -24,9 +24,13 @@ class Poly(Model):
         pass
     def is_poly(self) -> bool:
         return True
+    def as_virtual(self, X):
+        return None
 
 
 class Poly1d(Poly):
+    POWERS_MAP:dict[int,np.array] = {}
+
     def __init__(self, deg:int, P:np.poly1d=None, compute_derivs:bool=True):  # coeffs in decreasing powers.
         assert deg >= 0
         super().__init__()
@@ -54,8 +58,10 @@ class Poly1d(Poly):
         assert type(idx) == int
         self.P.c[idx] = c
 
-    def __call__(self, x):
-        return self.P(x)
+    def __call__(self, X):
+        if np.isscalar(X): return self.P(X)
+        assert X.ndim <= 2
+        return self.P( X if X.ndim == 1 else X[:,0] )  # TODO: check X matrix as Fortran style more efficient (*).
     
     def get_degree(self) -> int:
         return self.deg
@@ -78,6 +84,19 @@ class Poly1d(Poly):
         for i in range(self.P.c.size):
             if abs(self.P.c[i]) < 1e-8 and canBeZeroCoeffs[i]:  # TODO: fix epsilon.
                 self.P.c[i] = 0
+    
+    def as_virtual(self, X):
+        assert X.ndim <= 2
+        x = X if X.ndim == 1 else X[:,0]
+        return np.tile(x, (self.deg+1,1)).T ** Poly1d.get_powers(self.deg)
+    
+    @staticmethod
+    def get_powers(deg:int):
+        if deg in Poly1d.POWERS_MAP:
+            return Poly1d.POWERS_MAP[deg]
+        powers = np.array( [p for p in range(deg, -1, -1)] )
+        Poly1d.POWERS_MAP[deg] = powers
+        return powers
 
 
 class Polynd(Poly):
@@ -95,7 +114,7 @@ class Polynd(Poly):
             if compute_derivs: self.set_coeffs(self.get_coeffs())
             else: self.derivs[()] = self
         self.compute_derivs = compute_derivs
-        self.cidx = Polynd.__get_cidx(nvars, deg)
+        self.cidx, self.CIDX = Polynd.__get_cidx(nvars, deg)
     
     def get_coeffs(self) -> np.array:
         return self.C[self.cidx]
@@ -124,8 +143,9 @@ class Polynd(Poly):
         assert type(idx) == tuple and len(idx) == self.nvars and sum(idx) <= self.deg
         self.C[idx] = c
     
-    def __call__(self, x):
-        return Polynd.__evaluate(self.C, x, self.nvars)
+    def __call__(self, X):
+        assert X.ndim == 2 and X.shape[1] == self.nvars
+        return Polynd.__evaluate(self.C, X.T, self.nvars)
     
     def get_degree(self) -> int:
         return self.deg
@@ -150,12 +170,25 @@ class Polynd(Poly):
     def simplify_from_qp(self, constrs:dict):
         raise RuntimeError('No implementation (yet).')
     
+    def as_virtual(self, X):
+        assert X.ndim == 2 and X.shape[1] == self.nvars
+        # i = # constrol points (mesh size)
+        # j = # coeffs
+        V_rows = X.shape[0]
+        V_cols = self.CIDX.shape[0]
+        V = np.empty((V_rows, V_cols))
+        for i in range(V_rows):  # TODO: make it more efficient totally using numpy.
+            for j in range(V_cols):
+                V[i,j] = np.prod( X[i,:] ^ self.CIDX[:,j] )
+        return V
+    
     @staticmethod
-    def __get_cidx(nvars:int, deg:int) -> np.array:
+    def __get_cidx(nvars:int, deg:int) -> tuple[tuple[np.array],np.ndarray]:
         if (nvars, deg) in Polynd.CIDX_MAP:
             return Polynd.CIDX_MAP[(nvars, deg)]
         cidx_size = math.comb(nvars+deg, deg)
         cidx = tuple( [np.empty( cidx_size, dtype=int ) for _ in range(nvars)] )
+        CIDX = np.empty((nvars, cidx_size), dtype=int)  # TODO: as Fortran is more efficient for as_virtual?!
 
         i = 0
         size = deg + 1
@@ -163,19 +196,20 @@ class Polynd(Poly):
             if sum(idx) < size:
                 for v_idx in range(nvars):
                     cidx[v_idx][i] = idx[v_idx]
+                    CIDX[v_idx][i] = idx[v_idx]
                 i += 1
-        Polynd.CIDX_MAP[(nvars, deg)] = cidx
-        return cidx
+        Polynd.CIDX_MAP[(nvars, deg)] = (cidx, CIDX)
+        return cidx, CIDX
     
     @staticmethod
-    def __evaluate(C:np.ndarray, x, nvars:int):
-        assert x.ndim <= 2 and x.size > 0 and x.shape[0] == nvars
+    def __evaluate(C:np.ndarray, X, nvars:int):
+        assert X.ndim <= 2 and X.size > 0 and X.shape[0] == nvars
 
-        it = iter(x)
+        it = iter(X)
         x0 = next(it)
         __C = np.polynomial.polynomial.polyval(x0, C)
         for xi in it:
-            __C = np.polynomial.polynomial.polyval(xi, __C, tensor=False)
+            __C = np.polynomial.polynomial.polyval(xi, __C, tensor=False)  # TODO: check X matrix as Fortran style more efficient (*).
 
         return __C  # (numpy.array of) numpy.float*
 

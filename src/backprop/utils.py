@@ -116,15 +116,15 @@ def compute_data_weight(data:dataset.NumpyDataset,
     
     local_model = local_stree.model
     
-    local_stree.model = lambda X: data.Y
-    DY = global_stree.compute_output(data.X)
+    local_stree.model = lambda X: data.y
+    dy = global_stree(data.X)
 
-    local_stree.model = lambda X: data.Y + data.numlims.STEPSIZE
-    DY = np.absolute(global_stree.compute_output(data.X) - DY)
+    local_stree.model = lambda X: data.y + data.numlims.STEPSIZE
+    dy = np.absolute(global_stree(data.X) - dy)
 
     local_stree.model = local_model
 
-    return DY
+    return dy
 
 
 def scale_data_weight(data_W:np.array, u:float=1., l:float=0.) -> np.array:

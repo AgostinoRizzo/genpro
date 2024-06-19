@@ -14,8 +14,6 @@ def test_jump_backprop():
     S.load('../data/magman.csv')
     S.split(train_size=0.7, randstate=0)
 
-    S.index()
-
     S_train = dataset.NumpyDataset(S)
     S_test  = dataset.NumpyDataset(S, test=True)
 

@@ -27,14 +27,16 @@ def get_constraints(K:dataset.DataKnowledge, break_points:set, derivdeg:int=0, s
     EPSILON = K.numlims.EPSILON
     constrs = Constraints()
 
+    deriv = (0,) * derivdeg  # TODO: extend for multivar.
+
     # eq constrs.
-    if derivdeg in K.derivs.keys():
-        for dp in K.derivs[derivdeg]:
+    if deriv in K.derivs.keys():
+        for dp in K.derivs[deriv]:
             constrs.eq_ineq.append( (dataset.DataPoint(dp.x,dp.y), backprop.Relopt('=')) )
     
     # ieq constrs.
-    if derivdeg in K.sign.keys():
-        for (_l,_u,sign,th) in K.sign[derivdeg]:
+    if deriv in K.sign.keys():
+        for (_l,_u,sign,th) in K.sign[deriv]:
             l = _l + EPSILON  # open interval
             u = _u - EPSILON
             if l < u:  # avoid l==u and l>u
@@ -43,8 +45,8 @@ def get_constraints(K:dataset.DataKnowledge, break_points:set, derivdeg:int=0, s
                     constrs.eq_ineq.append( (dataset.DataPoint(x,th), backprop.Relopt( '>' if sign == '+' else '<' )) )
     
     # symm constrs.
-    if derivdeg in K.symm.keys() and derivdeg == 0:
-        (x_0, iseven) = K.symm[derivdeg]
+    if derivdeg == 0 and deriv in K.symm:
+        (x_0, iseven) = K.symm[deriv]
         X = [] #np.linspace(x_0 + EPSILON, INFTY, sample_size).tolist()
         for bp in break_points:
             if bp > x_0:
@@ -180,8 +182,9 @@ def qp_solve(constrs:dict[Constraints],
         s = np.full(nvars, s_val) #np.zeros(nvars)
     else:
         # add data point errors.
-        R = np.array( [S.X ** p for p in range(polydeg, -1, -1)] ).T
-        s = S.Y
+        dperr_poly = models.ModelFactory.create_poly(deg=polydeg)
+        R = dperr_poly.as_virtual(S.X)
+        s = S.y
         
         # add weak constraints errors (when provided).
         n_weak_constrs = 0

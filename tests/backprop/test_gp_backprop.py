@@ -8,8 +8,6 @@ def test_gp_backprop_lpeval():
     S = dataset.ABSDataset()
     S.load('../data/abs-noise.csv')
     S.split(train_size=0.7, randstate=0)
-    
-    S.index()
 
     S_train = dataset.NumpyDataset(S)
     S_test  = dataset.NumpyDataset(S, test=True)

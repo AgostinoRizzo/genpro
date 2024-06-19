@@ -80,7 +80,7 @@ def test_poly1d(poly_str, c, x, y, y_pr, y_pr2):
         [0., -52, 6263.88, 3.9999999996e10], [0., 18., 127.5, -7197.84], [0., 18., 127.5, -7197.84], [0., -9., -142.56, -2996400.])
     ])
 def test_poly2d(poly_str, deg, c_map, x, y, y_x0, y_x1, y_x0x0, y_x0x1, y_x1x0, y_x1x1):
-    x = np.array(x).T
+    x = np.array(x)
     y = np.array(y)
     poly = models.ModelFactory.create_poly(deg=deg, nvars=2)
 
@@ -126,7 +126,7 @@ def test_poly2d(poly_str, deg, c_map, x, y, y_x0, y_x1, y_x0x0, y_x0x1, y_x1x0, 
         [0.0, -96.0, -4417911.010886862, -622080.0])
     ])
 def test_poly3d(poly_str, deg, c_map, x, y, y_x0x1, y_x1x0, y_x2x2):
-    x = np.array(x).T
+    x = np.array(x)
     y = np.array(y)
     poly = models.ModelFactory.create_poly(deg=deg, nvars=3)
 
@@ -169,7 +169,7 @@ def test_poly3d(poly_str, deg, c_map, x, y, y_x0x1, y_x1x0, y_x2x2):
         [0.0, 3461.1200000000003, 0.04768434582912, -4860.0])
     ])
 def test_poly5d(poly_str, deg, c_map, x, y, y_x0x4, y_x3x2, y_x2x1):
-    x = np.array(x).T
+    x = np.array(x)
     y = np.array(y)
     poly = models.ModelFactory.create_poly(deg=deg, nvars=5)
 
@@ -229,7 +229,7 @@ def test_to_sympy_poly1d(deg, coeffs, out):
     (5, 2, {(0,0): 2, (1,0): 1}, '2.0 + 1.0*x0'),
     (5, 2, {(0,0): 2, (1,0): 1, (0,1): 3, (2,1): 4, (2,2): 5}, '2.0 + 1.0*x0 + 3.0*x1 + 4.0*x0**2*x1 + 5.0*x0**2*x1**2'),
     (1, 3, {(0,0,0): 2, (1,0,0): 1, (0,1,0): 1, (0,0,1): 1}, '2.0 + 1.0*x0 + 1.0*x1 + 1.0*x2'),
-    ])
+])
 def test_to_sympy_polynd(deg, nvars, coeffs, out):
     poly = models.ModelFactory.create_poly(deg, nvars)
     for cidx, c in coeffs.items():
@@ -238,3 +238,16 @@ def test_to_sympy_polynd(deg, nvars, coeffs, out):
     actual = set(str(poly.to_sympy(dps=3)).split(' + '))
     expected = set(out.split(' + '))
     assert actual == expected
+
+
+@pytest.mark.parametrize("deg,x,expected", [
+    (2, [2], [4, 2, 1]),
+    (0, [2], [1]),
+])
+def test_as_virtual_1d(deg, x, expected):
+    x = np.array(x)
+    expected = np.array([expected])
+    poly = models.ModelFactory.create_poly(deg=deg)
+    actual = poly.as_virtual(x)
+    assert actual.ndim == 2
+    assert (actual == expected).all()

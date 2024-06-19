@@ -128,19 +128,19 @@ def jump_backprop(stree_map:dict[tuple,backprop.SyntaxTree], synth_unkn_models:d
                         #
                         if derivdeg == 0:
                             yl = 0; yu = 0
-                            pulled_S[unkn_name] = dataset.NumpyDataset()
+                            pulled_S[unkn_name] = dataset.NumpyDataset(nvars=1)  # TODO: generalize multivar.
                             pulled_S[unkn_name].xl = S_train.xl
                             pulled_S[unkn_name].xu = S_train.xu
                             pulled_S[unkn_name].numlims.set_bounds(S_train.xl, S_train.xu)
 
                             stree(S_train.X)
                             #try:
-                            pulled_Y, _ = unknown_stree.pull_output(S_train.Y)
+                            pulled_Y, _ = unknown_stree.pull_output(S_train.y)
                             #if type(pulled_y) is not float and not np.issubdtype(type(pulled_y), np.floating): continue  # TODO: invalid numerical backprop (use np masked array).
                             
                             pulled_S[unkn_name].X_from(S_train.X)
-                            pulled_S[unkn_name].Y = pulled_Y
-                            pulled_S[unkn_name].on_Y_changed()
+                            pulled_S[unkn_name].y = pulled_Y
+                            pulled_S[unkn_name].on_y_changed()
 
                             #except backprop.PullError:
                             #    pass # TODO: just ignore the data point? (now it is like this).
@@ -148,7 +148,7 @@ def jump_backprop(stree_map:dict[tuple,backprop.SyntaxTree], synth_unkn_models:d
                             pulled_S[unkn_name].clear()  # remove nan and inf values from X and Y.
                             pulled_S[unkn_name].remove_outliers()
                             #pulled_S[unkn_name].minmax_scale_y()
-                            pulled_S[unkn_name].synchronize_Y_limits()
+                            pulled_S[unkn_name].synchronize_y_limits()
 
                         #
                         # pull constraints from 'unknown_stree' 

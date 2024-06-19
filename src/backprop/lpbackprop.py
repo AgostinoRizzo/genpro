@@ -97,16 +97,18 @@ def build_knowledge_spec(K:dataset.DataKnowledge, model_name:str):  # -> spec:st
     break_points = sorted(break_points_map.keys())
 
     # root spec.
-    for derivdeg in K.derivs.keys():
+    for deriv in K.derivs.keys():
+        derivdeg = len(deriv)
         model_id = model_name + ("'" * derivdeg)
-        for dp in K.derivs[derivdeg]:
+        for dp in K.derivs[deriv]:
             if dp.y == 0:  # just roots.
                 spec += f"root(\"{model_id}\",{break_points_map[dp.x]}).\n"
     
     # sign spec.
-    for derivdeg in K.sign.keys():
+    for deriv in K.sign.keys():
+        derivdeg = len(deriv)
         model_id =  model_name + ("'" * derivdeg)
-        for (_l,_u,sign,th) in K.sign[derivdeg]:
+        for (_l,_u,sign,th) in K.sign[deriv]:
             if th == 0:  # just pos or neg.
                 # for each sub-interval (contiguously) of (l,u) w.r.t. break_points.
                 subpoints = [p for p in break_points if p >= _l and p <= _u]  # break_points is sorted.
@@ -120,9 +122,10 @@ def build_knowledge_spec(K:dataset.DataKnowledge, model_name:str):  # -> spec:st
                         f"{break_points_map[u]}).\n"
     
     # symmetry spec.
-    for derivdeg in K.symm.keys():
+    for deriv in K.symm.keys():
+        derivdeg = len(deriv)
         model_id = model_name + ("'" * derivdeg)
-        (x, iseven) = K.symm[derivdeg]
+        (x, iseven) = K.symm[deriv]
         spec += f"{ 'even' if iseven else 'odd' }_symm(" + \
             f"\"{model_id}\"," + \
             f"{break_points_map[x]}).\n"

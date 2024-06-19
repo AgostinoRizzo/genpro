@@ -1,7 +1,11 @@
+import numpy as np
+
+
 INFTY        = 10     #sys.float_info.max  # TODO: fix it (consider overflow for qp).
 EPSILON      = 1e-12  #1e-16  # TODO: consider it differently for qp?!
 INEQ_EPSILON = 1e-50
 STEPSIZE     = 1e-10
+
 
 def tostr(n:float) -> str:
     if abs(n) == INFTY:
@@ -22,9 +26,13 @@ class NumericLimits:
         self.INEQ_EPSILON = ineq_epsilon
         self.STEPSIZE = stepsize
     
-    def set_bounds(self, xl:float, xu:float):  # TODO: mutlivar extension.
-        infty_step = (xu - xl) * 2
-        self.INFTY = max( abs(xl-infty_step), abs(xu+infty_step) )
+    def set_bounds(self, xl, xu):
+        isscalar = np.isscalar(xl)
+        assert isscalar == np.isscalar(xu)
+        max_idx = np.argmax(xu - xl)
+        (max_xl, max_xu) = (xl, xu) if isscalar else (xl[max_idx], xu[max_idx])
+        infty_step = (max_xu - max_xl) * 2
+        self.INFTY = max( abs(max_xl-infty_step), abs(max_xu+infty_step) )
     
     def tostr(self, n:float) -> str:
         if abs(n) == self.INFTY:

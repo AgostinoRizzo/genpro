@@ -6,15 +6,16 @@ import csv
 from sklearn.model_selection import train_test_split
 import matplotlib.pyplot as plt
 import numlims
+import space
 
 
 class DataPoint:
-    def __init__(self, x:float, y:float) -> None:
+    def __init__(self, x, y:float) -> None:
         self.x = x
         self.y = y
     
     def distance(self, other) -> float:
-        return math.sqrt((other.x-self.x)**2 + (other.y-self.y)**2)
+        return np.sqrt((other.x-self.x)**2 + (other.y-self.y)**2)
 
 
 class Evaluation:
@@ -46,31 +47,45 @@ class Evaluation:
 
 
 class DataKnowledge:
-    def __init__(self, dataset=None, limits:numlims.NumericLimits=None) -> None:
-        assert dataset is None or limits is None
+    def __init__(self,
+                 dataset=None,
+                 limits:numlims.NumericLimits=None,
+                 spsampler:space.SpaceSampler=None) -> None:
+        assert dataset is None or (limits is None and spsampler is None)
         self.dataset = dataset
         self.derivs = {}
         self.sign = {}
         self.symm = {}
         self.noroot = set()
         self.numlims = limits if dataset is None else dataset.numlims
+        self.spsampler = spsampler if dataset is None else dataset.spsampler
     
-    def add_deriv(self, d:int, xy:DataPoint):
+    def add_deriv(self, d, xy:DataPoint):
+        if type(d) is int: d = (0,)*d
+        assert type(d) is tuple
         if d not in self.derivs.keys():
             self.derivs[d] = []
         self.derivs[d].append(xy)
     
-    def add_sign(self, d:int, l:float, u:float, sign:str='+', th:float=0):
+    def add_sign(self, d, l, u, sign:str='+', th:float=0):
+        if type(d) is int: d = (0,)*d
+        assert type(d) is tuple
         if d not in self.sign.keys():
             self.sign[d] = []
         self.sign[d].append((l,u,sign,th))
     
-    def add_symm(self, d:int, x:float, iseven:bool=True):
+    def add_symm(self, d, x, iseven:bool=True):
+        if type(d) is int: d = (0,)*d
+        assert type(d) is tuple
+        assert type(x) is float or type(x) is int  # TODO: manage symmetry constraints in multivar (*).
         self.symm[d] = (x, iseven)
     
-    def add_noroot(self, d:int):
+    def add_noroot(self, d):
+        if type(d) is int: d = (0,)*d
+        assert type(d) is tuple
         self.noroot.add(d)
     
+    """
     def get_mesh(self, sample_size:int=20) -> np.array:
         deriv_points = []
         for dp in self.derivs.values():
@@ -78,48 +93,56 @@ class DataKnowledge:
         return np.concatenate((
             np.linspace(self.dataset.xl, self.dataset.xu, max(0, sample_size - len(deriv_points))),
             np.array(deriv_points))).sort()
+    """
     
     def evaluate(self, model_map:dict) -> dict:
         n   = {0: 0, 1: 0, 2: 0}
         ssr = {0: 0, 1: 0, 2: 0}
 
         # intersection points.
-        for derivdeg, dps in self.derivs.items():
+        for deriv, dps in self.derivs.items():
+            derivdeg = len(deriv)
             n[derivdeg] += len(dps)
             X = np.array( [dp.x for dp in dps] )
-            Y = np.array( [dp.y for dp in dps] )
-            ssr[derivdeg] += np.sum( (model_map[(0,)*derivdeg](X) - Y) ** 2 )
+            y = np.array( [dp.y for dp in dps] )
+            ssr[derivdeg] += np.sum( (model_map[deriv](X) - y) ** 2 )
         
         # positivity constraints.
-        for derivdeg, constrs in self.sign.items():
+        for deriv, constrs in self.sign.items():
+            derivdeg = len(deriv)
             for (_l,_u,sign,th) in constrs:
                 l = _l + self.numlims.EPSILON
                 u = _u - self.numlims.EPSILON
                 if l > u: continue
-                X = np.linspace(l, u, 1 if l == u else 20)  # TODO: factorize sample size.
-                n[derivdeg] += X.size
-                model_Y = model_map[(0,)*derivdeg](X)
-                ssr[derivdeg] += np.sum( ( np.minimum(0, model_Y - th) if sign == '+' else np.maximum(0, model_Y - th) ) ** 2 )
+                X = self.spsampler.meshspace(l, u, 1 if l == u else 20)  # TODO: factorize sample size.
+                n[derivdeg] += X.shape[0]
+                model_y = model_map[deriv](X)
+                ssr[derivdeg] += np.sum( ( np.minimum(0, model_y - th) if sign == '+' else np.maximum(0, model_y - th) ) ** 2 )
         
         # symmetry constraints.
-        for derivdeg, (x0, iseven) in self.symm.items():
-            X = np.linspace(x0 + self.numlims.EPSILON, self.numlims.INFTY, 20)  # TODO: factorize sample size.
-            n[derivdeg] += X.size
-            model_Y1 = model_map[(0,)*derivdeg](X)
-            model_Y2 = model_map[(0,)*derivdeg](x0-(X-x0))
-            ssr[derivdeg] += np.sum( ( (model_Y1 - model_Y2) if iseven else (model_Y1 + model_Y2) ) ** 2 )
+        for deriv, (x0, iseven) in self.symm.items():
+            assert type(x0) is float or type(x0) is int  # TODO: manage symmetry constraints in multivar (*).
+            derivdeg = len(deriv)
+            X = self.spsampler.meshspace(x0 + self.numlims.EPSILON, self.numlims.INFTY, 20)  # TODO: factorize sample size.
+            n[derivdeg] += X.shape[0]
+            model_y1 = model_map[deriv](X)
+            model_y2 = model_map[deriv](x0-(X-x0))
+            ssr[derivdeg] += np.sum( ( (model_y1 - model_y2) if iseven else (model_y1 + model_y2) ) ** 2 )
         
         return {'mse0': (ssr[0]/n[0]) if n[0] > 0. else 0.,
                 'mse1': (ssr[1]/n[1]) if n[1] > 0. else 0.,
                 'mse2': (ssr[2]/n[2]) if n[2] > 0. else 0.}
     
     def plot(self):
-        if 0 in self.derivs.keys():
-            for xy in self.derivs[0]:
+        if self.nvars != 1:
+            raise RuntimeError(f"Plotting not supported for {self.nvars} dimensions.")
+        
+        if () in self.derivs.keys():
+            for xy in self.derivs[()]:
                 plt.plot(xy.x, xy.y, 'rx', markersize=10)
         
-        if 0 in self.sign.keys():
-            for (l,u,s,_) in self.sign[0]:
+        if () in self.sign.keys():
+            for (l,u,s,_) in self.sign[()]:
                 plt.axvspan(l, u, alpha=0.05, color='g' if s == '+' else 'r')
             
 
@@ -135,34 +158,36 @@ def compute_sst(dpoints:list) -> float:
 
 
 class Dataset:
-    def __init__(self, xl:float=-1, xu:float=1) -> None:
+    def __init__(self, nvars:int, xl, xu, spsampler:space.SpaceSampler) -> None:
         self.data = []
         self.test = []
+        self.nvars = nvars
         self.xl = xl
         self.xu = xu
-        self.yl = 0.
-        self.yu = 1.
+        self.yl = -1.
+        self.yu =  1.
         self._xl = self.xl  # used for scaling.
         self._xu = self.xu
         self._yl = self.yl
         self._yu = self.yu
+        self.spsampler = spsampler
         self.numlims = numlims.NumericLimits()
         self.numlims.set_bounds(self.xl, self.xu)
         self.knowledge = DataKnowledge(self)
         self.data_sst = 0.
         self.test_sst = 0.
-        self.__sorted_data__ = None
-        self.__x_map__ = None
+        """self.__sorted_data__ = None  # TODO: remove index?!
+        self.__x_map__ = None"""
     
     def sample(self, size:int=100, noise:float=0., mesh:bool=False):
         y_noise = (self.yu - self.yl) * noise * 0.5
         
         X = \
-            np.linspace(self.xl, self.xu, size).tolist() if mesh else \
-            [random.uniform(self.xl, self.xu) for _ in range(size)]
+            self.spsampler.meshspace(self.xl, self.xu, self.spsampler.get_meshsize(size)) if mesh else \
+            self.spsampler.randspace(self.xl, self.xu, size)
         
         for x in X:
-            y = self.func(x) + (0. if noise == 0. else random.gauss(sigma=y_noise))
+            y = self.func(x) + (0. if noise == 0. else random.gauss(sigma=y_noise))  # TODO: fix noise
             self.data.append(DataPoint(x, y))
         
         self._on_data_changed()
@@ -171,8 +196,8 @@ class Dataset:
         csvfile = open(filename)
         csvreader = csv.reader(csvfile)
         for entry in csvreader:
-            x = float(entry[0])
-            y = float(entry[1])
+            x = np.array( [float(entry[i]) for i in range(self.nvars)] )
+            y = float(entry[self.nvars])
             if self.is_xscaled(): x = self._xmap(x)
             if self.is_yscaled(): y = self._ymap(y)
             self.data.append(DataPoint(x, y))
@@ -183,7 +208,7 @@ class Dataset:
         self.test = []
         new_data = []
         for dp in self.data:
-            if dp.x < x_from or dp.x > x_to: new_data.append(dp)
+            if (dp.x < x_from).all() or (dp.x > x_to).all(): new_data.append(dp)
         self.data = new_data
         self._on_data_changed()
 
@@ -234,6 +259,7 @@ class Dataset:
             if dp.y <= upper and dp.y >= lower: new_data.append(dp)
         return new_data
     
+    """
     def index(self):
         self.__sorted_data__ = sorted(self.data, key=lambda dp: dp.x)
         self.__x_map__ = {}
@@ -251,11 +277,12 @@ class Dataset:
             if id(other_dp) == id(dp):
                 n -= 1
                 continue
-            d += math.sqrt( ((other_dp.x-dp.x) ** 2) + ((other_dp.y-dp.y) ** 2) )
-        max_d = math.sqrt( ((self.xu-self.xl) ** 2) + ((self.yu-self.yl) ** 2) )
+            d += np.sqrt( ((other_dp.x-dp.x) ** 2) + ((other_dp.y-dp.y) ** 2) )
+        max_d = np.sqrt( ((self.xu-self.xl) ** 2) + ((self.yu-self.yl) ** 2) )
         return max_d - (d / n)
+    """
     
-    def compute_yvar(self, x0:float, dx_ratio:float=0.05) -> float:
+    def compute_yvar(self, x0, dx_ratio:float=0.05) -> float:
         """assert self.__sorted_data__ is not None and self.__x_map__ is not None
 
         k = max( int(len(self.data) * k_ratio), 1 )
@@ -278,7 +305,7 @@ class Dataset:
         u = x0 + h
         Y = []
         for dp in self.data:
-            if dp.x > l and dp.x < u: Y.append(dp.y)
+            if (dp.x > l).all() and (dp.x < u).all(): Y.append(dp.y)
         if len(Y) <= 1: return self.numlims.EPSILON  # TODO: manage this situation (otherwise in qp.qp_solve we have a division by zero).
         return np.var( np.array(Y) )
     
@@ -298,17 +325,19 @@ class Dataset:
     def is_yscaled(self) -> bool:
         return False
 
+    """
     def inrange(self, dp:DataPoint, scale:float=1.) -> bool:
         x_padd = (self.xu - self.xl) * scale
         y_padd = (self.yu - self.yl) * scale
         
         return dp.x >= self.xl - x_padd and dp.x <= self.xu + x_padd and \
-                dp.y >= self.yl - y_padd and dp.y <= self.yu + y_padd 
+                dp.y >= self.yl - y_padd and dp.y <= self.yu + y_padd
     
     def inrange_xy(self, x:float, y:float, scale:float=1.5) -> bool:
         return self.inrange(DataPoint(x, y), scale)
-    
-    def _xmap(self, x:float, toorigin:bool=False) -> float:
+    """
+
+    def _xmap(self, x, toorigin:bool=False) -> float:
         if toorigin: return self._xl + (((x - self.xl) / (self.xu - self.xl)) * (self._xu - self._xl))
         return self.xl + (((x - self._xl) / (self._xu - self._xl)) * (self.xu - self.xl))
     
@@ -330,7 +359,7 @@ class Dataset:
     
     def evaluate_extra(self, model) -> dict:
         dx = (self.xu - self.xl) / 2
-        X = np.linspace(self.xl - dx, self.xu + dx, 500)  # TODO: factorize sample size.
+        X = self.spsampler.meshspace(self.xl - dx, self.xu + dx, 500)  # TODO: factorize sample size.
         Y = self.func(X)
         X = X[~np.isnan(Y)]  # remove nan values (where self.func is not defined).
         Y = Y[~np.isnan(Y)]
@@ -350,6 +379,9 @@ class Dataset:
              plotref:bool=True, model:callable=None,
              zoomout:float=1.,
              savename:str=None):
+        
+        if self.nvars != 1:
+            raise RuntimeError(f"Plotting not supported for {self.nvars} dimensions.")
         
         plt.figure(2, figsize=[width,height])
         plt.clf()
@@ -397,7 +429,7 @@ class Dataset:
     def get_name(self) -> str:
         return ''
     
-    def get_xlabel(self) -> str:
+    def get_xlabel(self, xidx:int=0) -> str:
         return 'x'
 
     def get_ylabal(self) -> str:
@@ -406,11 +438,13 @@ class Dataset:
 
 
 class NumpyDataset:
-    def __init__(self, S:Dataset=None, test:bool=False):
+    def __init__(self, S:Dataset=None, test:bool=False, nvars:int=None):
+        assert (S is None) != (nvars is None)
+        self.nvars = nvars if S is None else S.nvars
         if S is None:
-            self.X = np.empty(0)
-            self.Y = np.empty(0)
-            self.xl = -1.; self.xu = 1.
+            self.X = np.empty((0,0))
+            self.y = np.empty(0)
+            self.xl = np.array([-1.]*nvars); self.xu = np.array([1.]*nvars)
             self.yl =  0.; self.yu = 1.
             self.knowledge = None
             self.numlims = numlims.NumericLimits()
@@ -418,95 +452,102 @@ class NumpyDataset:
         else:
             XY = S.test if test else S.data
             self.X = np.array( [dp.x for dp in XY] )
-            self.Y = np.array( [dp.y for dp in XY] )
+            self.y = np.array( [dp.y for dp in XY] )
             self.xl = S.xl; self.xu = S.xu
             self.yl = S.yl; self.yu = S.yu
             self.knowledge = S.knowledge
             self.numlims = S.numlims
         self.sst = None
-        self.on_Y_changed()
+        self.on_y_changed()
     
     def get_size(self) -> int:
-        return self.X.size
+        return self.y.size
     
     def is_empty(self) -> bool:
-        return self.X.size == 0
+        return self.y.size == 0
     
     def X_from(self, X):
-        if self.X.size == X.size: self.X[:] = X
+        if self.X.shape == X.shape: self.X[:,:] = X
         else: self.X = np.copy(X)
     
-    def Y_from(self, Y):
-        if self.Y.size == Y: self.Y[:] = Y
-        else: self.Y = np.copy(Y)
-        self.on_Y_changed()
+    def y_from(self, y):
+        if self.y.size == Y: self.y[:] = y
+        else: self.y = np.copy(y)
+        self.on_y_changed()
     
-    def clear(self):  # remove nan and inf values from X and Y.
+    def clear(self):  # remove nan and inf values from X and y.
         # true are kept.
-        clear_mask =   np.isfinite(self.X)  &   np.isfinite(self.Y) & \
-                     (~np.isnan   (self.X)) & (~np.isnan   (self.Y))
-        self.X = self.X[clear_mask]
-        self.Y = self.Y[clear_mask]
-        self.on_Y_changed()
+        clear_mask =   np.isfinite(self.X).all(axis=1)  &   np.isfinite(self.y) & \
+                     (~np.isnan   (self.X).all(axis=1)) & (~np.isnan   (self.y))
+        self.X = self.X[clear_mask,:]
+        self.y = self.y[clear_mask]
+        self.on_y_changed()
     
     def synchronize_X_limits(self):
         if self.X.size > 0:
-            self.xl = self.X.min()
-            self.xu = self.X.max()
+            self.xl = self.X.min(axis=0)
+            self.xu = self.X.max(axis=0)
     
-    def synchronize_Y_limits(self):
-        if self.Y.size > 0:
-            self.yl = self.Y.min()
-            self.yu = self.Y.max()
+    def synchronize_y_limits(self):
+        if self.y.size > 0:
+            self.yl = self.y.min()
+            self.yu = self.y.max()
     
     def remove_outliers(self):
         if self.is_empty(): return
 
-        Q1 = np.percentile(self.Y, 25, method='midpoint')
-        Q3 = np.percentile(self.Y, 75, method='midpoint')
+        Q1 = np.percentile(self.y, 25, method='midpoint')
+        Q3 = np.percentile(self.y, 75, method='midpoint')
         IQR = Q3 - Q1
         upper = Q3+70.5*IQR  # TODO: fix coeffs.
         lower = Q1-70.5*IQR
         
-        mask = (self.Y >= lower) & (self.Y <= upper)  # true are kept.
-        self.X = self.X[mask]
-        self.Y = self.Y[mask]
+        mask = (self.y >= lower) & (self.y <= upper)  # true are kept.
+        self.X = self.X[mask,:]
+        self.y = self.y[mask]
 
-        self.on_Y_changed()
+        self.on_y_changed()
     
-    def compute_yvar(self, x0:float, dx_ratio:float=0.05) -> float:
+    def compute_yvar(self, x0, dx_ratio:float=0.05) -> float:
         h = (self.xu - self.xl) * dx_ratio * 0.5
         l = x0 - h
         u = x0 + h
-        Y = self.Y[ (self.X > l) & (self.X < u) ]
-        if Y.size <= 1: return self.numlims.EPSILON  # TODO: manage this situation (otherwise in qp.qp_solve we have a division by zero).
-        return np.var(Y)
+        y = self.y[ (self.X > l).all(axis=1) & (self.X < u).all(axis=1) ]
+        if y.size <= 1: return self.numlims.EPSILON  # TODO: manage this situation (otherwise in qp.qp_solve we have a division by zero).
+        return np.var(y)
     
-    def on_Y_changed(self):
+    def on_y_changed(self):
         # update sst.
         if self.is_empty():
             self.sst = 0.
             return
-        y_mean = self.Y.mean()
-        self.sst = np.sum( (self.Y - y_mean) ** 2 )
+        y_mean = self.y.mean()
+        self.sst = np.sum( (self.y - y_mean) ** 2 )
     
     def evaluate(self, model:callable) -> Evaluation:
         n     = self.get_size()
-        ssr   = np.sum( (model(self.X) - self.Y) ** 2 )
+        ssr   = np.sum( (model(self.X) - self.y) ** 2 )
         mse   = 0. if n == 0 else ssr / n
         r2    = 1 - (ssr / self.sst) if self.sst > 0. else 1.
         return {'mse': mse, 'rmse': math.sqrt(mse), 'r2': r2}
     
     def plot(self, width:int=10, height:int=8, plotref:bool=True):
+        if self.nvars != 1:
+            raise RuntimeError(f"Plotting not supported for {self.nvars} dimensions.")
         plt.figure(2, figsize=[width,height])
         plt.clf()
-        plt.plot(self.X, self.Y, 'bo', markersize=2)
+        plt.plot(self.X, self.y, 'bo', markersize=2)
         plt.xlim(self.xl, self.xu)
         plt.ylim(self.yl, self.yu)
         plt.grid()
 
 
-class MockDataset(Dataset):   
+class Dataset1d(Dataset):
+    def __init__(self, xl, xu):
+        super().__init__(nvars=1, xl=xl, xu=xu, spsampler=space.UnidimSpaceSampler())
+
+
+class MockDataset(Dataset1d):   
     def __init__(self) -> None:
         super().__init__(xl=0., xu=1.)
         self.yl = 0.
@@ -519,7 +560,7 @@ class MockDataset(Dataset):
         return 'Mock'
 
 
-class PolyDataset(Dataset):   
+class PolyDataset(Dataset1d):   
     def __init__(self) -> None:
         super().__init__(xl=0.01, xu=4.)
         self.yl = 0.01
@@ -533,7 +574,7 @@ class PolyDataset(Dataset):
         return 'Poly'
 
 
-class TrigonDataset(Dataset):   
+class TrigonDataset(Dataset1d):   
     def __init__(self) -> None:
         super().__init__(xl=-5., xu=5.)
         self.yl = -1.
@@ -557,7 +598,7 @@ class TrigonDataset(Dataset):
         return 'Trigon'
 
 
-class MagmanDataset(Dataset):
+class MagmanDataset(Dataset1d):
     def __init__(self) -> None:
         super().__init__(xl=-0.075, xu=0.075)
         self.yl = -0.25
@@ -619,7 +660,7 @@ class MagmanDataset(Dataset):
         return 'force [N] (y)'
 
 
-class MagmanDatasetScaled(Dataset):
+class MagmanDatasetScaled(Dataset1d):
     def __init__(self) -> None:
         super().__init__(xl=-2., xu=2.)
         self.yl = -2.
@@ -774,7 +815,7 @@ class MagmanDataset(Dataset):
         return -self.i*self.c1*x / (x**2 + self.c2)**3
 """
 
-class HEADataset(Dataset):
+class HEADataset(Dataset1d):
     def __init__(self) -> None:
         super().__init__(xl=0., xu=10.)
         self.yl = -1.
@@ -793,7 +834,7 @@ class HEADataset(Dataset):
         return 'hea'
 
 
-class ABSDataset(Dataset):
+class ABSDataset(Dataset1d):
     def __init__(self) -> None:
         super().__init__(xl=0., xu=1.)
         self.yl = 0.
@@ -859,7 +900,7 @@ class ABSDataset(Dataset):
         return 'F(k) [N]'
 
 
-class OneOverXDataset(Dataset):
+class OneOverXDataset(Dataset1d):
     def __init__(self) -> None:
         super().__init__(xl=1e-10, xu=5.)
         self.yl = 0.
@@ -893,7 +934,7 @@ class OneOverXDataset(Dataset):
         return '1/x'
 
 
-class ABSDatasetScaled(Dataset):
+class ABSDatasetScaled(Dataset1d):
     def __init__(self) -> None:
         super().__init__(xl=0., xu=1.)
         self.yl = 0.

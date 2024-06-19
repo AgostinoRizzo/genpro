@@ -2,11 +2,9 @@ import numpy as np
 import sympy
 import dataset
 
-class NguyenF1(dataset.Dataset):
+class NguyenF1(dataset.Dataset1d):
     def __init__(self) -> None:
-        super().__init__()
-        self.xl = -1.
-        self.xu =  1.
+        super().__init__(xl=-1., xu=1.)
         self.yl = -1.
         self.yu =  3.
 
@@ -37,11 +35,9 @@ class NguyenF1(dataset.Dataset):
         return 'nguyen-f1'
 
 
-class NguyenF4(dataset.Dataset):
+class NguyenF4(dataset.Dataset1d):
     def __init__(self) -> None:
-        super().__init__()
-        self.xl = -1.
-        self.xu =  1.
+        super().__init__(xl=-1., xu=1.)
         self.yl = -0.4
         self.yu =  6.
 
@@ -73,11 +69,9 @@ class NguyenF4(dataset.Dataset):
         return 'nguyen-f4'
 
 
-class NguyenF7(dataset.Dataset):
+class NguyenF7(dataset.Dataset1d):
     def __init__(self) -> None:
-        super().__init__()
-        self.xl = 0.01
-        self.xu = 2.
+        super().__init__(xl=0.01, xu=2.)
         self.yl = 0.01
         self.yu = 2.8
 
@@ -109,11 +103,9 @@ class NguyenF7(dataset.Dataset):
         return 'nguyen-f7'
 
 
-class Keijzer7(dataset.Dataset):
+class Keijzer7(dataset.Dataset1d):
     def __init__(self) -> None:
-        super().__init__()
-        self.xl = 1.
-        self.xu = 100.
+        super().__init__(xl=1.,xu=100.)
         self.yl = 0.
         self.yu = 5.
 
@@ -143,11 +135,9 @@ class Keijzer7(dataset.Dataset):
         return 'keijzer-7'
 
 
-class Keijzer8(dataset.Dataset):
+class Keijzer8(dataset.Dataset1d):
     def __init__(self) -> None:
-        super().__init__()
-        self.xl = 0.
-        self.xu = 100.
+        super().__init__(xl=0., xu=100.)
         self.yl = 0.
         self.yu = 10.
 
