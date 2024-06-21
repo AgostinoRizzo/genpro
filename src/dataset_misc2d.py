@@ -1,7 +1,7 @@
 import numpy as np
 import sympy
 
-from dataset import Datasetnd
+from dataset import Datasetnd, DataPoint
 
 
 class Resistance2(Datasetnd):
@@ -10,6 +10,24 @@ class Resistance2(Datasetnd):
         self.yl =  0.
         self.yu = 10.
     
+        # intersection points
+        # self.knowledge.add_deriv(0, DataPoint( [0.,0.], 0. ))  TODO: add undef (0,0)
+        self.knowledge.add_deriv(0, DataPoint( [self.xl[0],self.xu[1]], 0. ))
+        self.knowledge.add_deriv(0, DataPoint( [self.xu[0],self.xl[1]], 0. ))
+        
+        INFTY = self.numlims.INFTY
+        
+        # known positivity/negativity
+        self.knowledge.add_sign(0, self.xl, [INFTY, INFTY], '+')
+        
+        # monotonically increasing/decreasing
+        self.knowledge.add_sign((0,), self.xl, [INFTY, INFTY], '+')
+        self.knowledge.add_sign((1,), self.xl, [INFTY, INFTY], '+')
+
+        # concavity
+        self.knowledge.add_sign((0,0), self.xl, [INFTY, INFTY], '-')
+        self.knowledge.add_sign((1,1), self.xl, [INFTY, INFTY], '-')
+        
     def func(self, X) -> float:
         x0 = X[:,0]
         x1 = X[:,1]
@@ -17,8 +35,9 @@ class Resistance2(Datasetnd):
             return (x0*x1) / (x0+x1)
     
     def get_sympy(self, evaluated:bool=False):
-        x0 = sympy.Symbol('x0')
-        x1 = sympy.Symbol('x1')
+        varnames = self.get_varnames()
+        x0 = sympy.Symbol(varnames[0])
+        x1 = sympy.Symbol(varnames[1])
         return (x0*x1) / (x0+x1)
     
     def get_name(self) -> str:

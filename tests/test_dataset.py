@@ -1,10 +1,13 @@
 import pytest
 import sympy
+import numpy as np
 
 import dataset
 import dataset_misc1d
+import dataset_misc2d
 import dataset_feynman
 import dataset_hlab
+import space
 
 
 # mock empty dataset.
@@ -33,6 +36,7 @@ MAX_SAMPLE_SIZE = 200
 DATA_SETS = [
         dataset_misc1d.MagmanDatasetScaled(),
         dataset_misc1d.ABSDataset(), dataset_misc1d.ABSDatasetScaled(),
+        dataset_misc2d.Resistance2(),
         EmptyDataset()
     ] + \
     load_dataset(dataset_feynman) + \
@@ -47,15 +51,29 @@ def test_evaluate_knowledge(S):
     f_symbs = func.free_symbols
     assert len(f_symbs) == S.nvars
 
-    x = next(iter(f_symbs))
-    func_pr = sympy.diff(func, x)
-    func_pr2 = sympy.diff(func, x, 2)
+    varnames = S.get_varnames()
+    assert len(varnames) == S.nvars
 
-    func = sympy.lambdify(x, func, 'numpy')
-    func_pr = sympy.lambdify(x, func_pr, 'numpy')
-    func_pr2 = sympy.lambdify(x, func_pr2, 'numpy')
+    f_symbs_map = {}
+    for s in f_symbs: f_symbs_map[s.name] = s
+    f_symbs = [f_symbs_map[varnames[varidx]] for varidx in range(S.nvars)]
+    assert len(f_symbs) == S.nvars
 
-    model_map = {(): func, (0,): func_pr, (0,0): func_pr2}
+    all_derivs = space.get_all_derivs(S.nvars, max_derivdeg=2)
+    model_map = {}
+
+    for deriv in all_derivs:
+        
+        xs = [f_symbs[varidx] for varidx in deriv]
+        func_deriv = func if len(xs) == 0 else sympy.diff(func, *xs)
+        func_deriv_lamb_multi = sympy.lambdify(f_symbs, func_deriv, 'numpy')
+            
+        func_deriv_lamb = func_deriv_lamb_multi if S.nvars == 1 else \
+            lambda x, func_deriv_lamb_multi=func_deriv_lamb_multi: \
+                func_deriv_lamb_multi(*( ([np.empty(0)]*S.nvars) if x.size == 0 else x.T ))
+
+        model_map[deriv] = func_deriv_lamb
+    
     K_eval = K.evaluate(model_map)
 
     assert K_eval['mse0'] == pytest.approx(0., abs=APPROX_ABS)
@@ -74,14 +92,17 @@ def test_evaluate_dataset(S, sample_size):
     f_symbs = func.free_symbols
     assert len(f_symbs) == S.nvars
 
-    x = next(iter(f_symbs))
-    func_pr = sympy.diff(func, x)
-    func_pr2 = sympy.diff(func, x, 2)
+    varnames = S.get_varnames()
+    assert len(varnames) == S.nvars
 
-    func = sympy.lambdify(x, func, 'numpy')
-    func_pr = sympy.lambdify(x, func_pr, 'numpy')
-    func_pr2 = sympy.lambdify(x, func_pr2, 'numpy')
+    f_symbs_map = {}
+    for s in f_symbs: f_symbs_map[s.name] = s
+    f_symbs = [f_symbs_map[varnames[varidx]] for varidx in range(S.nvars)]
+    assert len(f_symbs) == S.nvars
 
+    func_multi = sympy.lambdify(f_symbs, func, 'numpy')
+    func = func_multi if S.nvars == 1 else \
+        (lambda x: func_multi(*([np.empty(0)]*S.nvars)) if x.size == 0 else func_multi(*x.T))
     S_eval = S.evaluate(func)
     S_numpy_eval = dataset.NumpyDataset(S).evaluate(func)
     S_numpy_test_eval = dataset.NumpyDataset(S, test=True).evaluate(func)

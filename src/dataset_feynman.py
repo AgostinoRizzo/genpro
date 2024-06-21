@@ -44,7 +44,7 @@ class FeynmanICh6Eq20a(dataset.Dataset1d):
         return np.exp(-((x**2) / 2)) / np.sqrt(2 * np.pi)
     
     def get_sympy(self, evaluated:bool=False):
-        x  = sympy.Symbol('theta')
+        x  = sympy.Symbol(self.get_varnames()[0])
         return sympy.exp(-((x**2) / 2)) / sympy.sqrt(2 * sympy.pi)
     
     def get_name(self) -> str:
@@ -52,6 +52,9 @@ class FeynmanICh6Eq20a(dataset.Dataset1d):
     
     def get_xlabel(self, xidx:int=0) -> str:
         return 'theta (x)'
+    
+    def get_varnames(self) -> dict[int,str]:
+        return {0: 'theta'}
 
 
 class FeynmanICh29Eq4(dataset.Dataset1d):
@@ -85,7 +88,7 @@ class FeynmanICh29Eq4(dataset.Dataset1d):
         return self._ymap(y)
     
     def get_sympy(self, evaluated:bool=False):
-        x = sympy.Symbol('omega')
+        x = sympy.Symbol(self.get_varnames()[0])
         expr = x / SPEED_OF_LIGHT
         if evaluated: return self._ymap(expr)
         return expr
@@ -98,6 +101,9 @@ class FeynmanICh29Eq4(dataset.Dataset1d):
     
     def is_yscaled(self) -> bool:
         return True
+    
+    def get_varnames(self) -> dict[int,str]:
+        return {0: 'omega'}
 
 
 class FeynmanICh34Eq27(dataset.Dataset1d):
@@ -131,7 +137,7 @@ class FeynmanICh34Eq27(dataset.Dataset1d):
         return self._ymap(y)
     
     def get_sympy(self, evaluated:bool=False):
-        x  = sympy.Symbol('omega')
+        x  = sympy.Symbol(self.get_varnames()[0])
         expr = (PLANCK_CONSTANT / (2 * sympy.pi)) * x
         if evaluated: return self._ymap(expr)
         return expr
@@ -144,6 +150,9 @@ class FeynmanICh34Eq27(dataset.Dataset1d):
     
     def is_yscaled(self) -> bool:
         return True
+    
+    def get_varnames(self) -> dict[int,str]:
+        return {0: 'omega'}
 
 
 class FeynmanIICh8Eq31(dataset.Dataset1d):
@@ -180,7 +189,7 @@ class FeynmanIICh8Eq31(dataset.Dataset1d):
         return self._ymap(y)
     
     def get_sympy(self, evaluated:bool=False):
-        x  = sympy.Symbol('Ef')
+        x  = sympy.Symbol(self.get_varnames()[0])
         expr = (ELECTRIC_CONSTANT * (x ** 2)) / 2
         if evaluated: return self._ymap(expr)
         return expr
@@ -193,6 +202,9 @@ class FeynmanIICh8Eq31(dataset.Dataset1d):
     
     def is_yscaled(self) -> bool:
         return True
+    
+    def get_varnames(self) -> dict[int,str]:
+        return {0: 'E_f'}
 
 
 class FeynmanIICh27Eq16(dataset.Dataset1d):
@@ -229,7 +241,7 @@ class FeynmanIICh27Eq16(dataset.Dataset1d):
         return self._ymap(y)
     
     def get_sympy(self, evaluated:bool=False):
-        x  = sympy.Symbol('E_f')
+        x  = sympy.Symbol(self.get_varnames()[0])
         expr = ELECTRIC_CONSTANT * SPEED_OF_LIGHT * (x ** 2)
         if evaluated: return self._ymap(expr)
         return expr
@@ -242,3 +254,6 @@ class FeynmanIICh27Eq16(dataset.Dataset1d):
     
     def is_yscaled(self) -> bool:
         return True
+    
+    def get_varnames(self) -> dict[int,str]:
+        return {0: 'E_f'}

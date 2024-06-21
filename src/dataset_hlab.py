@@ -28,7 +28,7 @@ class NguyenF1(dataset.Dataset1d):
         return x**3 + x**2 + x
     
     def get_sympy(self, evaluated:bool=False):
-        x  = sympy.Symbol('x')
+        x  = sympy.Symbol(self.get_varnames()[0])
         return x**3 + x**2 + x
     
     def get_name(self) -> str:
@@ -62,7 +62,7 @@ class NguyenF4(dataset.Dataset1d):
         return x**6 + x**5 + x**4 + x**3 + x**2 + x
     
     def get_sympy(self, evaluated:bool=False):
-        x  = sympy.Symbol('x')
+        x  = sympy.Symbol(self.get_varnames()[0])
         return x**6 + x**5 + x**4 + x**3 + x**2 + x
     
     def get_name(self) -> str:
@@ -96,7 +96,7 @@ class NguyenF7(dataset.Dataset1d):
         return np.log(x+1) + np.log((x**2)+1)
     
     def get_sympy(self, evaluated:bool=False):
-        x  = sympy.Symbol('x')
+        x  = sympy.Symbol(self.get_varnames()[0])
         return sympy.log(x+1) + sympy.log((x**2)+1)
     
     def get_name(self) -> str:
@@ -128,7 +128,7 @@ class Keijzer7(dataset.Dataset1d):
         return np.log(x)
     
     def get_sympy(self, evaluated:bool=False):
-        x  = sympy.Symbol('x')
+        x  = sympy.Symbol(self.get_varnames()[0])
         return sympy.log(x)
     
     def get_name(self) -> str:
@@ -159,7 +159,7 @@ class Keijzer8(dataset.Dataset1d):
         return np.sqrt(x)
     
     def get_sympy(self, evaluated:bool=False):
-        x  = sympy.Symbol('x')
+        x  = sympy.Symbol(self.get_varnames()[0])
         return sympy.sqrt(x)
     
     def get_name(self) -> str:

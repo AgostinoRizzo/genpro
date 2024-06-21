@@ -11,6 +11,8 @@ import plotting
 
 class DataPoint:
     def __init__(self, x, y:float) -> None:
+        if type(x) is list:
+            x = np.array(x, dtype=float)
         self.x = x
         self.y = y
     
@@ -64,14 +66,16 @@ class DataKnowledge:
     def add_deriv(self, d, xy:DataPoint):
         if type(d) is int: d = (0,)*d
         assert type(d) is tuple
-        if d not in self.derivs.keys():
+        if d not in self.derivs:
             self.derivs[d] = []
         self.derivs[d].append(xy)
     
     def add_sign(self, d, l, u, sign:str='+', th:float=0):
         if type(d) is int: d = (0,)*d
+        if type(l) is list: l = np.array(l, dtype=float)
+        if type(u) is list: u = np.array(u, dtype=float)
         assert type(d) is tuple
-        if d not in self.sign.keys():
+        if d not in self.sign:
             self.sign[d] = []
         self.sign[d].append((l,u,sign,th))
     
@@ -114,8 +118,8 @@ class DataKnowledge:
             for (_l,_u,sign,th) in constrs:
                 l = _l + self.numlims.EPSILON
                 u = _u - self.numlims.EPSILON
-                if l > u: continue
-                X = self.spsampler.meshspace(l, u, 1 if l == u else 20)  # TODO: factorize sample size.
+                if np.any(l > u): continue
+                X = self.spsampler.meshspace(l, u, 20)  # TODO: factorize sample size.
                 n[derivdeg] += X.shape[0]
                 model_y = model_map[deriv](X)
                 ssr[derivdeg] += np.sum( ( np.minimum(0, model_y - th) if sign == '+' else np.maximum(0, model_y - th) ) ** 2 )
@@ -395,6 +399,12 @@ class Dataset:
     def get_ylabal(self) -> str:
         return 'y'
     
+    def get_varnames(self) -> dict[int,str]:
+        if self.nvars == 1: return {0: 'x'}
+        varnames = {}
+        for idx in range(self.nvars):
+            varnames[idx] = f"x{idx}"
+        return varnames
 
 
 class NumpyDataset:

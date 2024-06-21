@@ -4,52 +4,59 @@ import numpy as np
 import space
 
 
-@pytest.mark.parametrize("xl,xu,size", [
-    (1, 5, 5),
-    (-5, 1, 10),
-    (0,0,1),
-    (0,0,0),
-    (0,0,4),
-    (5,3,4),
-    (-1,-2,2)
+@pytest.mark.parametrize("xl,xu,size,expected_size", [
+    (1, 5, 5, 5),
+    (-5, 1, 10, 10),
+    (0,0,1,1),
+    (0,0,5,1),
+    (0,0,0,0),
+    (-1,1,4,4),
+    ( 1,1,4,1),
+    ( 1,1,0,0),
+    (5,3,4,4),
+    (-1,-2,2,2)
     ])
-def test_1d_space_sampler(xl, xu, size):
+def test_1d_space_sampler(xl, xu, size, expected_size):
     spsampler = space.UnidimSpaceSampler()
     for points, israndom in [
             (spsampler.meshspace(xl, xu, size), False),
             (spsampler.randspace(xl, xu, size), True),
         ]:
-        assert points.shape == (size,)
+        assert points.shape == (expected_size,)
         for p in points:
             assert (p >= xl and p <= xu and xl <= xu) or \
                    (p <= xl and p >= xu and xl >= xu)
         if not israndom:
-            assert size == 0 or (xl in points and xu in points)
-            for i in range(size-1):
+            assert expected_size == 0 or (xl in points and xu in points)
+            for i in range(expected_size-1):
                 assert (points[i] <= points[i+1] and xl <= xu) or \
                        (points[i] >= points[i+1] and xl >= xu)
 
 
-@pytest.mark.parametrize("xl,xu,size", [
-    ([1, 1], [5, 5], 5),
-    ([1, 2, -3], [2, 3, 4], 2),
-    ([-1], [1], 3),
-    ([1, 2, 3], [1, 2, 3], 5),
-    ([1, 2, 3], [1, 2, 3], 0),
-    ([5, 5], [1, 1], 5),
+@pytest.mark.parametrize("xl,xu,size,expected_meshsize", [
+    ([1, 1], [5, 5], 5, 5**2),
+    ([1, 2, -3], [2, 3, 4], 2, 2**3),
+    ([-1], [1], 3, 3),
+    ([1, 2, 3], [2, 3, 4], 5, 5**3),
+    ([1, 2, 3], [1, 2, 3], 5, 1),
+    ([1, 2, 3], [1, 2, 4], 5, 5),
+    ([1, 2, 3], [2, 3, 4], 0, 0),
+    ([1, 2, 3], [1, 2, 3], 0, 0),
+    ([1, 2, 3], [1, 2, 4], 0, 0),
+    ([5, 5], [1, 1], 5, 5**2),
 ])
-def test_nd_space_sampler(xl, xu, size):
+def test_nd_space_sampler(xl, xu, size, expected_meshsize):
     xl = np.array(xl)
     xu = np.array(xu)
     xsize = xl.size
     assert xsize == xu.size
     spsampler = space.MultidimSpaceSampler()
     
-    for points, israndom in [
-            (spsampler.meshspace(xl, xu, size), False),
-            (spsampler.randspace(xl, xu, size**xsize), True),
+    for points, israndom, expected_size in [
+            (spsampler.meshspace(xl, xu, size), False, expected_meshsize),
+            (spsampler.randspace(xl, xu, size**xsize), True, size**xsize),
         ]:
-        assert points.shape == (size**xsize, xsize)
+        assert points.shape == (expected_size, xsize)
         for i in range(xsize):
             assert ((points[:,i] >= xl[i]).all() and (points[:,i] <= xu[i]).all() and (xl <= xu).all()) or \
                    ((points[:,i] <= xl[i]).all() and (points[:,i] >= xu[i]).all() and (xl >= xu).all())

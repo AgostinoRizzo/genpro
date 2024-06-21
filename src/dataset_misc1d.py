@@ -98,7 +98,7 @@ class MagmanDataset(Dataset1d):
         return -self.i*self.c1*x / (x**2 + self.c2)**3
     
     def get_sympy(self, evaluated:bool=False):
-        x  = sympy.Symbol('x')
+        x  = sympy.Symbol(self.get_varnames()[0])
         i  = sympy.Symbol('i')
         c1 = sympy.Symbol('c1')
         c2 = sympy.Symbol('c2')
@@ -193,7 +193,7 @@ class MagmanDatasetScaled(Dataset1d):
         return self._ymap(y)
     
     def get_sympy(self, evaluated:bool=False):
-        x  = sympy.Symbol('x')
+        x  = sympy.Symbol(self.get_varnames()[0])
         i  = sympy.Symbol('i')
         c1 = sympy.Symbol('c1')
         c2 = sympy.Symbol('c2')
@@ -290,7 +290,7 @@ class ABSDataset(Dataset1d):
         return self.m * self.g * self.d * np.sin(self.c * np.arctan(self.b * (1 - self.e) * x + self.e * np.arctan(self.b * x)))
     
     def get_sympy(self, evaluated:bool=False):
-        x = sympy.Symbol('kappa')
+        x = sympy.Symbol(self.get_varnames()[0])
         b = sympy.Symbol('b')
         c = sympy.Symbol('c')
         d = sympy.Symbol('d')
@@ -310,6 +310,9 @@ class ABSDataset(Dataset1d):
 
     def get_ylabal(self) -> str:
         return 'F(k) [N]'
+    
+    def get_varnames(self) -> dict[int,str]:
+        return {0: 'kappa'}
 
 
 class ABSDatasetScaled(Dataset1d):
@@ -360,7 +363,7 @@ class ABSDatasetScaled(Dataset1d):
         return self._ymap(y)
     
     def get_sympy(self, evaluated:bool=False):
-        x = sympy.Symbol('kappa')
+        x = sympy.Symbol(self.get_varnames()[0])
         b = sympy.Symbol('b')
         c = sympy.Symbol('c')
         d = sympy.Symbol('d')
@@ -387,6 +390,9 @@ class ABSDatasetScaled(Dataset1d):
     
     def is_yscaled(self) -> bool:
         return True
+    
+    def get_varnames(self) -> dict[int,str]:
+        return {0: 'kappa'}
 
 
 class OneOverXDataset(Dataset1d):
@@ -415,7 +421,7 @@ class OneOverXDataset(Dataset1d):
         return 1 / x
     
     def get_sympy(self, evaluated:bool=False):
-        x = sympy.Symbol('x')
+        x = sympy.Symbol(self.get_varnames()[0])
         return 1 / x
         #return '\frac{1}{x}'
     
