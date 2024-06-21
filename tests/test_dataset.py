@@ -2,6 +2,7 @@ import pytest
 import sympy
 
 import dataset
+import dataset_misc1d
 import dataset_feynman
 import dataset_hlab
 
@@ -30,8 +31,8 @@ def load_dataset(from_module) -> list:
 APPROX_ABS = 1.0e-8
 MAX_SAMPLE_SIZE = 200
 DATA_SETS = [
-        dataset.MagmanDatasetScaled(),
-        dataset.ABSDataset(), dataset.ABSDatasetScaled(),
+        dataset_misc1d.MagmanDatasetScaled(),
+        dataset_misc1d.ABSDataset(), dataset_misc1d.ABSDatasetScaled(),
         EmptyDataset()
     ] + \
     load_dataset(dataset_feynman) + \
@@ -44,7 +45,7 @@ def test_evaluate_knowledge(S):
 
     func = S.get_sympy(evaluated=True)
     f_symbs = func.free_symbols
-    assert len(f_symbs) == 1
+    assert len(f_symbs) == S.nvars
 
     x = next(iter(f_symbs))
     func_pr = sympy.diff(func, x)
@@ -71,7 +72,7 @@ def test_evaluate_dataset(S, sample_size):
 
     func = S.get_sympy(evaluated=True)
     f_symbs = func.free_symbols
-    assert len(f_symbs) == 1
+    assert len(f_symbs) == S.nvars
 
     x = next(iter(f_symbs))
     func_pr = sympy.diff(func, x)

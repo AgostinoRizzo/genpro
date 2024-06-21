@@ -50,7 +50,7 @@ class FeynmanICh6Eq20a(dataset.Dataset1d):
     def get_name(self) -> str:
         return 'feynman-i.6.20a'
     
-    def get_xlabel(self) -> str:
+    def get_xlabel(self, xidx:int=0) -> str:
         return 'theta (x)'
 
 
@@ -93,7 +93,7 @@ class FeynmanICh29Eq4(dataset.Dataset1d):
     def get_name(self) -> str:
         return 'feynman-i.29.4'
     
-    def get_xlabel(self) -> str:
+    def get_xlabel(self, xidx:int=0) -> str:
         return 'omega (x)'
     
     def is_yscaled(self) -> bool:
@@ -139,7 +139,7 @@ class FeynmanICh34Eq27(dataset.Dataset1d):
     def get_name(self) -> str:
         return 'feynman-i.34.27'
     
-    def get_xlabel(self) -> str:
+    def get_xlabel(self, xidx:int=0) -> str:
         return 'omega (x)'
     
     def is_yscaled(self) -> bool:
@@ -188,7 +188,7 @@ class FeynmanIICh8Eq31(dataset.Dataset1d):
     def get_name(self) -> str:
         return 'feynman-ii.8.31'
     
-    def get_xlabel(self) -> str:
+    def get_xlabel(self, xidx:int=0) -> str:
         return 'Ef (x)'
     
     def is_yscaled(self) -> bool:
@@ -237,7 +237,7 @@ class FeynmanIICh27Eq16(dataset.Dataset1d):
     def get_name(self) -> str:
         return 'feynman-ii.27.16'
     
-    def get_xlabel(self) -> str:
+    def get_xlabel(self, xidx:int=0) -> str:
         return 'Ef (x)'
     
     def is_yscaled(self) -> bool:

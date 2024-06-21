@@ -1,11 +1,12 @@
 import dataset
+import dataset_misc1d
 from backprop import backprop
 from backprop import gp_backprop
 
 
 def test_gp_backprop_lpeval():
     # setup dataset.
-    S = dataset.ABSDataset()
+    S = dataset_misc1d.ABSDataset()
     S.load('../data/abs-noise.csv')
     S.split(train_size=0.7, randstate=0)
 

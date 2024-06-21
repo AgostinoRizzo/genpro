@@ -1,6 +1,7 @@
 import pytest
 
 import dataset
+import dataset_misc1d
 from backprop import backprop
 from backprop import lpbackprop
 from backprop import jump_backprop
@@ -10,7 +11,7 @@ from backprop import utils
 
 def test_jump_backprop():
     # setup dataset.
-    S = dataset.MagmanDatasetScaled()
+    S = dataset_misc1d.MagmanDatasetScaled()
     S.load('../data/magman.csv')
     S.split(train_size=0.7, randstate=0)
 

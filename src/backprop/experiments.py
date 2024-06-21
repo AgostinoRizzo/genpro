@@ -138,8 +138,8 @@ for S, datafile, addnoise, desc in BENCHMARKS:
     exprs += f"% {S_name}\n{sympy.latex(sympy_expr)}\n{sympy.latex(sympy_expr_simpl)}\n\n"
 
     logging.info(f"--- Saving plots in results/{S_name}.pdf and results/{S_name}-wide.pdf ---")
-    S.plot(width=8, height=7, model=best_stree.compute_output, savename=f"results/{S_name}.pdf")
-    S.plot(width=8, height=7, model=best_stree.compute_output, zoomout=4., savename=f"results/{S_name}-wide.pdf")
+    S.plot(width=8, height=7, model=best_stree.compute_output, savename=f"results/{S_name}.pdf", show=False)
+    S.plot(width=8, height=7, model=best_stree.compute_output, zoomout=4., savename=f"results/{S_name}-wide.pdf", show=False)
 
 # save performance table as csv file.
 logging.info(f"\n--- Saving performance table in results/perf.csv ---")
