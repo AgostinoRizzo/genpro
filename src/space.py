@@ -80,3 +80,37 @@ def get_all_derivs(nvars:int=1, max_derivdeg:int=2) -> list:
     
     DERIV_IDENTIFIERS[(nvars,max_derivdeg)] = derivs
     return derivs
+
+
+def get_nested_hypercubes(points:list) -> list[tuple[np.array]]:
+    """
+    It is assumed all points in the input list are sorted and unique.
+    A minimum of 2 points is required.
+
+    Returns: list of hypercubes hc (as tuple) where
+        hc[0] := l:np.array and hc[1] := u:np.array
+    """
+
+    assert len(points) >= 2
+
+    hcs = []
+
+    nvars = points[0].size
+    axes_coords = [set() for _ in range(nvars)]
+    
+    for p in points:
+        for i in range(nvars):
+            axes_coords[i].add(p[i])
+    
+    for i in range(nvars):
+        axes_coords[i] = sorted(axes_coords[i])
+    
+    axes_coords_idxs_lower = [range(len(axis_coords)-1) for axis_coords in axes_coords]
+    for l_idx in itertools.product(*axes_coords_idxs_lower):
+
+        l = tuple(axes_coords[var_idx][coord_idx  ] for var_idx, coord_idx in enumerate(l_idx))
+        u = tuple(axes_coords[var_idx][coord_idx+1] for var_idx, coord_idx in enumerate(l_idx))
+        
+        hcs.append((np.array(l), np.array(u)))
+    
+    return hcs

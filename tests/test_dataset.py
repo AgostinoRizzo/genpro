@@ -101,11 +101,12 @@ def test_evaluate_dataset(S, sample_size):
     assert len(f_symbs) == S.nvars
 
     func_multi = sympy.lambdify(f_symbs, func, 'numpy')
-    func = func_multi if S.nvars == 1 else \
-        (lambda x: func_multi(*([np.empty(0)]*S.nvars)) if x.size == 0 else func_multi(*x.T))
+    func_numpy = lambda x: func_multi(*([np.empty(0)]*S.nvars)) if x.size == 0 else func_multi(*x.T)
+    func = func_multi if S.nvars == 1 else func_numpy
+    
     S_eval = S.evaluate(func)
-    S_numpy_eval = dataset.NumpyDataset(S).evaluate(func)
-    S_numpy_test_eval = dataset.NumpyDataset(S, test=True).evaluate(func)
+    S_numpy_eval = dataset.NumpyDataset(S).evaluate(func_numpy)
+    S_numpy_test_eval = dataset.NumpyDataset(S, test=True).evaluate(func_numpy)
     S_eval_extra = S.evaluate_extra(func)
 
     for eval_res in [S_eval.training, S_eval.testing,

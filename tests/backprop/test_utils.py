@@ -1,0 +1,37 @@
+import pytest
+from backprop import utils
+
+
+@pytest.mark.parametrize("deriv,deriv_str", [
+    ( (), '' ),
+    ( (0,), 'd0' ),
+    ( (1,2), 'd1d2' ),
+    ( (0,12,20), 'd0d12d20' ),
+    ( (0,0000), 'd0d0' ),
+    ( (0,00,123,12), 'd0d0d123d12' ),
+    ( (0,00,00,0), 'd0d0d0d0' ),
+    ( (123,00,123,0), 'd123d0d123d0' ),
+])
+def test_parse_unparse_deriv(deriv:tuple[int], deriv_str:str):
+    assert utils.deriv_to_string(deriv) == deriv_str
+    assert utils.parse_deriv(deriv_str) == deriv
+    assert utils.parse_deriv(deriv_str, parsefunc=True) == (deriv, '')
+
+
+@pytest.mark.parametrize("deriv,deriv_str,func_str", [
+    ( (), '   ', '' ),
+    ( (), 'A', 'A' ),
+    ( (), '   A ', 'A ' ),
+    ( (0,), '  d  0  ', '' ),
+    ( (1,2), 'd1 d2func', 'func' ),
+    ( (0,12,20), '  d 0 d 1 2 d 2 0 ', '' ),
+    ( (0,0000), 'd0d0  ', '' ),
+    ( (0,00,123,12), 'd 0 d0d123 d12  ', '' ),
+    ( (0,00,00,0), 'd0d 0 0  d0d0', '' ),
+    ( (123,00,123,0), "d \n\t\t  123d0  d12  3d0", '' ),
+    ( (0,12), "\n\n  d 0 d 1 2 a d 2 0 ", 'a d 2 0 ' ),
+    ( (0,00,00), "d0 \nd 0 0  d0 ad0", 'ad0' ),
+])
+def test_parse_deriv(deriv:tuple[int], deriv_str:str, func_str:str):
+    assert utils.parse_deriv(deriv_str) == deriv
+    assert utils.parse_deriv(deriv_str, parsefunc=True) == (deriv, func_str)

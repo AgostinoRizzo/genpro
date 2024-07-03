@@ -2,7 +2,11 @@ import numpy as np
 import sympy
 import string
 import random
+import re
+
 import numlims
+from backprop import utils
+
 
 class PropositionalConstraint:
     def __init__(self, f, g, opt:str='>', lb:float=-numlims.INFTY, ub:float=numlims.INFTY):
@@ -108,7 +112,9 @@ class SyntaxTree:
     def simplify(self): return self
     def __str__(self) -> str: return ''
     def __eq__(self, other) -> bool: return False
-    def diff(self): return None
+    def diff(self, varidx:int=0): return None
+    def is_const(self) -> bool: return False
+    def is_const_wrt(self, varidx) -> bool: return False
     def backprop_sign(self, symbmapper:SymbolMapper, lb:float=-numlims.INFTY, ub:float=numlims.INFTY, sign:str='+'): pass
     def pull_output(self, target_output:np.array, relopt:Relopt=Relopt('='), child=None) -> tuple[np.array, Relopt]:
         return (target_output, relopt) if self.parent is None else self.parent.pull_output(target_output, relopt, self)
@@ -119,6 +125,23 @@ class SyntaxTree:
     def accept(self, visitor): pass
     def to_sympy(self, dps:int=None): pass
     def get_max_depth(self) -> int: return 0
+
+    @staticmethod
+    def diff(stree, deriv:tuple[int]):
+        stree_deriv = stree
+        for varidx in deriv:
+            stree_deriv = stree_deriv.diff(varidx).simplify()
+        return stree_deriv
+    
+    @staticmethod
+    def diff_all(stree, derivs:list[tuple[int]], include_zeroth:bool=True) -> dict:
+        derivs_map = {(): stree.simplify()}
+        for deriv in sorted(derivs):
+            if len(deriv) == 0: continue
+            derivs_map[deriv] = derivs_map[deriv[:-1]].diff(deriv[-1]).simplify()
+        if not include_zeroth:
+            del derivs_map[()]
+        return derivs_map
 
 
 class BinaryOperatorSyntaxTree(SyntaxTree):
@@ -240,7 +263,10 @@ class BinaryOperatorSyntaxTree(SyntaxTree):
             self.operator == other.operator and \
             self.left == other.left and self.right == other.right
     
-    def diff(self) -> SyntaxTree:
+    def diff(self, varidx:int=0) -> SyntaxTree:
+        if self.is_const_wrt(varidx):
+            return ConstantSyntaxTree(0)
+        
         f = self.left
         g = self.right
 
@@ -264,7 +290,7 @@ class BinaryOperatorSyntaxTree(SyntaxTree):
         
         elif self.operator == '^':
             if type(g) is not ConstantSyntaxTree:
-                raise RuntimeError(f"Differentiation not defined for operator {self.operator} and non-constant exponent.")
+                raise RuntimeError(f"Differentiation not defined for operator {self.operator} and non-constant exponent.{g}")
             return BinaryOperatorSyntaxTree( '*',
                 BinaryOperatorSyntaxTree( '*',
                     g.clone(),
@@ -280,6 +306,12 @@ class BinaryOperatorSyntaxTree(SyntaxTree):
             )
         
         raise RuntimeError(f"Differentiation not defined for operator {self.operator}.")
+    
+    def is_const(self) -> bool:
+        return self.left.is_const() and self.right.is_const()
+    
+    def is_const_wrt(self, varidx) -> bool:
+        return self.left.is_const_wrt(varidx) and self.right.is_const_wrt(varidx)
     
     def backprop_sign(self, symbmapper:SymbolMapper, lb:float=-numlims.INFTY, ub:float=numlims.INFTY, sign:str='+'):
         f = self.left
@@ -425,7 +457,10 @@ class UnaryOperatorSyntaxTree(SyntaxTree):
             self.operator == other.operator and \
             self.inner == other.inner
     
-    def diff(self) -> SyntaxTree:
+    def diff(self, varidx:int=0) -> SyntaxTree:
+        if self.is_const_wrt(varidx):
+            return ConstantSyntaxTree(0)
+        
         g = self.inner
 
         if self.operator == 'exp':
@@ -450,6 +485,12 @@ class UnaryOperatorSyntaxTree(SyntaxTree):
             )
         
         raise RuntimeError(f"Differentiation not defined for operator {self.operator}.")
+    
+    def is_const(self) -> bool:
+        return self.inner.is_const()
+    
+    def is_const_wrt(self, varidx) -> bool:
+        return self.inner.is_const_wrt(varidx)
     
     def backprop_sign(self, symbmapper:SymbolMapper, lb:float=-numlims.INFTY, ub:float=numlims.INFTY, sign:str='+'):
         raise RuntimeError(f"Sign backprop not defined for operator {self.operator}.")  # TODO: not utilized for now.
@@ -506,8 +547,14 @@ class ConstantSyntaxTree(SyntaxTree):
         if type(other) is not ConstantSyntaxTree: return False
         return self.val == other.val
     
-    def diff(self) -> SyntaxTree:
+    def diff(self, varidx:int=0) -> SyntaxTree:
         return ConstantSyntaxTree(0)
+    
+    def is_const(self) -> bool:
+        return True
+    
+    def is_const_wrt(self, varidx):
+        return True
     
     def backprop_sign(self, symbmapper:SymbolMapper, lb:float=-numlims.INFTY, ub:float=numlims.INFTY, sign:str='+'):
         return self.val > 0 if sign == '+' else self.val < 0
@@ -523,15 +570,19 @@ class ConstantSyntaxTree(SyntaxTree):
         
 
 class UnknownSyntaxTree(SyntaxTree):
-    def __init__(self, label:str='A', model=None, coeffs_mask=None, constrs=None):
+    def __init__(self, name:str='A', deriv:tuple[int]=(), nvars:int=1, model=None, coeffs_mask=None, constrs=None):
+        assert nvars > 0
         super().__init__()
-        self.label = label
-        self.model = None
-        self.coeffs_mask = None
-        self.constrs = None
+        self.name = name
+        self.deriv = deriv
+        self.nvars = nvars
+        self.model = model
+        self.coeffs_mask = coeffs_mask  # TODO: remove it?! (no more used).
+        self.constrs = constrs
+        self.label = f"{utils.deriv_to_string(self.deriv)}{self.name}"
     
     def clone(self):
-        return UnknownSyntaxTree(self.label)
+        return UnknownSyntaxTree(self.name, self.deriv)
     
     def compute_output(self, x):
         self.output = None
@@ -542,14 +593,25 @@ class UnknownSyntaxTree(SyntaxTree):
         return self.output
     
     def __str__(self) -> str:
-        return f"{self.label}(x)"
+        xs = ''
+        for i in range(self.nvars): xs += f"x{i},"
+        return f"{self.label}({xs[:-1]})"
     
     def __eq__(self, other) -> bool:
         if type(other) is not UnknownSyntaxTree: return False
-        return self.label == other.label
+        return self.name == other.name and self.deriv == other.deriv
     
-    def diff(self) -> SyntaxTree:
-        return UnknownSyntaxTree(f"{self.label}'")
+    def diff(self, varidx:int=0) -> SyntaxTree:
+        assert varidx < self.nvars
+        return UnknownSyntaxTree(name=self.name, deriv=self.deriv+(varidx,), nvars=self.nvars)
+    
+    def is_const(self) -> bool:
+        if self.model is None: return False
+        return False  # TODO: #self.model.is_const()
+    
+    def is_const_wrt(self, varidx):
+        if self.model is None: return False
+        return False  # TODO: #self.model.is_const_wrt(varidx)
     
     def backprop_sign(self, symbmapper:SymbolMapper, lb:float=-numlims.INFTY, ub:float=numlims.INFTY, sign:str='+'):
         constr = PropositionalConstraint( self, ConstantSyntaxTree(0), '>' if sign == '+' else '<', lb, ub )
@@ -576,8 +638,8 @@ class UnknownSyntaxTree(SyntaxTree):
     
     def to_sympy(self, dps:int=None):
         if self.model is None:
-            x = sympy.Symbol('x')
-            return sympy.Function(self.label)(x)
+            xs = [sympy.Symbol('x')] if self.nvars == 1 else [sympy.Symbol(f"x{i}") for i in range(self.nvars)]
+            return sympy.Function(self.label)(*xs)
         return self.model.to_sympy(dps)
     
     def get_max_depth(self) -> int:
@@ -594,11 +656,13 @@ class SyntaxTreeVisitor:
 class UnknownSyntaxTreeCollector(SyntaxTreeVisitor):
     def __init__(self):
         self.unknown_labels = set()
+        self.unknowns = []
     def visitUnaryOperator (self, stree:UnaryOperatorSyntaxTree):  pass
     def visitBinaryOperator(self, stree:BinaryOperatorSyntaxTree): pass
     def visitConstant      (self, stree:ConstantSyntaxTree):       pass
     def visitUnknown       (self, stree:UnknownSyntaxTree):
         self.unknown_labels.add(stree.label)
+        self.unknowns.append(stree)
 
 
 class SyntaxTreeNodeCounter(SyntaxTreeVisitor):

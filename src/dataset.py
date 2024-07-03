@@ -11,10 +11,8 @@ import plotting
 
 class DataPoint:
     def __init__(self, x, y:float) -> None:
-        if type(x) is list:
-            x = np.array(x, dtype=float)
-        self.x = x
-        self.y = y
+        self.x = np.array(x, dtype=float) if type(x) is list else np.float64(x)
+        self.y = np.float64(y)
     
     def distance(self, other) -> float:
         return np.sqrt((other.x-self.x)**2 + (other.y-self.y)**2)
@@ -138,6 +136,14 @@ class DataKnowledge:
                 'mse1': (ssr[1]/n[1]) if n[1] > 0. else 0.,
                 'mse2': (ssr[2]/n[2]) if n[2] > 0. else 0.}
     
+    def get_derivs(self) -> set[tuple[int]]:
+        derivs = set()
+        derivs.update(self.derivs.keys())
+        derivs.update(self.sign.keys())
+        derivs.update(self.symm.keys())
+        derivs.update(self.noroot)
+        return derivs
+    
     def plot(self):
         if self.nvars != 1:
             raise RuntimeError(f"Plotting not supported for {self.nvars} dimensions.")
@@ -149,6 +155,29 @@ class DataKnowledge:
         if () in self.sign.keys():
             for (l,u,s,_) in self.sign[()]:
                 plt.axvspan(l, u, alpha=0.05, color='g' if s == '+' else 'r')
+    
+    def __str__(self) -> str:
+        out_str = ''
+
+        out_str += "===== Intersection Points =====\n"
+        for deriv, dps in self.derivs.items():
+            out_str += f"Deriv: {deriv}\n"
+            for dp in dps:
+                out_str += f"\tx={dp.x}, y={dp.y}\n"
+        
+        out_str += "\n===== Positivity Constraints =====\n"
+        for deriv, constrs in self.sign.items():
+            out_str += f"Deriv: {deriv}\n"
+            for (_l,_u,sign,th) in constrs:
+                sign_str = '>' if sign == '+' else '<'
+                out_str += f"{sign_str}{th} [{_l}, {_u}]\n"
+        
+        out_str += "\n===== Symmetry Constraints =====\n"
+        for deriv, (x0, iseven) in self.symm.items():
+            iseven_str = 'even' if iseven else 'odd'
+            out_str += f"Deriv: {deriv}, x0={x0}, {iseven_str}\n"
+        
+        return out_str
             
 
 def compute_sst(dpoints:list) -> float:
@@ -196,7 +225,7 @@ class Dataset:
             self.spsampler.meshspace(self.xl, self.xu, self.spsampler.get_meshsize(size)) if mesh else \
             self.spsampler.randspace(self.xl, self.xu, size)
         
-        y = self.func(X) + (0. if noise == 0. else random.gauss(sigma=y_noise))  # TODO: fix noise
+        y = self.func(X) + (0. if noise == 0. else np.random.normal(scale=y_noise, size=X.shape[0]))  # TODO: fix noise
         for i in range(y.size):
             self.data.append(DataPoint(X[i], y[i]))
         
@@ -436,6 +465,9 @@ class NumpyDataset:
             self.knowledge = S.knowledge
             self.numlims = S.numlims
             self.spsampler = S.spsampler
+        
+        if self.X.ndim == 1:
+            self.X = np.expand_dims(self.X, axis=1)  # returns a view!
         
         self.plotter = None
         if self.nvars == 1:

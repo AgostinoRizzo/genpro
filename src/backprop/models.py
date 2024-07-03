@@ -20,11 +20,11 @@ class Model:
 
 
 class Poly(Model):
-    def simplify_from_qp(self, constrs:dict):  # constrs:dict[qp.Constraints]
+    def simplify_from_qp(self, constrs_map:dict):  # constrs_map:dict[tuple[int],qp.Constraints]
         pass
     def is_poly(self) -> bool:
         return True
-    def as_virtual(self, X):
+    def as_virtual(self, X, polydeg:int):
         return None
 
 
@@ -76,19 +76,24 @@ class Poly1d(Poly):
             i += 1
         return P_sympy
     
-    def simplify_from_qp(self, constrs:dict):
+    def simplify_from_qp(self, constrs_map:dict):
         canBeZeroCoeffs = [True] * self.P.c.size
-        for derivdeg, constrs in constrs.items():
+        for deriv, constrs in constrs_map.items():
+            derivdeg = len(deriv)
             if constrs.noroot: canBeZeroCoeffs[-derivdeg-1] = False
         
         for i in range(self.P.c.size):
             if abs(self.P.c[i]) < 1e-8 and canBeZeroCoeffs[i]:  # TODO: fix epsilon.
                 self.P.c[i] = 0
     
-    def as_virtual(self, X):
-        assert X.ndim <= 2
-        x = X if X.ndim == 1 else X[:,0]
-        return np.tile(x, (self.deg+1,1)).T ** Poly1d.get_powers(self.deg)
+    def as_virtual(self, X, polydeg:int):
+        assert X.ndim <= 2 and self.deg <= polydeg
+        ncoeffs = polydeg + 1
+        x = X if X.ndim <= 1 else X[:,0]
+        V = self.P.c * ( np.tile(x, (self.deg+1,1)).T ** Poly1d.get_powers(self.deg) )
+        n_zero_coeffs = ncoeffs - V.shape[1]
+        if n_zero_coeffs == 0: return V
+        return np.hstack(( V, np.zeros((V.shape[0], n_zero_coeffs)) ))
     
     @staticmethod
     def get_powers(deg:int):
@@ -167,19 +172,25 @@ class Polynd(Poly):
         
         return P_sympy
     
-    def simplify_from_qp(self, constrs:dict):
+    def simplify_from_qp(self, constrs_map:dict):
         raise RuntimeError('No implementation (yet).')
     
-    def as_virtual(self, X):
-        assert X.ndim == 2 and X.shape[1] == self.nvars
+    def as_virtual(self, X, polydeg:int):
+        ncoeffs = polydeg + 1
+        assert X.ndim == 2 and X.shape[1] == self.nvars and self.CIDX.shape[0] <= ncoeffs
         # i = # constrol points (mesh size)
         # j = # coeffs
+        n_zero_cols = ncoeffs - self.CIDX.shape[0]
         V_rows = X.shape[0]
-        V_cols = self.CIDX.shape[0]
+        V_cols = n_zero_cols + self.CIDX.shape[0]
+        
         V = np.empty((V_rows, V_cols))
+        V[:,0:n_zero_cols] = 0
+
         for i in range(V_rows):  # TODO: make it more efficient totally using numpy.
-            for j in range(V_cols):
+            for j in range(n_zero_cols, V_cols):
                 V[i,j] = np.prod( X[i,:] ^ self.CIDX[:,j] )
+        
         return V
     
     @staticmethod

@@ -44,14 +44,14 @@ def test_jump_backprop():
     # check outcome.
     assert best_eval is not None
 
-    assert best_eval.training['mse' ] == pytest.approx(0.26992628595288876)
-    assert best_eval.training['rmse'] == pytest.approx(0.5195443060537654)
-    assert best_eval.training['r2'  ] == pytest.approx(0.74226964084896)
+    assert best_eval.training['mse' ] == pytest.approx(0.27002394406794616)
+    assert best_eval.training['rmse'] == pytest.approx(0.5196382819499985)
+    assert best_eval.training['r2'  ] == pytest.approx(0.7421763951653138)
 
-    assert best_eval.testing['mse' ] == pytest.approx(0.31550605984569186)
-    assert best_eval.testing['rmse'] == pytest.approx(0.5616992610335996)
-    assert best_eval.testing['r2'  ] == pytest.approx(0.703394306097312)
+    assert best_eval.testing['mse' ] == pytest.approx(0.3155965372282962)
+    assert best_eval.testing['rmse'] == pytest.approx(0.5617797942506443)
+    assert best_eval.testing['r2'  ] == pytest.approx(0.703309248755266)
 
-    assert best_eval.knowledge['mse0'] == pytest.approx(7.726570515199575e-05)
-    assert best_eval.knowledge['mse1'] == pytest.approx(0.03022350404165014)
-    assert best_eval.knowledge['mse2'] == pytest.approx(10.27020024676625)
+    assert best_eval.knowledge['mse0'] == pytest.approx(7.912192457223037e-05)
+    assert best_eval.knowledge['mse1'] == pytest.approx(0.029880375624880235)
+    assert best_eval.knowledge['mse2'] == pytest.approx(10.318817878914349)

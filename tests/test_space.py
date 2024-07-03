@@ -73,3 +73,51 @@ def test_get_all_derivs(nvars, max_derivdeg, expected):
     expected = expected
     actual = space.get_all_derivs(nvars, max_derivdeg)
     assert set(actual) == set(expected)
+
+
+@pytest.mark.parametrize("points,expected_hcs", [
+    ([],None),  # empty
+    
+    # 1-dim
+    ([0],None),
+    ([0, 1], [(0,1)]),
+    ([0, 0.5, 1], [(0, 0.5), (0.5, 1)]),
+    ([0, 0.2, 0.8, 1], [(0, 0.2), (0.2, 0.8), (0.8, 1)]),
+    
+    # 2-dim
+    ([(0,0)],None),
+    ([(0,0), (1,1)], [((0,0), (1,1))]),
+    
+    ([(0,0), (0.5, 0.5), (1,1)],
+        [((0,0),(0.5,0.5)), ((0.5,0),(1,0.5)), ((0,0.5),(0.5,1)), ((0.5,0.5),(1,1))]),
+    
+    ([(0,0), (0.2, 0.2), (0.8, 0.8), (1,1)],
+        [((0,0),(0.2,0.2)), ((0.2,0),(0.8,0.2)), ((0.8,0),(1,0.2)), ((0,0.2),(0.2,0.8)),
+         ((0,0.8),(0.2,1)), ((0.2,0.2),(0.8,0.8)), ((0.8,0.2),(1,0.8)), ((0.2,0.8),(0.8,1)), ((0.8,0.8),(1,1))]),
+    
+    # 3-dim
+    ([(0,0,0)],None),
+    ([(0,0,0), (1,1,1)], [((0,0,0), (1,1,1))]),
+
+    ([(0,0,0), (0.5, 0.5, 0.5), (1,1,1)],
+        [((0,0,0),(0.5,0.5,0.5)), ((0.5,0,0),(1,0.5,0.5)), ((0,0.5,0),(0.5,1,0.5)), ((0.5,0.5,0),(1,1,0.5)),
+         ((0,0,0.5),(0.5,0.5,1)), ((0.5,0,0.5),(1,0.5,1)), ((0,0.5,0.5),(0.5,1,1)), ((0.5,0.5,0.5),(1,1,1))])
+])
+def test_get_nested_hypercubes(points:list, expected_hcs:list[tuple]):
+    
+    points = [np.array(p, ndmin=1) for p in points]
+
+    if len(points) < 2:
+        with pytest.raises(AssertionError):
+            space.get_nested_hypercubes(points)
+    else:
+        
+        expected_hcs = set(expected_hcs)
+        actual_hcs = space.get_nested_hypercubes(points)
+        actual_hcs = [(tuple(hc[0]), tuple(hc[1])) for hc in actual_hcs]  # hcs[0] := l, hcs[1] := u
+        for i in range(len(actual_hcs)):
+            if len(actual_hcs[i][0]) == 1:  # actual_hcs[i][1] is of the same size!
+                actual_hcs[i] = (actual_hcs[i][0][0], actual_hcs[i][1][0])
+        actual_hcs = set(actual_hcs)
+
+        assert actual_hcs == expected_hcs

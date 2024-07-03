@@ -240,14 +240,24 @@ def test_to_sympy_polynd(deg, nvars, coeffs, out):
     assert actual == expected
 
 
-@pytest.mark.parametrize("deg,x,expected", [
-    (2, [2], [4, 2, 1]),
-    (0, [2], [1]),
+@pytest.mark.parametrize("deg,coeffsval,x,expected", [
+    (2, 1, [2], [4, 2, 1]),
+    (2, 2, [2], [8, 4, 2]),
+    (2, 2, [4], [32, 8, 2]),
+    (3, 4, [2], [32, 16, 8, 4]),
+    (3, 2, [1], [2, 2, 2, 2]),
+    (0, 1, [2], [1]),
+    (0, 1, [5], [1]),
+    (0, 2, [8], [2]),
+    (0, 4, [8], [4]),
 ])
-def test_as_virtual_1d(deg, x, expected):
+def test_as_virtual_1d(deg, coeffsval, x, expected):
     x = np.array(x)
-    expected = np.array([expected])
     poly = models.ModelFactory.create_poly(deg=deg)
-    actual = poly.as_virtual(x)
-    assert actual.ndim == 2
-    assert (actual == expected).all()
+    poly.set_coeffs(coeffsval)
+
+    for vdeg in range(deg, deg+5):
+        expected_ = np.array([expected + ([0]*(vdeg-deg))])
+        actual = poly.as_virtual(x, vdeg)
+        assert actual.ndim == 2
+        assert (actual == expected_).all()

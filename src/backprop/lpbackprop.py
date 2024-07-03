@@ -1,14 +1,17 @@
 import clingo
 import numpy as np
 import logging
+from functools import cmp_to_key
 
 import dataset
 import numlims
+import space
 from backprop import backprop
 from backprop import utils
 from backprop import qp
 from backprop import config
 from backprop import models
+from backprop import clingo_context
 
 
 ASP_ENCODINGS_DIR = "backprop/lpbackprop/"
@@ -54,11 +57,11 @@ class ASPSpecBuilder(backprop.SyntaxTreeVisitor): # TODO: avoid multiple facts f
             f"\"{self.node_id_map[id(stree)]}\").\n"
         self.spec += 'deriv(' + \
             f"\"{self.node_id_map[id(stree)]}\"," + \
-            f"\"{self.node_id_map[id(stree)]}'\").\n"  # TODO: implement in clingo using some built-in function for all nodes.
+            f"\"d0{self.node_id_map[id(stree)]}\").\n"  # TODO: implement in clingo using some built-in function for all nodes.
 
-    def map_root(self, stree:backprop.SyntaxTree, derivdeg:int=0):
+    def map_root(self, stree:backprop.SyntaxTree, deriv:tuple[int]):
         if type(stree) is not backprop.UnknownSyntaxTree:
-            self.node_id_map[id(stree)] = 'm' + ("'" * derivdeg)
+            self.node_id_map[id(stree)] = f"{utils.deriv_to_string(deriv)}m"
 
     def __map_node_id(self, node):
         if id(node) in self.node_id_map.keys():
@@ -89,105 +92,132 @@ class AspModelCost:
         return str(self.costvals)
 
 
-def build_knowledge_spec(K:dataset.DataKnowledge, model_name:str):  # -> spec:str, break_points_map:dict, break_points_invmap:dict
-    spec = ''
+def build_knowledge_spec(K:dataset.DataKnowledge, model_name:str):
+    """
+    Returns
+        spec:str,
+        break_points:list,
+        break_point_coords_map:dict,
+        break_point_coords_invmap:dict
+    """
 
+    spec = ''
+    
     # map all break points.
-    break_points_map, break_points_invmap = utils.map_break_points(K)
-    break_points = sorted(break_points_map.keys())
+    break_points, break_point_coords_map, break_point_coords_invmap = utils.map_break_points(K)
+    break_points = [np.array(bp, ndmin=1) for bp in break_points]
+
+    def np_array_cmp(a1, a2) -> int:
+        if (a1 < a2).all(): return -1
+        if (a2 < a1).all(): return 1
+        return 0
+    break_points = sorted(break_points, key=cmp_to_key(np_array_cmp))
 
     # root spec.
     for deriv in K.derivs.keys():
-        derivdeg = len(deriv)
-        model_id = model_name + ("'" * derivdeg)
+        model_id = utils.deriv_to_string(deriv) + model_name
         for dp in K.derivs[deriv]:
             if dp.y == 0:  # just roots.
-                spec += f"root(\"{model_id}\",{break_points_map[dp.x]}).\n"
+                dp_x_term = break_point_coords_map[dp.x] if np.isscalar(dp.x) else \
+                            tuple(break_point_coords_map[coord] for coord in dp.x)
+                spec += f"root(\"{model_id}\",{dp_x_term}).\n"
     
     # sign spec.
     for deriv in K.sign.keys():
-        derivdeg = len(deriv)
-        model_id =  model_name + ("'" * derivdeg)
+        model_id = utils.deriv_to_string(deriv) + model_name
         for (_l,_u,sign,th) in K.sign[deriv]:
             if th == 0:  # just pos or neg.
                 # for each sub-interval (contiguously) of (l,u) w.r.t. break_points.
-                subpoints = [p for p in break_points if p >= _l and p <= _u]  # break_points is sorted.
+                subpoints = [p for p in break_points if np.all(p >= _l) and np.all(p <= _u)]  # break_points is sorted.
                 if len(subpoints) == 1: subpoints = subpoints * 2  # len(subpoints) cannot be 0.
-                for i in range(len(subpoints) - 1):
-                    l = subpoints[i]
-                    u = subpoints[i + 1]
-                    spec += f"sign(\"{model_id}\"," + \
-                        f"\"{sign}\"," + \
-                        f"{break_points_map[l]}," + \
-                        f"{break_points_map[u]}).\n"
+
+                hcs = space.get_nested_hypercubes(subpoints)
+                for hc in hcs:
+                    l = hc[0]
+                    u = hc[1]
+                    if l.size == 1:  # u has same size!
+                        l = l[0]; u = u[0]
+                    l_term = break_point_coords_map[l] if np.isscalar(l) else \
+                             tuple(break_point_coords_map[coord] for coord in l)
+                    u_term = break_point_coords_map[u] if np.isscalar(u) else \
+                             tuple(break_point_coords_map[coord] for coord in u)
+                    spec += f"sign(\"{model_id}\",\"{sign}\",{l_term},{u_term}).\n"
     
     # symmetry spec.
     for deriv in K.symm.keys():
-        derivdeg = len(deriv)
-        model_id = model_name + ("'" * derivdeg)
+        model_id = utils.deriv_to_string(deriv) + model_name
         (x, iseven) = K.symm[deriv]
-        spec += f"{ 'even' if iseven else 'odd' }_symm(" + \
-            f"\"{model_id}\"," + \
-            f"{break_points_map[x]}).\n"
+        x_term = break_point_coords_map[x] if np.isscalar(x) else \
+                 tuple(break_point_coords_map[coord] for coord in x)
+        spec += f"{ 'even' if iseven else 'odd' }_symm(\"{model_id}\",{x_term}).\n"
 
     spec += ":- tree_node(N), undef(N, _).\n"  # TODO
-    return spec, break_points_map, break_points_invmap
+    return spec, break_points, break_point_coords_map, break_point_coords_invmap
 
 
-def synthesize_unknown(unkn_label:str, K:dataset.DataKnowledge, break_points:set):
+def synthesize_unknown(unkn_label:str, K:dataset.DataKnowledge, break_points:list, nvars:int):
     """
     returns a model (e.g. polynomial), constraints:dict.
     """
 
     pulled_constrs = {}
-    for derivdeg in range(3):
-        pulled_constrs[derivdeg] = qp.get_constraints(K, break_points, derivdeg, SAMPLE_SIZE)
+    derivs = K.get_derivs()
+    for deriv in derivs:
+        pulled_constrs[deriv] = qp.get_constraints(K, break_points, deriv, SAMPLE_SIZE)
     
-    poly_coeffs_pos = qp.qp_solve(pulled_constrs, SYNTH_POLYDEG, K.numlims, s_val= 1)  # in decreasing power.
-    poly_coeffs_neg = qp.qp_solve(pulled_constrs, SYNTH_POLYDEG, K.numlims, s_val=-1)
+    poly_coeffs_pos = qp.qp_solve(pulled_constrs, SYNTH_POLYDEG, nvars, K.numlims, s_val= 1)  # in decreasing power.
+    poly_coeffs_neg = qp.qp_solve(pulled_constrs, SYNTH_POLYDEG, nvars, K.numlims, s_val=-1)
     poly_coeffs = poly_coeffs_pos if np.sum(poly_coeffs_pos**2) >= np.sum(poly_coeffs_neg**2) else poly_coeffs_neg
         
-    P = models.ModelFactory.create_poly(SYNTH_POLYDEG)
+    P = models.ModelFactory.create_poly(deg=SYNTH_POLYDEG, nvars=nvars)
     P.set_coeffs(poly_coeffs)
     P.simplify_from_qp(pulled_constrs)
 
     return (P, None, pulled_constrs)  # TODO:coeffs_mask=None and pulled_constrs refer to the 0th derivative (image).
 
 
-def synthesize_unknowns(unknown_labels:list[str], break_points_map:dict, break_points_invmap:dict,  # invmap: from asp to float.
+def synthesize_unknowns(unknown_labels:list[str], break_points:list, break_point_coords_invmap:dict,  # invmap: from asp to float.
                         asp_model, onsynth_callback, K_origin:dataset.DataKnowledge):  # passing unknown_labels for efficiency
     
+    def map_symbol(s:clingo.Symbol):
+        nonlocal break_point_coords_invmap
+        if s.type is clingo.SymbolType.Number:
+            return break_point_coords_invmap[s.number]
+        mapped_symbol = np.empty(len(s.arguments))
+        for i in range(mapped_symbol.size):
+            mapped_symbol[i] = break_point_coords_invmap[s.arguments[i].number]
+        return mapped_symbol
+
     logging.debug(f"\n--- ASP Model ---\n{asp_model}\n")
 
     # build knowledge from ASP model.
     unkn_knowledge_map = {}
-    for unkn in unknown_labels: unkn_knowledge_map[unkn] = dataset.DataKnowledge(limits=K_origin.dataset.numlims)
+    for unkn in unknown_labels: unkn_knowledge_map[unkn] = dataset.DataKnowledge(limits=K_origin.dataset.numlims, spsampler=K_origin.spsampler)
 
     for atom in asp_model.symbols(shown=True):
         unkn = atom.arguments[0].string
-        derivdeg = unkn.count("'")
-        unkn = unkn.replace("'", '')
+        deriv, unkn = utils.parse_deriv(unkn, parsefunc=True)
 
         if atom.name == 'sign_unkn':
             pn = atom.arguments[1].string
-            lb = break_points_invmap[ atom.arguments[2].number ]
-            ub = break_points_invmap[ atom.arguments[3].number ]
-            unkn_knowledge_map[unkn].add_sign(derivdeg, lb, ub, pn)
+            lb = map_symbol( atom.arguments[2] )
+            ub = map_symbol( atom.arguments[3] )
+            unkn_knowledge_map[unkn].add_sign(deriv, lb, ub, pn)
         
         elif atom.name == 'root_unkn':
-            x = break_points_invmap[ atom.arguments[1].number ]
-            unkn_knowledge_map[unkn].add_deriv(derivdeg, dataset.DataPoint(x, 0))
+            x = map_symbol( atom.arguments[1] )
+            unkn_knowledge_map[unkn].add_deriv(deriv, dataset.DataPoint(x, 0))
         
         elif atom.name == 'noroot_unkn':
-            unkn_knowledge_map[unkn].add_noroot(derivdeg)
+            unkn_knowledge_map[unkn].add_noroot(deriv)
         
         elif atom.name == 'even_symm_unkn':
-            x = break_points_invmap[ atom.arguments[1].number ]
-            unkn_knowledge_map[unkn].add_symm(derivdeg, x, iseven=True)
+            x = map_symbol( atom.arguments[1] )
+            unkn_knowledge_map[unkn].add_symm(deriv, x, iseven=True)
         
         elif atom.name == 'odd_symm_unkn':
-            x = break_points_invmap[ atom.arguments[1].number ]
-            unkn_knowledge_map[unkn].add_symm(derivdeg, x, iseven=False)
+            x = map_symbol( atom.arguments[1] )
+            unkn_knowledge_map[unkn].add_symm(deriv, x, iseven=False)
         
         elif atom.name == 'undef_unkn':
             raise RuntimeError('undef_unkn not implemented.')  # TODO
@@ -196,7 +226,7 @@ def synthesize_unknowns(unknown_labels:list[str], break_points_map:dict, break_p
     logging.debug('Synthesizing each unknown model...')
     synth_unkn_models = {}
     for unkn in unknown_labels:
-        synth_unkn_models[unkn] = synthesize_unknown(unkn, unkn_knowledge_map[unkn], set(break_points_map.keys()))
+        synth_unkn_models[unkn] = synthesize_unknown(unkn, unkn_knowledge_map[unkn], break_points, K_origin.nvars)
     logging.debug('End unknown model synthesizing')
         
     onsynth_callback(synth_unkn_models)    
@@ -208,12 +238,11 @@ def lpbackprop(K:dataset.DataKnowledge, stree:backprop.SyntaxTree, onsynth_callb
     # build ASP specification of stree and stree' (facts).
     #
     # TODO: take stree_map from outside?!
-    stree_map = {(): stree.simplify()}  # TODO: generate all derivatives (multivar).
-    stree_map.update( {(0,): stree.diff().simplify()} )
-    stree_map.update( {(0,0): stree_map[(0,)].diff().simplify()} )
+    all_derivs = K.get_derivs()
+    stree_map = backprop.SyntaxTree.diff_all(stree, all_derivs, include_zeroth=True)
 
     aspSpecBuilder = ASPSpecBuilder()
-    for deriv, stree in stree_map.items(): aspSpecBuilder.map_root(stree, len(deriv))
+    for deriv, stree in stree_map.items(): aspSpecBuilder.map_root(stree, deriv)
     for deriv, stree in stree_map.items(): stree.accept(aspSpecBuilder)
     stree_spec = aspSpecBuilder.spec
     #logging.debug(stree_spec)
@@ -221,7 +250,8 @@ def lpbackprop(K:dataset.DataKnowledge, stree:backprop.SyntaxTree, onsynth_callb
     #
     # build ASP prior knowledge (K) specification.
     #
-    K_spec, break_points_map, break_points_invmap = build_knowledge_spec(K, aspSpecBuilder.node_id_map[id(stree_map[()])])
+    K_spec, break_points, break_point_coords_map, break_point_coords_invmap = \
+        build_knowledge_spec(K, aspSpecBuilder.node_id_map[id(stree_map[()])])
     #logging.debug(K_spec)
 
     #
@@ -258,7 +288,7 @@ def lpbackprop(K:dataset.DataKnowledge, stree:backprop.SyntaxTree, onsynth_callb
         unknown_labels = unkn_collector.unknown_labels
     
     logging.debug('Clingo grounding...')
-    clingo_ctl.ground([('stree_spec', []), ('K_spec', []), ('show', []), ('base', [])])
+    clingo_ctl.ground([('stree_spec', []), ('K_spec', []), ('show', []), ('base', [])], context=clingo_context.ClingoArith())
 
     nopt_models = 0
     best_model_cost = None
@@ -276,7 +306,7 @@ def lpbackprop(K:dataset.DataKnowledge, stree:backprop.SyntaxTree, onsynth_callb
             return True
         
         if not asp_model.optimality_proven: return
-        synthesize_unknowns(unknown_labels, break_points_map, break_points_invmap, asp_model, onsynth_callback, K)
+        synthesize_unknowns(unknown_labels, break_points, break_point_coords_invmap, asp_model, onsynth_callback, K)
         nopt_models += 1
         return nopt_models < config.LPBACKPROP_MAX_NMODELS
     

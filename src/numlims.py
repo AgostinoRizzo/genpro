@@ -40,3 +40,10 @@ class NumericLimits:
         if abs(n) == self.EPSILON:
             return f"{'-' if n < 0 else ''}EPSILON"
         return str(n)
+    
+    def __str__(self) -> str:
+        out_str = f"INFTY = {self.INFTY}\n" + \
+            f"EPSILON = {self.EPSILON}\n" + \
+            f"INEQ_EPSILON = {self.INEQ_EPSILON}\n" + \
+            f"STEPSIZE = {self.STEPSIZE}\n"
+        return out_str

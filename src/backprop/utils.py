@@ -6,40 +6,59 @@ import dataset
 
 def map_break_points(K:dataset.DataKnowledge) -> dict:
     break_points = set()
-    break_points.add(0)
-    break_points.add( K.numlims.INFTY)
-    break_points.add(-K.numlims.INFTY)
+    break_point_coords = set()
+    break_point_coords.add(0)
+    break_point_coords.add( K.numlims.INFTY)
+    break_point_coords.add(-K.numlims.INFTY)
 
     for vals in K.derivs.values():
         for dp in vals:
-            break_points.add(dp.x)
+            if np.isscalar(dp.x):
+                break_point_coords.add(dp.x)
+                break_points.add(dp.x)
+            else:
+                break_point_coords.update(dp.x)
+                break_points.add(tuple(dp.x))
     
     for vals in K.sign.values():
         for (l,u,sign,th) in vals:
-            break_points.add(l)
-            break_points.add(u)
+            if np.isscalar(l):  # u is scalar too!
+                break_point_coords.add(l)
+                break_point_coords.add(u) 
+                break_points.add(l)
+                break_points.add(u)
+            else:  # u is non-scalar too!
+                break_point_coords.update(l)
+                break_point_coords.update(u)
+                break_points.add(tuple(l))
+                break_points.add(tuple(u))
     
     for (x, iseven) in K.symm.values():
-        break_points.add(x)
+        if np.isscalar(x):
+            break_point_coords.add(x)
+            break_points.add(x)
+        else:
+            break_point_coords.update(x)
+            break_points.add(tuple(x))
     
-    abs_break_points = set()
-    for p in break_points:
-        abs_break_points.add(abs(p))
-    abs_break_points = sorted(abs_break_points)
+    abs_break_point_coords = set()
+    for p in break_point_coords:
+        abs_break_point_coords.add(abs(p))
+    abs_break_point_coords = sorted(abs_break_point_coords)
 
-    idx_break_points_map = {}
-    for idx in range(len(abs_break_points)):
-        idx_break_points_map[abs_break_points[idx]] = idx
+    idx_break_point_coords_map = {}
+    for idx in range(len(abs_break_point_coords)):
+        idx_break_point_coords_map[abs_break_point_coords[idx]] = idx
     
-    break_points_map    = {}
-    break_points_invmap = {}
-    for p in break_points:
-        val = idx_break_points_map[abs(p)] * (1 if p > 0 else -1)
-        break_points_map   [p  ] = val
-        break_points_invmap[val] = p
+    break_point_coords_map    = {}
+    break_point_coords_invmap = {}
+    for c in break_point_coords:
+        val = idx_break_point_coords_map[abs(c)] * (1 if c > 0 else -1)
+        break_point_coords_map   [c  ] = val
+        break_point_coords_invmap[val] = c
         #print(f"Mapping {p} -> {val}")
-            
-    return break_points_map, break_points_invmap
+
+    return break_points, break_point_coords_map, break_point_coords_invmap
 
 
 # constrs:dict[qp.Constraints] map (key=deriv degree) of Constraints.
@@ -148,6 +167,8 @@ def compute_origin_data_weight(S:dataset.Dataset) -> np.array:
 def scale_y(Y:np.array) -> tuple[np.array,float]:
     Y_abs = np.abs(Y)
     y_max = Y_abs.max()
+    if y_max == 0.:
+        return Y, None
     return Y / y_max, y_max
 
 
@@ -160,7 +181,11 @@ def unscale_polycoeffs(coeffs:np.array, scale_factor:float, xl:float=-1, xu:floa
     Y = P(X)
     Y_unscaled = Y * scale_factor
     unscaled_coeffs = scipy_interp_lagrange(X, Y_unscaled).c
-    return np.zeros(coeffs.size) if unscaled_coeffs.size == 1 and unscaled_coeffs[0] == 0 else unscaled_coeffs
+    unscaled_coeffs = np.zeros(coeffs.size) if unscaled_coeffs.size == 1 and unscaled_coeffs[0] == 0 else unscaled_coeffs
+
+    if unscaled_coeffs.size < coeffs.size:
+        return np.insert(unscaled_coeffs, slice(0, unscaled_coeffs.size-coeffs.size), 0)
+    return unscaled_coeffs
 
 
 # pressure: percentage of the total weight (data + weak constraints) given by all weak constraints.
@@ -177,3 +202,33 @@ def compare_fit(k_mse_a, r2_a, k_mse_b, r2_b) -> bool:
     if k_mse_a < k_mse_b and r2_a >= 0.1: return True
     if k_mse_b < k_mse_a and r2_b >= 0.1: return False
     return r2_a > r2_b
+
+
+def deriv_to_string(deriv:tuple[int]) -> str:
+    deriv_str = ''
+    for varidx in deriv:
+        deriv_str += f"d{varidx}"
+    return deriv_str
+
+def parse_deriv(deriv_str:str, parsefunc:bool=False) -> tuple[int]|tuple[tuple[int],str]:
+    toskip = " \n\t"
+    varidx_str = ''
+    deriv = []
+    i = 0
+    for c in deriv_str:
+        if c == 'd':
+            if len(varidx_str) > 0:
+                deriv.append(int(varidx_str))
+                varidx_str = ''
+        elif c.isdigit():
+            varidx_str += c
+        elif c not in toskip:
+            break
+        i += 1
+    if len(varidx_str) > 0:
+        deriv.append(int(varidx_str))
+        varidx_str = ''
+    
+    if parsefunc: return tuple(deriv), deriv_str[i:]
+    return tuple(deriv)
+            

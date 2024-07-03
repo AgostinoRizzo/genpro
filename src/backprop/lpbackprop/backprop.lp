@@ -96,7 +96,7 @@ sign_change(N, Input) :- sign(N, PN1, _, Input), sign(N, PN2, Input, _), PN1!=PN
 :- root(N, Input),
    sign(N,    PN, From1, Input), sign(N,    PN, Input, To1), From1!=Input, To1!=Input,
    sign(N_pr, PN_pr, From2, Input), sign(N_pr, PN_pr, Input, To2), From2!=Input, To2!=Input,
-   deriv(N, N_pr).
+   deriv(N, N_pr).  % sign change in the derivative.
 :- root(N, _), noroot(N).
 % root + deriv.
 :- root(N, X), sign(N, PN1, X, To_N), sign(N_PR, PN2, X, To_N_PR), deriv(N, N_PR), PN1!=PN2, To_N!=X, To_N_PR!=X.
@@ -109,10 +109,10 @@ sign_change(N, Input) :- sign(N, PN1, _, Input), sign(N, PN2, Input, _), PN1!=PN
 :- even_symm(F, X), sign(F, PN1, L1, U1), L1<U1, U1<=X, sign(F, PN2, L2, U2), L2=X+(X-U1), U2=X+(X-L1), PN1!=PN2.
 :- odd_symm (F, X), sign(F, PN1, L1, U1), L1<U1, U1<=X, sign(F, PN2, L2, U2), L2=X+(X-U1), U2=X+(X-L1), PN1=PN2.
 % symmetry + root (TODO: no generation here)
-:- even_symm(F, X), root(F, X1), X1<X, not root(F, X2), X2=X+X-X1.
-:- even_symm(F, X), root(F, X1), X1>X, not root(F, X2), X2=X-(X1-X).
-:- odd_symm (F, X), root(F, X1), X1<X, not root(F, X2), X2=X+X-X1.
-:- odd_symm (F, X), root(F, X1), X1>X, not root(F, X2), X2=X-(X1-X).
+:- even_symm(F, X), root(F, X1), X1<X, not root(F, X2), X2=@add(X,@sub(X,X1)).
+:- even_symm(F, X), root(F, X1), X1>X, not root(F, X2), X2=@sub(X,@sub(X1,X)).
+:- odd_symm (F, X), root(F, X1), X1<X, not root(F, X2), X2=@add(X,@sub(X,X1)).
+:- odd_symm (F, X), root(F, X1), X1>X, not root(F, X2), X2=@sub(X,@sub(X1,X)).
 
 %
 % prefer simple (unknown) models.
