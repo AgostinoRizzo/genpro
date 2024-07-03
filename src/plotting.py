@@ -31,6 +31,7 @@ class DatasetPlotter(Plotter):
         """
         
         ax = self.impl.init(width, height)
+        self.impl.set_model(self.dataset.func)
 
         if plot_data:
             def plot_data_points(data:list, marker:str, color:str, label:str):
@@ -60,6 +61,8 @@ class DatasetPlotter(Plotter):
         if model is not None:
             self.impl.plot_model(model, xl, xu, zoomout=zoomout, linewidth=2, color='green', label='Model')
         
+        self.impl.flush_content()
+
         self.impl.set_limits(xl, xu, yl, yu)
         self.impl.set_grid()
         self.impl.set_tick()
@@ -105,11 +108,14 @@ class PlotterImpl:
     def __init__(self, dataset):
         self.dataset = dataset
         self.ax:Axes = None
+        self.model = None
     
     def init(self, width, height) -> Axes: pass
+    def set_model(self, model): self.model = model
     def plot_datapoint(self, dp, marker, color, markersize, label=None): pass
     def plot_scatter(self, x, y, marker, color, markersize, label=None): pass
     def plot_model(self, model, xl, xu, zoomout, linewidth, color, label, linestyle='solid'): pass
+    def flush_content(self): pass
     def set_grid(self): pass
     def set_tick(self): pass
     def set_limits(self, xl, xu, yl, yu): pass
@@ -159,6 +165,7 @@ class Dataset2dPlotterImpl(PlotterImpl):
 
     def __init__(self, dataset):
         super().__init__(dataset)
+        self.top_scatter = []
     
     def init(self, width, height) -> Axes:
         fig = plt.figure(2, figsize=[width,height])
@@ -167,10 +174,20 @@ class Dataset2dPlotterImpl(PlotterImpl):
         return self.ax
     
     def plot_datapoint(self, dp, marker, color, markersize, label=None):
-        self.ax.scatter(dp.x[0], dp.x[1], dp.y, marker=marker, c=color, s=markersize**2, label=label)
+        y_model = self.model(np.array([[dp.x[0], dp.x[1]]]))
+        if dp.y >= y_model:
+            self.top_scatter.append( (dp.x[0], dp.x[1], dp.y, marker, color, markersize**2, label) )
+        else:
+            self.ax.scatter(dp.x[0], dp.x[1], dp.y, marker=marker, c=color, s=markersize**2, label=label)            
     
     def plot_scatter(self, x, y, marker, color, markersize, label=None):
-        self.ax.scatter(x[:,0], x[:,1], y, marker=marker, c=color, s=markersize**2, label=label)
+        y_model = self.model(dp.x)
+        top_idx = y >= y_model
+        if top_idx.any():
+            self.scatter.append( (x[top_idx:,0], x[top_idx:,1], y[top_idx], marker, color, markersize**2, label) )
+        else:
+            self.ax.scatter(x[~top_idx:,0], x[~top_idx:,1], y[~top_idx], marker=marker, c=color, s=markersize**2, label=label)
+            
     
     def plot_model(self, model, xl, xu, zoomout, linewidth, color, label, linestyle='solid'):
         sample_size = int(Dataset1dPlotterImpl.SAMPLE_SIZE * zoomout)
@@ -185,7 +202,12 @@ class Dataset2dPlotterImpl(PlotterImpl):
         #self.ax.contour(x, y, z, zdir='z', offset= 0, cmap='coolwarm')
         #self.ax.contour(x, y, z, zdir='x', offset=20, cmap='coolwarm')
         #self.ax.contour(x, y, z, zdir='y', offset=20, cmap='coolwarm')
+        self.model = model
     
+    def flush_content(self):
+        for x1, x2, y, marker, color, markersize, label in self.top_scatter:
+            self.ax.scatter(x1, x2, y, marker=marker, c=color, s=markersize, label=label)
+
     def set_grid(self):
         for axis in [self.ax.xaxis, self.ax.yaxis, self.ax.zaxis]:
             axis._axinfo["grid"]['linestyle'] = 'dashed'
