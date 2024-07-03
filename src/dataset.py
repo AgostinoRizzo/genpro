@@ -219,13 +219,15 @@ class Dataset:
         self.__x_map__ = None"""
     
     def sample(self, size:int=100, noise:float=0., mesh:bool=False):
-        y_noise = (self.yu - self.yl) * noise * 0.5
-        
         X = \
             self.spsampler.meshspace(self.xl, self.xu, self.spsampler.get_meshsize(size)) if mesh else \
             self.spsampler.randspace(self.xl, self.xu, size)
         
-        y = self.func(X) + (0. if noise == 0. else np.random.normal(scale=y_noise, size=X.shape[0]))  # TODO: fix noise
+        y = self.func(X)
+        if noise > 0.:
+            y_std = y.std()
+            y += np.random.normal(scale=math.sqrt(noise*y_std), size=X.shape[0])
+
         for i in range(y.size):
             self.data.append(DataPoint(X[i], y[i]))
         
