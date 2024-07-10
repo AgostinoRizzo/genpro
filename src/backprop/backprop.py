@@ -709,6 +709,12 @@ class UnknownSyntaxTreeCollector(SyntaxTreeVisitor):
         self.unknown_labels.add(stree.label)
         self.unknowns.append(stree)
 
+class ConstantSyntaxTreeCollector(SyntaxTreeVisitor):
+    def __init__(self):
+        self.constants = []
+    def visitConstant(self, stree:ConstantSyntaxTree):
+        self.constants.append(stree)
+
 
 class SyntaxTreeNodeCounter(SyntaxTreeVisitor):
     def __init__(self):
@@ -745,9 +751,10 @@ class SyntaxTreeNodeSelector(SyntaxTreeVisitor):
 class SyntaxTreeGenerator:
     OPERATORS = BinaryOperatorSyntaxTree.OPERATORS + UnaryOperatorSyntaxTree.OPERATORS
 
-    def __init__(self, randstate:int=None):
+    def __init__(self, randstate:int=None, nvars:int=1):
         self.unkn_counter = 0
         self.randgen = random.Random() if randstate is None else random.Random(randstate)
+        self.nvars = nvars
     
     def create_random(self, max_depth:int, n:int=1, check_duplicates:bool=True) -> list[SyntaxTree]:
         assert max_depth >= 0 and n >= 0
@@ -766,10 +773,11 @@ class SyntaxTreeGenerator:
         assert self.unkn_counter < len(string.ascii_uppercase)
         if depth <= 0:
             if self.randgen.choice([0, 1]) == 0:
-                stree = UnknownSyntaxTree(string.ascii_uppercase[self.unkn_counter]) # TODO: set nvars
-                self.unkn_counter += 1
+                #stree = UnknownSyntaxTree(string.ascii_uppercase[self.unkn_counter], nvars=self.nvars)
+                #self.unkn_counter += 1
+                stree = ConstantSyntaxTree(val=self.randgen.uniform(-1., 1.))
             else:
-                stree = VariableSyntaxTree()  # TODO: set var index (multivar case).
+                stree = VariableSyntaxTree(idx=self.randgen.randrange(self.nvars))
             return stree
         
         operator = self.randgen.choice(SyntaxTreeGenerator.OPERATORS)

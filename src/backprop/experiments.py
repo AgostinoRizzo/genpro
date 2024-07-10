@@ -83,7 +83,7 @@ for S, datafile, addnoise, desc in BENCHMARKS:
     S_test  = dataset.NumpyDataset(S, test=True)
 
     logging.info(f"--- Generating initial population ({POPSIZE} individuals) ---")
-    population = gp_backprop.random_population(popsize=POPSIZE, max_depth=MAX_STREE_DEPTH)
+    population = gp_backprop.random_population(popsize=POPSIZE, max_depth=MAX_STREE_DEPTH, nvars=S.nvars)
     
     logging.info(f"--- Evolve current population ({GENERATIONS} generations) ---")
     start_time = time.time()

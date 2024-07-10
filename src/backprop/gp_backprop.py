@@ -9,11 +9,6 @@ from backprop import gp
 from backprop import config
 
 
-def random_population(popsize:int, max_depth:int, check_duplicates:bool=True, randstate:int=None) -> list[backprop.SyntaxTree]:
-    assert popsize >= 1
-    return backprop.SyntaxTreeGenerator(randstate).create_random(max_depth, popsize, check_duplicates)
-
-
 class KnowledgeBackpropEvaluator(gp.Evaluator):
     def __init__(self, knowledge:dataset.DataKnowledge):
         self.knowledge = knowledge

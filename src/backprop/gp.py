@@ -1,10 +1,34 @@
 from functools import cmp_to_key
 import random
 import logging
+import numpy as np
 
 import dataset
 from backprop import backprop
 
+
+class Evaluation:
+    def __init__(self, minimize:bool=True):
+        self.minimize = minimize
+    def better_than(self, other) -> bool: return False
+
+class RealEvaluation(Evaluation):
+    def __init__(self, value, minimize:bool=True):
+        super().__init__(minimize)
+        self.value = value
+    def better_than(self, other) -> bool:
+        if np.isnan(other.value):
+            if np.isnan(self.value): return False
+            return True
+        if self.minimize: return self.value < other.value
+        return self.value > other.value
+    def __str__(self) -> str:
+        return f"{self.value}"
+
+
+def random_population(popsize:int, max_depth:int, nvars:int=1, check_duplicates:bool=True, randstate:int=None) -> list[backprop.SyntaxTree]:
+    assert popsize >= 1
+    return backprop.SyntaxTreeGenerator(randstate, nvars).create_random(max_depth, popsize, check_duplicates)
 
 def sort_population(population:list[backprop.SyntaxTree], eval_map:dict) -> list[backprop.SyntaxTree]:
     def strees_cmp(stree1, stree2) -> int:
@@ -36,6 +60,15 @@ def replace_subtree(stree:backprop.SyntaxTree,
 class Evaluator:
     def evaluate(self, stree:backprop.SyntaxTree):
         return None
+
+
+class R2Evaluator:
+    def __init__(self, dataset, minimize:bool=True):
+        self.dataset = dataset
+        self.minimize = False
+    
+    def evaluate(self, stree:backprop.SyntaxTree):
+        return RealEvaluation(max(0., self.dataset.evaluate(stree)['r2']), self.minimize)
 
 
 class Selector:
@@ -82,6 +115,17 @@ class SubTreeCrossover:
         
 
 class Mutator:
+    def mutate(self, stree:backprop.SyntaxTree) -> backprop.SyntaxTree:
+        pass
+
+class MultiMutator(Mutator):
+    def __init__(self, *mutators):
+        self.mutators = list(mutators)
+    
+    def mutate(self, stree:backprop.SyntaxTree) -> backprop.SyntaxTree:
+        return random.choice(self.mutators).mutate(stree)
+
+class SubtreeReplacerMutator(Mutator):
     def __init__(self, max_depth:int):
         self.max_depth = max_depth
     
@@ -94,31 +138,57 @@ class Mutator:
         stree.accept(nodeSelector)
         sub_stree = nodeSelector.node
 
-        muttype = random.randrange(2)
+        # replace subtree with random branch.
 
-        if muttype == 0:  # replace subtree with random branch.
-            stree.set_parent()
-            sub_stree_depth = 0
-            t = sub_stree
-            while t.parent is not None:
-                t = t.parent
-                sub_stree_depth += 1
-            
-            new_sub_stree_depth = self.max_depth - sub_stree_depth
-            if new_sub_stree_depth >= 0:
-                new_sub_stree = backprop.SyntaxTreeGenerator().create_random(new_sub_stree_depth, 1)[0]
-                stree = replace_subtree(stree, sub_stree, new_sub_stree)
+        stree.set_parent()
+        sub_stree_depth = 0
+        t = sub_stree
+        while t.parent is not None:
+            t = t.parent
+            sub_stree_depth += 1
         
-        elif muttype == 1:  # change a single function symbol.
-            if   type(sub_stree) is backprop.BinaryOperatorSyntaxTree:
-                sub_stree.operator = random.choice(
-                    [opt for opt in backprop.BinaryOperatorSyntaxTree.OPERATORS if opt != sub_stree.operator])
-            elif type(sub_stree) is backprop.UnaryOperatorSyntaxTree:
-                sub_stree.operator = random.choice(
-                    [opt for opt in backprop.UnaryOperatorSyntaxTree.OPERATORS if opt != sub_stree.operator])
+        new_sub_stree_depth = self.max_depth - sub_stree_depth
+        if new_sub_stree_depth >= 0:
+            new_sub_stree = backprop.SyntaxTreeGenerator().create_random(new_sub_stree_depth, 1)[0]
+            stree = replace_subtree(stree, sub_stree, new_sub_stree)
+        
+        return stree
+    
+class FunctionSymbolMutator(Mutator):
+    def mutate(self, stree:backprop.SyntaxTree) -> backprop.SyntaxTree:
+        nodesCounter = backprop.SyntaxTreeNodeCounter()
+        stree.accept(nodesCounter)
+        nnodes = nodesCounter.nnodes
+
+        nodeSelector = backprop.SyntaxTreeNodeSelector(random.randrange(nnodes))
+        stree.accept(nodeSelector)
+        sub_stree = nodeSelector.node
+  
+        # change a single function symbol.
+
+        if   type(sub_stree) is backprop.BinaryOperatorSyntaxTree:
+            sub_stree.operator = random.choice(
+                [opt for opt in backprop.BinaryOperatorSyntaxTree.OPERATORS if opt != sub_stree.operator])
+        elif type(sub_stree) is backprop.UnaryOperatorSyntaxTree:
+            sub_stree.operator = random.choice(
+                [opt for opt in backprop.UnaryOperatorSyntaxTree.OPERATORS if opt != sub_stree.operator])
 
         return stree
 
+class NumericParameterMutator(Mutator):
+    def __init__(self, all:bool=True):
+        self.all = all
+    
+    def mutate(self, stree:backprop.SyntaxTree) -> backprop.SyntaxTree:
+        constsCollector = backprop.ConstantSyntaxTreeCollector()
+        stree.accept(constsCollector)
+
+        if len(constsCollector.constants) == 0: return stree
+        constsToMutate = constsCollector.constants if self.all else [random.choice(constsCollector.constants)]
+        for c in constsToMutate:
+            c.val += random.gauss(mu=0.0, sigma=1.0)
+
+        return stree
 
 class GP:
     def __init__(self,
@@ -151,19 +221,23 @@ class GP:
         self.nbests = nbests
         if rseed is not None:
             random.seed(rseed)
+        self.qualities = {'currBest': [], 'currAvg': [], 'currWorst': [], 'best': []}
     
     # returns nbests best strees found + evaluation map.
     def evolve(self) -> tuple[list[backprop.SyntaxTree], dict]:
         self.__evaluate_all()
         self.population = sort_population(self.population, self.eval_map)
         self.__update_bests()
+        self.__update_qualities()
 
         for idx_gen in range(self.ngen):
             children = self.__create_children()
             self.__replace(children)
             self.population = sort_population(self.population, self.eval_map)
             self.__update_bests()
-            logging.info(f"--- Generation {idx_gen+1} [Current best: {self.eval_map[id(self.population[0])]}, Global best: {self.bests_eval_map[id(self.bests[0])]}] ---")
+            self.__update_qualities()
+            logging.info(f"--- Generation {idx_gen+1} [Current best: {self.eval_map[id(self.population[0])]}," + \
+                         f"Global best: {self.bests_eval_map[id(self.bests[0])]}] ---")
         
         return self.bests, self.bests_eval_map
 
@@ -194,7 +268,7 @@ class GP:
                 parents = self.selector.select(self.population, self.eval_map, 2)
                 child = self.crossover.cross(parents[0], parents[1])  # 100% crossover rate (child must be a new object!)
                 if random.random() < self.mutrate:
-                    self.mutator.mutate(child)
+                    child = self.mutator.mutate(child)
                 if child.validate():
                     children.append(child)
                     self.eval_map[id(child)] = self.evaluator.evaluate(child)
@@ -212,5 +286,15 @@ class GP:
         for stree in self.population:
             new_eval_map[id(stree)] = self.eval_map[id(stree)]
         self.eval_map = new_eval_map
-
     
+    def __update_qualities(self):
+        currAvg = 0.0
+        for stree in self.population:
+            currAvg += self.eval_map[id(stree)].value
+        currAvg /= self.popsize
+
+        self.qualities['currBest' ].append(self.eval_map[id(self.population[0])].value)    
+        self.qualities['currAvg'  ].append(currAvg)
+        self.qualities['currWorst'].append(self.eval_map[id(self.population[-1])].value)
+        self.qualities['best'     ].append(self.bests_eval_map[id(self.bests[0])].value)
+        
