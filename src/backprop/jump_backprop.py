@@ -134,7 +134,7 @@ def jump_backprop(stree_map:dict[tuple,backprop.SyntaxTree], synth_unkn_models:d
                         #
                         if derivdeg == 0:
                             yl = 0; yu = 0
-                            pulled_S[unkn_name] = dataset.NumpyDataset(nvars=1)  # TODO: generalize multivar.
+                            pulled_S[unkn_name] = dataset.NumpyDataset(nvars=S_train.nvars)
                             pulled_S[unkn_name].xl = S_train.xl
                             pulled_S[unkn_name].xu = S_train.xu
                             pulled_S[unkn_name].numlims.set_bounds(S_train.xl, S_train.xu)

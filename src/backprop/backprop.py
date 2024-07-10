@@ -250,7 +250,13 @@ class BinaryOperatorSyntaxTree(SyntaxTree):
 
         elif self.operator == '+': return ((output - self.right.output) if get_left else (output - self.left.output)), output_relopt
         elif self.operator == '-': return ((output + self.right.output) if get_left else (self.left.output - output)), output_relopt
-        elif self.operator == '^': return ((output ** (1/self.right.output)) if get_left else np.log(output, self.left.output)), output_relopt
+        elif self.operator == '^':
+            if get_left:
+                if np.all(self.right.output == 2.): return np.sqrt(output), output_relopt
+                if np.all(self.right.output == 3.): return np.cbrt(output), output_relopt
+                raise RuntimeError(f"Inverse power not defined for exponent {self.right.output}")
+            else:
+                np.log(output, self.left.output), output_relopt            
         
         raise RuntimeError(f"Inverse operation not defined for operator {self.operator}.")
     
@@ -273,20 +279,20 @@ class BinaryOperatorSyntaxTree(SyntaxTree):
         if self.operator == '/':
             return BinaryOperatorSyntaxTree( '/',
                 BinaryOperatorSyntaxTree('-',
-                    BinaryOperatorSyntaxTree('*', f.diff(), g.clone()),
-                    BinaryOperatorSyntaxTree('*', f.clone(), g.diff())
+                    BinaryOperatorSyntaxTree('*', f.diff(varidx), g.clone()),
+                    BinaryOperatorSyntaxTree('*', f.clone(), g.diff(varidx))
                 ),
                 BinaryOperatorSyntaxTree('^', g.clone(), ConstantSyntaxTree(2))
             )
         
         if self.operator == '*':
             return BinaryOperatorSyntaxTree( '+',
-                BinaryOperatorSyntaxTree('*', f.diff(), g.clone()),
-                BinaryOperatorSyntaxTree('*', f.clone(), g.diff())
+                BinaryOperatorSyntaxTree('*', f.diff(varidx), g.clone()),
+                BinaryOperatorSyntaxTree('*', f.clone(), g.diff(varidx))
             )
         
         elif self.operator == '+' or self.operator == '-':
-            return BinaryOperatorSyntaxTree( self.operator, f.diff(), g.diff() )
+            return BinaryOperatorSyntaxTree( self.operator, f.diff(varidx), g.diff(varidx) )
         
         elif self.operator == '^':
             if type(g) is not ConstantSyntaxTree:
@@ -302,7 +308,7 @@ class BinaryOperatorSyntaxTree(SyntaxTree):
                         )
                     )
                 ),
-                f.diff()
+                f.diff(varidx)
             )
         
         raise RuntimeError(f"Differentiation not defined for operator {self.operator}.")
@@ -466,18 +472,18 @@ class UnaryOperatorSyntaxTree(SyntaxTree):
         if self.operator == 'exp':
             return BinaryOperatorSyntaxTree( '*',
                 UnaryOperatorSyntaxTree('exp', g.clone() ),
-                g.diff()
+                g.diff(varidx)
                 )
         
         if self.operator == 'log':
             return BinaryOperatorSyntaxTree( '/',
-                g.diff(),
+                g.diff(varidx),
                 g.clone()
             )
         
         if self.operator == 'sqrt':
             return BinaryOperatorSyntaxTree( '/',
-                g.diff(),
+                g.diff(varidx),
                 BinaryOperatorSyntaxTree( '*',
                     ConstantSyntaxTree(2),
                     UnaryOperatorSyntaxTree('sqrt', g.clone())
@@ -567,6 +573,47 @@ class ConstantSyntaxTree(SyntaxTree):
     
     def get_max_depth(self) -> int:
         return 0
+
+
+class VariableSyntaxTree(SyntaxTree):
+    def __init__(self, idx:int=0):
+        super().__init__()
+        self.idx = idx
+    
+    def clone(self):
+        return VariableSyntaxTree(self.idx)
+    
+    def compute_output(self, x):
+        self.output = x[:,self.idx] if x.ndim == 2 else x
+        return self.output
+    
+    def __str__(self) -> str:
+        return f"x{self.idx}"
+    
+    def __eq__(self, other) -> bool:
+        if type(other) is not VariableSyntaxTree: return False
+        return self.idx == other.idx
+    
+    def diff(self, varidx:int=0) -> SyntaxTree:
+        return ConstantSyntaxTree(1)
+    
+    def is_const(self) -> bool:
+        return False
+    
+    def is_const_wrt(self, varidx):
+        return self.idx != varidx
+    
+    def backprop_sign(self, symbmapper:SymbolMapper, lb:float=-numlims.INFTY, ub:float=numlims.INFTY, sign:str='+'):
+        raise NotImplementedError()
+    
+    def accept(self, visitor):
+        visitor.visitVariable(self)
+    
+    def to_sympy(self, dps:int=None):
+        return sympy.Symbol(str(self))
+    
+    def get_max_depth(self) -> int:
+        return 0
         
 
 class UnknownSyntaxTree(SyntaxTree):
@@ -582,7 +629,7 @@ class UnknownSyntaxTree(SyntaxTree):
         self.label = f"{utils.deriv_to_string(self.deriv)}{self.name}"
     
     def clone(self):
-        return UnknownSyntaxTree(self.name, self.deriv)
+        return UnknownSyntaxTree(self.name, self.deriv, self.nvars)
     
     def compute_output(self, x):
         self.output = None
@@ -647,9 +694,10 @@ class UnknownSyntaxTree(SyntaxTree):
 
 
 class SyntaxTreeVisitor:
-    def visitBinaryOperator(self, stree:UnaryOperatorSyntaxTree):  pass
+    def visitUnaryOperator (self, stree:UnaryOperatorSyntaxTree):  pass
     def visitBinaryOperator(self, stree:BinaryOperatorSyntaxTree): pass
     def visitConstant      (self, stree:ConstantSyntaxTree):       pass
+    def visitVariable      (self, stree:VariableSyntaxTree):       pass
     def visitUnknown       (self, stree:UnknownSyntaxTree):        pass
 
 
@@ -657,10 +705,7 @@ class UnknownSyntaxTreeCollector(SyntaxTreeVisitor):
     def __init__(self):
         self.unknown_labels = set()
         self.unknowns = []
-    def visitUnaryOperator (self, stree:UnaryOperatorSyntaxTree):  pass
-    def visitBinaryOperator(self, stree:BinaryOperatorSyntaxTree): pass
-    def visitConstant      (self, stree:ConstantSyntaxTree):       pass
-    def visitUnknown       (self, stree:UnknownSyntaxTree):
+    def visitUnknown(self, stree:UnknownSyntaxTree):
         self.unknown_labels.add(stree.label)
         self.unknowns.append(stree)
 
@@ -671,6 +716,7 @@ class SyntaxTreeNodeCounter(SyntaxTreeVisitor):
     def visitUnaryOperator (self, stree:UnaryOperatorSyntaxTree):  self.nnodes += 1
     def visitBinaryOperator(self, stree:BinaryOperatorSyntaxTree): self.nnodes += 1
     def visitConstant      (self, stree:ConstantSyntaxTree):       self.nnodes += 1
+    def visitVariable      (self, stree:VariableSyntaxTree):       self.nnodes += 1
     def visitUnknown       (self, stree:UnknownSyntaxTree):        self.nnodes += 1
 
 
@@ -686,6 +732,9 @@ class SyntaxTreeNodeSelector(SyntaxTreeVisitor):
         if self.i == self.ith: self.node = stree
         self.i += 1
     def visitConstant(self, stree:ConstantSyntaxTree):
+        if self.i == self.ith: self.node = stree
+        self.i += 1
+    def visitVariable(self, stree:VariableSyntaxTree):
         if self.i == self.ith: self.node = stree
         self.i += 1
     def visitUnknown(self, stree:UnknownSyntaxTree):
@@ -716,8 +765,11 @@ class SyntaxTreeGenerator:
     def __create_random(self, depth:int):
         assert self.unkn_counter < len(string.ascii_uppercase)
         if depth <= 0:
-            stree = UnknownSyntaxTree(string.ascii_uppercase[self.unkn_counter])
-            self.unkn_counter += 1
+            if self.randgen.choice([0, 1]) == 0:
+                stree = UnknownSyntaxTree(string.ascii_uppercase[self.unkn_counter]) # TODO: set nvars
+                self.unkn_counter += 1
+            else:
+                stree = VariableSyntaxTree()  # TODO: set var index (multivar case).
             return stree
         
         operator = self.randgen.choice(SyntaxTreeGenerator.OPERATORS)

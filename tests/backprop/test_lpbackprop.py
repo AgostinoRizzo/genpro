@@ -17,81 +17,58 @@ from numlims import NumericLimits
     """
     bin_tree_node("m","/","A","B").
     unkn_tree_node("A").
-    deriv("A","d0A").
     unkn_tree_node("B").
-    deriv("B","d0B").
     bin_tree_node("d0m","/","m1","m2").
     bin_tree_node("m1","-","m3","m4").
     bin_tree_node("m3","*","d0A","B").
     unkn_tree_node("d0A").
-    deriv("d0A","d0d0A").
     unkn_tree_node("B").
-    deriv("B","d0B").
     bin_tree_node("m4","*","A","d0B").
     unkn_tree_node("A").
-    deriv("A","d0A").
     unkn_tree_node("d0B").
-    deriv("d0B","d0d0B").
-    bin_tree_node("m2","^","B","2").
+    bin_tree_node("m2","^","B","m5").
     unkn_tree_node("B").
-    deriv("B","d0B").
-    const_tree_node("2",2).
+    const_tree_node("m5",2).
     const(2).
-    bin_tree_node("d0d0m","/","m5","m6").
-    bin_tree_node("m5","-","m7","m8").
-    bin_tree_node("m7","*","m9","m10").
-    bin_tree_node("m9","-","m11","m12").
-    bin_tree_node("m11","+","m13","m14").
-    bin_tree_node("m13","*","d0d0A","B").
+    bin_tree_node("d0d0m","/","m6","m7").
+    bin_tree_node("m6","-","m8","m9").
+    bin_tree_node("m8","*","m10","m11").
+    bin_tree_node("m10","-","m12","m13").
+    bin_tree_node("m12","+","m14","m15").
+    bin_tree_node("m14","*","d0d0A","B").
     unkn_tree_node("d0d0A").
-    deriv("d0d0A","d0d0d0A").
     unkn_tree_node("B").
-    deriv("B","d0B").
-    bin_tree_node("m14","*","d0A","d0B").
-    unkn_tree_node("d0A").
-    deriv("d0A","d0d0A").
-    unkn_tree_node("d0B").
-    deriv("d0B","d0d0B").
-    bin_tree_node("m12","+","m15","m16").
     bin_tree_node("m15","*","d0A","d0B").
     unkn_tree_node("d0A").
-    deriv("d0A","d0d0A").
     unkn_tree_node("d0B").
-    deriv("d0B","d0d0B").
-    bin_tree_node("m16","*","A","d0d0B").
-    unkn_tree_node("A").
-    deriv("A","d0A").
-    unkn_tree_node("d0d0B").
-    deriv("d0d0B","d0d0d0B").
-    bin_tree_node("m10","^","B","2").
-    unkn_tree_node("B").
-    deriv("B","d0B").
-    const_tree_node("2",2).
-    const(2).
-    bin_tree_node("m8","*","m17","m18").
-    bin_tree_node("m17","-","m19","m20").
-    bin_tree_node("m19","*","d0A","B").
+    bin_tree_node("m13","+","m16","m17").
+    bin_tree_node("m16","*","d0A","d0B").
     unkn_tree_node("d0A").
-    deriv("d0A","d0d0A").
-    unkn_tree_node("B").
-    deriv("B","d0B").
-    bin_tree_node("m20","*","A","d0B").
-    unkn_tree_node("A").
-    deriv("A","d0A").
     unkn_tree_node("d0B").
-    deriv("d0B","d0d0B").
-    bin_tree_node("m18","*","m21","d0B").
-    bin_tree_node("m21","*","2","B").
-    const_tree_node("2",2).
+    bin_tree_node("m17","*","A","d0d0B").
+    unkn_tree_node("A").
+    unkn_tree_node("d0d0B").
+    bin_tree_node("m11","^","B","m18").
+    unkn_tree_node("B").
+    const_tree_node("m18",2).
+    const(2).
+    bin_tree_node("m9","*","m19","m20").
+    bin_tree_node("m19","-","m21","m22").
+    bin_tree_node("m21","*","d0A","B").
+    unkn_tree_node("d0A").
+    unkn_tree_node("B").
+    bin_tree_node("m22","*","A","d0B").
+    unkn_tree_node("A").
+    unkn_tree_node("d0B").
+    bin_tree_node("m20","*","m23","d0B").
+    bin_tree_node("m23","*","m24","B").
+    const_tree_node("m24",2).
     const(2).
     unkn_tree_node("B").
-    deriv("B","d0B").
     unkn_tree_node("d0B").
-    deriv("d0B","d0d0B").
-    bin_tree_node("m6","^","B","4").
+    bin_tree_node("m7","^","B","m25").
     unkn_tree_node("B").
-    deriv("B","d0B").
-    const_tree_node("4",4).
+    const_tree_node("m25",4).
     const(4).
     """)
 ])
@@ -143,6 +120,9 @@ def test_ASPSpecBuilder(stree:SyntaxTree, nvars:int, stree_spec:str):
     even_symm("d0m",0).
     odd_symm("d0d0m",0).
     :- tree_node(N), undef(N, _).
+    infty(4).
+    infty(-4).
+    varidx("0").
     """,
     {0: 0, -0.2082733245333337: -1, 0.2082733245333337: 1, 2.0: 3, -0.36073997999999996: -2,
      0.36073997999999996: 2, 10.0: 4, -10.0: -4, -2.0: -3}
@@ -173,6 +153,10 @@ def test_ASPSpecBuilder(stree:SyntaxTree, nvars:int, stree_spec:str):
     sign("d1d1m","-",(1, 0),(2, 1)).
     sign("d1d1m","-",(1, 1),(2, 2)).
     :- tree_node(N), undef(N, _).
+    infty(2).
+    infty(-2).
+    varidx("0").
+    varidx("1").
     """,
     {0: 0, -60.0: -2, 60.0: 2, 20.0: 1}
     )

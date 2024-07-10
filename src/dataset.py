@@ -58,6 +58,7 @@ class DataKnowledge:
         self.sign = {}
         self.symm = {}
         self.noroot = set()
+        self.zero = {}
         self.numlims = limits if dataset is None else dataset.numlims
         self.spsampler = spsampler if dataset is None else dataset.spsampler
     
@@ -87,6 +88,11 @@ class DataKnowledge:
         if type(d) is int: d = (0,)*d
         assert type(d) is tuple
         self.noroot.add(d)
+    
+    def add_zero(self, d, l, u):
+        if type(d) is int: d = (0,)*d
+        assert type(d) is tuple
+        self.zero[d] = (l,u)
     
     """
     def get_mesh(self, sample_size:int=20) -> np.array:

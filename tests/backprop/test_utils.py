@@ -1,4 +1,6 @@
 import pytest
+import numpy as np
+
 from backprop import utils
 
 
@@ -35,3 +37,26 @@ def test_parse_unparse_deriv(deriv:tuple[int], deriv_str:str):
 def test_parse_deriv(deriv:tuple[int], deriv_str:str, func_str:str):
     assert utils.parse_deriv(deriv_str) == deriv
     assert utils.parse_deriv(deriv_str, parsefunc=True) == (deriv, func_str)
+
+
+@pytest.mark.parametrize("M,Msquare", [
+    ( [[]], [[0.]] ),
+    ( [[1]], [[1]] ),
+    ( [[1],[1]], [[1,0], [1,0]] ),
+    ( [[1,1]], [[1,1], [0,0]] ),
+    ( [[1,1,1]], [[1,1,1], [0,0,0], [0,0,0]] ),
+    ( [[1],[1],[1]], [[1,0,0], [1,0,0], [1,0,0]] ),
+
+    # 3dim
+    ( [[[]]], [[[0.]]] ),
+    ( [[[1]]], [[[1]]] ),
+    ( [[[1,2]],[[1,2]],[[1,2]]], [[[1,2,0],[0,0,0],[0,0,0]],[[1,2,0],[0,0,0],[0,0,0]],[[1,2,0],[0,0,0],[0,0,0]]] )
+])
+def test_squarify_mat(M, Msquare):
+    M = np.array(M)
+    Msquare = np.array(Msquare)
+    Mactual = utils.squarify(M)
+    if max(M.shape) == min(M.shape):
+        assert id(M) == id(Mactual)
+    assert Mactual.ndim == Msquare.ndim and max(Mactual.shape) == min(Mactual.shape)
+    assert np.array_equal(Mactual, Msquare)

@@ -57,6 +57,13 @@ def get_constraints(K:dataset.DataKnowledge, break_points:list, deriv:tuple[int]
     # noroot constr.
     if derivdeg in K.noroot:
         constrs.noroot = True
+    
+    # zero constr.
+    """if deriv in K.zero:
+        (l, u) = K.zero[deriv]
+        X = K.spsampler.meshspace(l, u, sample_size)
+        for x in X:
+            constrs.eq_ineq.append( (dataset.DataPoint(x, 0), backprop.Relopt('=')) )"""
 
     return constrs
 
@@ -149,7 +156,7 @@ def qp_solve(constrs:dict[Constraints],
              s_val:float=1,
              weak_constrs:dict[int,Constraints]=None):
     
-    nvars = polydeg + 1
+    nvars = models.Poly.get_ncoeffs(polydeg, model_nvars)
     assert polydeg >= 0 and nvars > 0
 
     R = []; s = []; W = None
@@ -186,7 +193,7 @@ def qp_solve(constrs:dict[Constraints],
                     s = np.append(s, __b, axis=0)
                     n_weak_constrs += len(__A)
         
-        s, Sy_scale_factor = utils.scale_y(s)
+        s, Sy_scale_factor = s, None #utils.scale_y(s)
 
         # add error weights (data points + weak constraints).
         w_data       = np.array([1 / S.compute_yvar(x0) for x0 in S.X])  # TODO: optimize even more using numpy.
@@ -232,8 +239,11 @@ def qp_solve(constrs:dict[Constraints],
     #print(f"A = {A}")
     #print(f"b = {b}")
     
-    sol = qpsolvers_solve_ls(R, s, G, h, A, b, W=W, lb=None, ub=None, solver='clarabel', verbose=False)  # returns optimal sol if found, None otherwise.
+    sol = qpsolvers_solve_ls(R, s, G=G, h=h, A=A, b=b, W=W, lb=None, ub=None, solver='clarabel', verbose=False)  # returns optimal sol if found, None otherwise.
     #print(f"QP solution: {sol}\n")
+
+    if sol is None:
+        print(f"None solution")
 
     sol = np.zeros(nvars) if sol is None else sol # TODO: manage error or no solution + rows(A)>|x|
     #print(f"QP solution check: {test_qp.check_qp_sol(G, h, A, b, lb, ub, sol)}")
@@ -254,6 +264,6 @@ def qp_solve(constrs:dict[Constraints],
     print()
     """
 
-    #print(f"QP solution returned: {sol}\n")
+    print(f"QP solution returned: {sol}\n")
 
     return sol

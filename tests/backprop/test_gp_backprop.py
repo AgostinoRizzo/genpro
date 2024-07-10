@@ -23,8 +23,8 @@ def test_gp_backprop_lpeval():
     best_stree = sorted_population[0]
     best_eval = eval_map[id(best_stree)]
 
-    assert type(best_stree) is backprop.BinaryOperatorSyntaxTree and best_stree.operator == '^' and \
+    assert type(best_stree) is backprop.BinaryOperatorSyntaxTree and best_stree.operator == '-' and \
            type(best_stree.left) is backprop.UnknownSyntaxTree and \
-           type(best_stree.right) is backprop.ConstantSyntaxTree and best_stree.right.val == 2
+           type(best_stree.right) is backprop.VariableSyntaxTree
     assert best_eval.costvals == [0, 3]
 

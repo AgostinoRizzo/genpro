@@ -51,13 +51,17 @@ class ASPSpecBuilder(backprop.SyntaxTreeVisitor): # TODO: avoid multiple facts f
             f"\"{self.node_id_map[id(stree)]}\",{stree.val}).\n" + \
             f"const({stree.val}).\n"
     
+    def visitVariable(self, stree:backprop.VariableSyntaxTree):
+        self.__map_node_id(stree)
+        self.spec += f"var_tree_node(\"{self.node_id_map[id(stree)]}\").\n"
+    
     def visitUnknown(self, stree:backprop.UnknownSyntaxTree):
         self.__map_node_id(stree)
         self.spec += 'unkn_tree_node(' + \
             f"\"{self.node_id_map[id(stree)]}\").\n"
-        self.spec += 'deriv(' + \
-            f"\"{self.node_id_map[id(stree)]}\"," + \
-            f"\"d0{self.node_id_map[id(stree)]}\").\n"  # TODO: implement in clingo using some built-in function for all nodes.
+        #self.spec += 'deriv(' + \
+        #    f"\"{self.node_id_map[id(stree)]}\"," + \
+        #    f"\"d0{self.node_id_map[id(stree)]}\").\n"  # TODO: implement in clingo using some built-in function for all nodes.
 
     def map_root(self, stree:backprop.SyntaxTree, deriv:tuple[int]):
         if type(stree) is not backprop.UnknownSyntaxTree:
@@ -68,6 +72,8 @@ class ASPSpecBuilder(backprop.SyntaxTreeVisitor): # TODO: avoid multiple facts f
             return
         if type(node) is backprop.ConstantSyntaxTree:
             self.node_id_map[id(node)] = int(node.val)  # TODO: improve int check
+        if type(node) is backprop.VariableSyntaxTree:
+            self.node_id_map[id(node)] = str(node)
         elif type(node) is backprop.UnknownSyntaxTree:
             self.node_id_map[id(node)] = f"{node.label}"
         else:
@@ -152,6 +158,9 @@ def build_knowledge_spec(K:dataset.DataKnowledge, model_name:str):
         spec += f"{ 'even' if iseven else 'odd' }_symm(\"{model_id}\",{x_term}).\n"
 
     spec += ":- tree_node(N), undef(N, _).\n"  # TODO
+    spec += f"infty({break_point_coords_map[ K.numlims.INFTY]}).\n"
+    spec += f"infty({break_point_coords_map[-K.numlims.INFTY]}).\n"
+    for idx in range(K.nvars): spec += f"varidx(\"{idx}\").\n"
     return spec, break_points, break_point_coords_map, break_point_coords_invmap
 
 
@@ -189,6 +198,9 @@ def synthesize_unknowns(unknown_labels:list[str], break_points:list, break_point
         return mapped_symbol
 
     logging.debug(f"\n--- ASP Model ---\n{asp_model}\n")
+    print(f"\n--- ASP Model ---\n")
+    for m in str(asp_model).split(): print(m)
+    print()
 
     # build knowledge from ASP model.
     unkn_knowledge_map = {}
@@ -288,7 +300,7 @@ def lpbackprop(K:dataset.DataKnowledge, stree:backprop.SyntaxTree, onsynth_callb
         unknown_labels = unkn_collector.unknown_labels
     
     logging.debug('Clingo grounding...')
-    clingo_ctl.ground([('stree_spec', []), ('K_spec', []), ('show', []), ('base', [])], context=clingo_context.ClingoArith())
+    clingo_ctl.ground([('stree_spec', []), ('K_spec', []), ('show', []), ('base', [])], context=clingo_context.ClingoContext())
 
     nopt_models = 0
     best_model_cost = None

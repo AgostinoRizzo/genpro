@@ -2,6 +2,8 @@ import numpy as np
 import sympy
 import math
 
+from backprop import utils
+
 
 class Model:
     def __init__(self):
@@ -26,6 +28,11 @@ class Poly(Model):
         return True
     def as_virtual(self, X, polydeg:int):
         return None
+    
+    @staticmethod
+    def get_ncoeffs(deg:int, nvars:int=1):
+        if nvars == 1: return deg + 1
+        return math.comb(nvars+deg, deg)
 
 
 class Poly1d(Poly):
@@ -134,14 +141,14 @@ class Polynd(Poly):
         if self.compute_derivs:
             # compute all 1st derivatives.
             for var_idx in range(self.nvars):
-                C = np.polynomial.polynomial.polyder(self.C, m=1, axis=var_idx)
+                C = utils.squarify( np.polynomial.polynomial.polyder(self.C, m=1, axis=var_idx) )
                 self.derivs[(var_idx,)] = Polynd(self.nvars, max(C.shape)-1, C=C, compute_derivs=False)
             
             # compute all 2nd derivatives.
             for var1_idx in range(self.nvars):
-                C1 = np.polynomial.polynomial.polyder(self.C, m=1, axis=var1_idx)
+                C1 = utils.squarify( np.polynomial.polynomial.polyder(self.C, m=1, axis=var1_idx) )
                 for var2_idx in range(self.nvars):
-                    C2 = np.polynomial.polynomial.polyder(C1, m=1, axis=var2_idx)
+                    C2 = utils.squarify( np.polynomial.polynomial.polyder(C1, m=1, axis=var2_idx) )
                     self.derivs[(var1_idx,var2_idx)] = Polynd(self.nvars, max(C2.shape)-1, C=C2, compute_derivs=False)
     
     def set_coeff(self, idx, c):
@@ -173,23 +180,25 @@ class Polynd(Poly):
         return P_sympy
     
     def simplify_from_qp(self, constrs_map:dict):
-        raise RuntimeError('No implementation (yet).')
+        pass
+        #TODO: raise RuntimeError('No implementation (yet).')
     
     def as_virtual(self, X, polydeg:int):
-        ncoeffs = polydeg + 1
+        ncoeffs = Poly.get_ncoeffs(polydeg, self.nvars)
+        if X.ndim == 1: X = np.array([X])
         assert X.ndim == 2 and X.shape[1] == self.nvars and self.CIDX.shape[0] <= ncoeffs
         # i = # constrol points (mesh size)
         # j = # coeffs
-        n_zero_cols = ncoeffs - self.CIDX.shape[0]
+        n_zero_cols = ncoeffs - self.CIDX.shape[1]
         V_rows = X.shape[0]
-        V_cols = n_zero_cols + self.CIDX.shape[0]
+        V_cols = n_zero_cols + self.CIDX.shape[1]
         
         V = np.empty((V_rows, V_cols))
         V[:,0:n_zero_cols] = 0
 
         for i in range(V_rows):  # TODO: make it more efficient totally using numpy.
             for j in range(n_zero_cols, V_cols):
-                V[i,j] = np.prod( X[i,:] ^ self.CIDX[:,j] )
+                V[i,j] = np.prod( X[i,:] ** self.CIDX[:,j] )
         
         return V
     
@@ -197,7 +206,7 @@ class Polynd(Poly):
     def __get_cidx(nvars:int, deg:int) -> tuple[tuple[np.array],np.ndarray]:
         if (nvars, deg) in Polynd.CIDX_MAP:
             return Polynd.CIDX_MAP[(nvars, deg)]
-        cidx_size = math.comb(nvars+deg, deg)
+        cidx_size = Poly.get_ncoeffs(deg, nvars)
         cidx = tuple( [np.empty( cidx_size, dtype=int ) for _ in range(nvars)] )
         CIDX = np.empty((nvars, cidx_size), dtype=int)  # TODO: as Fortran is more efficient for as_virtual?!
 

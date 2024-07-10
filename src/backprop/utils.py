@@ -231,4 +231,12 @@ def parse_deriv(deriv_str:str, parsefunc:bool=False) -> tuple[int]|tuple[tuple[i
     
     if parsefunc: return tuple(deriv), deriv_str[i:]
     return tuple(deriv)
-            
+
+
+def squarify(M, paddingval=0.):
+    maxdimsize = max(M.shape)
+    if maxdimsize == min(M.shape): return M
+    padding = []
+    for dimsize in M.shape:
+        padding.append((0,maxdimsize-dimsize))
+    return np.pad(M, padding, mode='constant', constant_values=paddingval)

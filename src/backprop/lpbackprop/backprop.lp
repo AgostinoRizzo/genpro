@@ -166,3 +166,46 @@ odd_symm_unkn(N, Input) :- odd_symm(N, Input), unkn_tree_node(N).
 %parentof(P, C) :- bin_tree_node(P, _, _, C).
 %:- parentof(P, C), sign_changes(P, Pchanges), sign_changes(C, Cchanges), Cchanges>Pchanges+1.
 %:- parentof(P, C), root_count(P, Proots), root_count(C, Croots), Croots>Proots+1.
+
+
+deriv(N, Deriv) :- tree_node(N), varidx(V), Deriv=@concat(@concat("d",V), N).
+
+
+root(V, 0) :- var_tree_node(V).
+:- var_tree_node(V), root(V, X), X!=0.
+:- var_tree_node(V), noroot(V).
+:- var_tree_node(V), even_symm(V, X).
+odd_symm(V, 0) :- var_tree_node(V).
+:- var_tree_node(V), sign(V, "-", L, U), L>=0, L<U.
+:- var_tree_node(V), sign(V, "+", L, U), U<=0, L<U.
+
+
+%sign_unkn("d0A","+",-1,0).
+%sign_unkn("d0A","-",0,1).
+%:- sign_unkn(N,PN1,L,U), sign_unkn(N,PN2,L,U), PN1!=PN2.
+
+%% polynomial constraints.
+:- unkn_tree_node(N), sign(N, PN, L, U), deriv(N, Nderiv), sign(Nderiv, PNderiv, L, U), infty(Infty), @contains(L,Infty)=1, PN=PNderiv.
+:- unkn_tree_node(N), sign(N, PN, L, U), deriv(N, Nderiv), sign(Nderiv, PNderiv, L, U), infty(Infty), @contains(U,Infty)=1, PN!=PNderiv.
+:- unkn_tree_node(N), undef(N, X).
+
+%:- var_tree_node(V), root(V, X), X!=(0,0).
+%:- var_tree_node(V), noroot(V).
+%:- var_tree_node(V), even_symm(V, X).
+%odd_symm(V, (0,0)) :- var_tree_node(V).
+%:- var_tree_node(V), sign(V, "-", L, U), L>=(0,0), L<U.
+%:- var_tree_node(V), sign(V, "+", L, U), U<=(0,0), L<U.
+
+
+%
+% zero.
+%
+%zero(N) | nozero(N) :- unkn_tree_node(N).
+
+%:- unkn_tree_node(N), zero(N), deriv(N, N_deriv), not zero(N_deriv).
+
+%:- bin_tree_node(N, "+", Zero, Right), sign(N, PN, L, U), zero(N), sign(Right, PN_Right, L, U), PN_Right!=PN.
+%:- bin_tree_node(N, "+", Left, Zero ), sign(N, PN, L, U), zero(N), sign(Left , PN_Left , L, U), PN_Left !=PN.
+
+%:- bin_tree_node(N, "*", Zero, Right), sign(N, PN, L, U), zero(N), sign(Right, PN_Right, L, U), PN_Right!=PN.
+%:- bin_tree_node(N, "*", Left, Zero ), sign(N, PN, L, U), zero(N), sign(Left , PN_Left , L, U), PN_Left !=PN.
