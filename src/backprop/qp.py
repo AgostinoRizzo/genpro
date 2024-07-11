@@ -242,8 +242,8 @@ def qp_solve(constrs:dict[Constraints],
     sol = qpsolvers_solve_ls(R, s, G=G, h=h, A=A, b=b, W=W, lb=None, ub=None, solver='clarabel', verbose=False)  # returns optimal sol if found, None otherwise.
     #print(f"QP solution: {sol}\n")
 
-    if sol is None:
-        print(f"None solution")
+    #if sol is None:
+    #    print(f"None solution")
 
     sol = np.zeros(nvars) if sol is None else sol # TODO: manage error or no solution + rows(A)>|x|
     #print(f"QP solution check: {test_qp.check_qp_sol(G, h, A, b, lb, ub, sol)}")
@@ -264,6 +264,6 @@ def qp_solve(constrs:dict[Constraints],
     print()
     """
 
-    print(f"QP solution returned: {sol}\n")
+    #print(f"QP solution returned: {sol}\n")
 
     return sol

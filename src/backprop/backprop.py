@@ -101,9 +101,13 @@ class PullViolation(RuntimeError):
 
 
 class SyntaxTree:
+    CACHE_MAX_DEPTH = 0
+    CACHE_NNODES = 1
+
     def __init__(self):
         self.parent = None
         self.output = None
+        self.cache = [None] * 2
     def clone(self): return None
     def compute_output(self, x): return None
     def __call__(self, x): return self.compute_output(x)
@@ -125,6 +129,18 @@ class SyntaxTree:
     def accept(self, visitor): pass
     def to_sympy(self, dps:int=None): pass
     def get_max_depth(self) -> int: return 0
+    def get_nnodes(self) -> int: return 1
+
+    def get_depth(self) -> int:
+        depth = 0
+        p = self.parent
+        while p is not None:
+            depth += 1
+            p = p.parent
+        return depth
+    
+    def clear_cache(self):
+        for i in range(len(self.cache)): self.cache[i] = None
 
     @staticmethod
     def diff(stree, deriv:tuple[int]):
@@ -397,8 +413,14 @@ class BinaryOperatorSyntaxTree(SyntaxTree):
         raise RuntimeError(f"Conversion to sympy not defined for operator {self.operator}.")
     
     def get_max_depth(self) -> int:
-        return 1 + max(self.left.get_max_depth(), self.right.get_max_depth())
-
+        if self.cache[SyntaxTree.CACHE_MAX_DEPTH] is None: 
+            self.cache[SyntaxTree.CACHE_MAX_DEPTH] = 1 + max(self.left.get_max_depth(), self.right.get_max_depth())
+        return self.cache[SyntaxTree.CACHE_MAX_DEPTH]
+    
+    def get_nnodes(self) -> int:
+        if self.cache[SyntaxTree.CACHE_NNODES] is None: 
+            self.cache[SyntaxTree.CACHE_NNODES] = 1 + self.left.get_nnodes() + self.right.get_nnodes()
+        return self.cache[SyntaxTree.CACHE_NNODES]
 
 
 class UnaryOperatorSyntaxTree(SyntaxTree):
@@ -422,6 +444,9 @@ class UnaryOperatorSyntaxTree(SyntaxTree):
     def set_parent(self, parent=None):
         super().set_parent(parent)
         self.inner.set_parent(self)
+    
+    def validate(self) -> bool:
+        return self.inner.validate()
 
     def simplify(self):
         self.inner = self.inner.simplify()
@@ -531,7 +556,14 @@ class UnaryOperatorSyntaxTree(SyntaxTree):
         raise RuntimeError(f"Conversion to sympy not defined for operator {self.operator}.")
     
     def get_max_depth(self) -> int:
-        return 1 + self.inner.get_max_depth()
+        if self.cache[SyntaxTree.CACHE_MAX_DEPTH] is None: 
+            self.cache[SyntaxTree.CACHE_MAX_DEPTH] = 1 + self.inner.get_max_depth()
+        return self.cache[SyntaxTree.CACHE_MAX_DEPTH]
+    
+    def get_nnodes(self) -> int:
+        if self.cache[SyntaxTree.CACHE_NNODES] is None: 
+            self.cache[SyntaxTree.CACHE_NNODES] = 1 + self.inner.get_nnodes()
+        return self.cache[SyntaxTree.CACHE_NNODES]
 
 
 class ConstantSyntaxTree(SyntaxTree):
@@ -565,14 +597,14 @@ class ConstantSyntaxTree(SyntaxTree):
     def backprop_sign(self, symbmapper:SymbolMapper, lb:float=-numlims.INFTY, ub:float=numlims.INFTY, sign:str='+'):
         return self.val > 0 if sign == '+' else self.val < 0
     
+    def validate(self) -> bool:
+        return not np.isnan(self.val)
+    
     def accept(self, visitor):
         visitor.visitConstant(self)
     
     def to_sympy(self, dps:int=None):
         return sympy.Float(self.val, dps=dps)
-    
-    def get_max_depth(self) -> int:
-        return 0
 
 
 class VariableSyntaxTree(SyntaxTree):
@@ -611,9 +643,6 @@ class VariableSyntaxTree(SyntaxTree):
     
     def to_sympy(self, dps:int=None):
         return sympy.Symbol(str(self))
-    
-    def get_max_depth(self) -> int:
-        return 0
         
 
 class UnknownSyntaxTree(SyntaxTree):
@@ -629,7 +658,7 @@ class UnknownSyntaxTree(SyntaxTree):
         self.label = f"{utils.deriv_to_string(self.deriv)}{self.name}"
     
     def clone(self):
-        return UnknownSyntaxTree(self.name, self.deriv, self.nvars)
+        return UnknownSyntaxTree(self.name, self.deriv, self.nvars, model=self.model)  # TODO: clone model
     
     def compute_output(self, x):
         self.output = None
@@ -701,6 +730,15 @@ class SyntaxTreeVisitor:
     def visitUnknown       (self, stree:UnknownSyntaxTree):        pass
 
 
+class SyntaxTreeNodeCollector(SyntaxTreeVisitor):
+    def __init__(self):
+        self.nodes = []
+    def visitUnaryOperator (self, stree:UnaryOperatorSyntaxTree):  self.nodes.append(stree)
+    def visitBinaryOperator(self, stree:BinaryOperatorSyntaxTree): self.nodes.append(stree)
+    def visitConstant      (self, stree:ConstantSyntaxTree):       self.nodes.append(stree)
+    def visitVariable      (self, stree:VariableSyntaxTree):       self.nodes.append(stree)
+    def visitUnknown       (self, stree:UnknownSyntaxTree):        self.nodes.append(stree)
+
 class UnknownSyntaxTreeCollector(SyntaxTreeVisitor):
     def __init__(self):
         self.unknown_labels = set()
@@ -766,6 +804,9 @@ class SyntaxTreeGenerator:
                 while new_stree in strees:
                     self.unkn_counter = 0
                     new_stree = self.__create_random(self.randgen.randint(0, max_depth))
+            while not new_stree.validate():
+                self.unkn_counter = 0
+                new_stree = self.__create_random(self.randgen.randint(0, max_depth))
             strees.append(new_stree)
         return strees
 
@@ -776,6 +817,7 @@ class SyntaxTreeGenerator:
                 #stree = UnknownSyntaxTree(string.ascii_uppercase[self.unkn_counter], nvars=self.nvars)
                 #self.unkn_counter += 1
                 stree = ConstantSyntaxTree(val=self.randgen.uniform(-1., 1.))
+                if np.isnan(stree.val): raise RuntimeError('NaN in random tree generation.')
             else:
                 stree = VariableSyntaxTree(idx=self.randgen.randrange(self.nvars))
             return stree

@@ -47,9 +47,10 @@ class ASPSpecBuilder(backprop.SyntaxTreeVisitor): # TODO: avoid multiple facts f
 
     def visitConstant(self, stree:backprop.ConstantSyntaxTree):
         self.__map_node_id(stree)
+        const_val = int(stree.val) # TODO: just positivity?
         self.spec += 'const_tree_node(' + \
-            f"\"{self.node_id_map[id(stree)]}\",{stree.val}).\n" + \
-            f"const({stree.val}).\n"
+            f"\"{self.node_id_map[id(stree)]}\",{const_val}).\n" + \
+            f"const({const_val}).\n"
     
     def visitVariable(self, stree:backprop.VariableSyntaxTree):
         self.__map_node_id(stree)
@@ -198,9 +199,9 @@ def synthesize_unknowns(unknown_labels:list[str], break_points:list, break_point
         return mapped_symbol
 
     logging.debug(f"\n--- ASP Model ---\n{asp_model}\n")
-    print(f"\n--- ASP Model ---\n")
-    for m in str(asp_model).split(): print(m)
-    print()
+    #print(f"\n--- ASP Model ---\n")
+    #for m in str(asp_model).split(): print(m)
+    #print()
 
     # build knowledge from ASP model.
     unkn_knowledge_map = {}

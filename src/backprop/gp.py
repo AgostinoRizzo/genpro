@@ -4,7 +4,7 @@ import logging
 import numpy as np
 
 import dataset
-from backprop import backprop
+from backprop import backprop, lpbackprop, jump_backprop
 
 
 class Evaluation:
@@ -49,10 +49,10 @@ def replace_subtree(stree:backprop.SyntaxTree,
     if sub_stree.parent is None:
         return new_sub_stree
     if type(sub_stree.parent) is backprop.BinaryOperatorSyntaxTree:
-        if   id(sub_stree) == sub_stree.parent.left : sub_stree.parent.left  = new_sub_stree
-        elif id(sub_stree) == sub_stree.parent.right: sub_stree.parent.right = new_sub_stree
+        if   id(sub_stree) == id(sub_stree.parent.left) : sub_stree.parent.left  = new_sub_stree
+        elif id(sub_stree) == id(sub_stree.parent.right): sub_stree.parent.right = new_sub_stree
     elif type(sub_stree.parent) is backprop.UnaryOperatorSyntaxTree:
-        if id(sub_stree) == sub_stree.parent.inner: sub_stree.parent.inner = new_sub_stree
+        if id(sub_stree) == id(sub_stree.parent.inner): sub_stree.parent.inner = new_sub_stree
     
     return stree
 
@@ -93,25 +93,40 @@ class Crossover:
         return None
 
 class SubTreeCrossover:
+    def __init__(self, max_depth:int):
+        self.max_depth = max_depth
+    
     def cross(self, parent1:backprop.SyntaxTree, parent2:backprop.SyntaxTree) -> backprop.SyntaxTree:
-        nodesCounter = backprop.SyntaxTreeNodeCounter()
-        parent1.accept(nodesCounter)
-        nnodes1 = nodesCounter.nnodes
-        
-        nodesCounter = backprop.SyntaxTreeNodeCounter()
-        parent2.accept(nodesCounter)
-        nnodes2 = nodesCounter.nnodes
+        nnodes1 = parent1.get_nnodes()
+        nnodes2 = parent2.get_nnodes()
         
         child = parent1.clone()
         nodeSelector = backprop.SyntaxTreeNodeSelector(random.randrange(nnodes1))
         child.accept(nodeSelector)
         cross_point1 = nodeSelector.node
-
-        nodeSelector = backprop.SyntaxTreeNodeSelector(random.randrange(nnodes2))
-        parent2.accept(nodeSelector)
-        cross_point2 = nodeSelector.node
+        child.set_parent()
+        cross_point1_depth = cross_point1.get_depth()
+        max_nesting_depth = (self.max_depth - cross_point1_depth) - 1
+        if max_nesting_depth < 0: return child
         
-        return replace_subtree(child, cross_point1, cross_point2.clone())
+        nodesCollector = backprop.SyntaxTreeNodeCollector()
+        parent2.accept(nodesCollector)
+        allowedNodes = []
+        for node in nodesCollector.nodes:
+            if node.get_max_depth() <= max_nesting_depth: allowedNodes.append(node)
+        
+        if len(allowedNodes) == 0: return child
+        cross_point2 = random.choice(allowedNodes)
+        
+        #print(f"From {child}")
+        #print(f"\tReplacing {cross_point1}")
+        #print(f"\tWith {cross_point2}")
+        got = replace_subtree(child, cross_point1, cross_point2.clone())
+        got.clear_cache()
+        #print(f"Got {got}")
+        #if got.get_max_depth() > self.max_depth:
+        #    raise RuntimeError(f"Max depth: {got.get_max_depth()}, {max_nesting_depth}, {cross_point1.get_depth()}, {cross_point2.get_depth()}")
+        return got
         
 
 class Mutator:
@@ -141,11 +156,7 @@ class SubtreeReplacerMutator(Mutator):
         # replace subtree with random branch.
 
         stree.set_parent()
-        sub_stree_depth = 0
-        t = sub_stree
-        while t.parent is not None:
-            t = t.parent
-            sub_stree_depth += 1
+        sub_stree_depth = sub_stree.get_depth()
         
         new_sub_stree_depth = self.max_depth - sub_stree_depth
         if new_sub_stree_depth >= 0:
@@ -202,6 +213,8 @@ class GP:
                  mutator:Mutator,
                  mutrate:float,
                  elitism:int=0,
+                 backprop_intv:int=-1,  # < 0 disabled.
+                 knowledge=None,
                  nbests:int=1,
                  rseed=None):
         self.population = population
@@ -216,6 +229,9 @@ class GP:
         self.mutator = mutator
         self.mutrate = mutrate
         self.elitism = elitism
+        self.backprop_intv = backprop_intv
+        self.last_backprop = -1  # last backprop generation idx.
+        self.knowledge = knowledge
         self.bests = []
         self.bests_eval_map = {}
         self.nbests = nbests
@@ -225,27 +241,34 @@ class GP:
     
     # returns nbests best strees found + evaluation map.
     def evolve(self) -> tuple[list[backprop.SyntaxTree], dict]:
+        print(f"Generation 0")
+        #self.__backprop(genidx=0)
         self.__evaluate_all()
         self.population = sort_population(self.population, self.eval_map)
         self.__update_bests()
         self.__update_qualities()
 
-        for idx_gen in range(self.ngen):
+        for genidx in range(1, self.ngen):
+            print(f"Generation {genidx}")
             children = self.__create_children()
             self.__replace(children)
+            #self.__backprop(genidx)
             self.population = sort_population(self.population, self.eval_map)
             self.__update_bests()
             self.__update_qualities()
-            logging.info(f"--- Generation {idx_gen+1} [Current best: {self.eval_map[id(self.population[0])]}," + \
-                         f"Global best: {self.bests_eval_map[id(self.bests[0])]}] ---")
+            #logging.info(f"--- Generation {genidx} [Current best: {self.eval_map[id(self.population[0])]}," + \
+            #             f"Global best: {self.bests_eval_map[id(self.bests[0])]}] ---")
         
         return self.bests, self.bests_eval_map
 
     def __update_bests(self):
+        """
+        It is assumed self.population is already sorted.
+        """
         merged_eval_map = {}
         merged_eval_map.update(self.eval_map)
         merged_eval_map.update(self.bests_eval_map)
-        merged = sort_population(self.population + self.bests, merged_eval_map)
+        merged = sort_population(self.population[:self.nbests] + self.bests, merged_eval_map)
         
         merged_unique = []
         for stree in merged:
@@ -269,16 +292,17 @@ class GP:
                 child = self.crossover.cross(parents[0], parents[1])  # 100% crossover rate (child must be a new object!)
                 if random.random() < self.mutrate:
                     child = self.mutator.mutate(child)
-                if child.validate():
+                if child.validate(): #TODO: and child not in children:
                     children.append(child)
+                    #print(f"From parents {parents[0]} and {parents[1]} got {child}")
                     self.eval_map[id(child)] = self.evaluator.evaluate(child)
         return children
     
     def __replace(self, children:list[backprop.SyntaxTree]):
         if self.elitism > 0:
-            sorted_children = sort_population(children, self.eval_map)
+            children = sort_population(children, self.eval_map)
             for i in range(self.elitism):
-                sorted_children[-1-i] = self.population[i]
+                children[-1-i] = self.population[i]
         self.population = children  # generational replacement.
         
         # update evaluation map based on new population.
@@ -287,6 +311,61 @@ class GP:
             new_eval_map[id(stree)] = self.eval_map[id(stree)]
         self.eval_map = new_eval_map
     
+    """
+    def __backprop(self, genidx):
+        if self.backprop_intv < 0 or (genidx - self.last_backprop) < self.backprop_intv:
+            return
+        for stree_idx, stree in enumerate(self.population):
+            
+            nodesCounter = backprop.SyntaxTreeNodeCounter()
+            stree.accept(nodesCounter)
+            nnodes = nodesCounter.nnodes
+            
+            stree_backprop = stree.clone()
+            nodeSelector = backprop.SyntaxTreeNodeSelector(random.randrange(nnodes))
+            stree_backprop.accept(nodeSelector)
+            
+            stree_backprop = replace_subtree(stree_backprop, nodeSelector.node, backprop.UnknownSyntaxTree())
+            print(f"Backprop: {stree_backprop}")
+            
+            try:
+                all_derivs = self.knowledge.get_derivs()
+                stree_backprop_map = backprop.SyntaxTree.diff_all(stree_backprop, all_derivs, include_zeroth=True)
+            except RuntimeError():
+                continue
+
+            best_unkn_models = {}
+            best_eval = None
+
+            def onsynth_callback(synth_unkn_models:dict):
+                nonlocal best_unkn_models
+                nonlocal best_eval
+                
+                for unkn in synth_unkn_models.keys():
+                    unkn_model, coeffs_mask, constrs = synth_unkn_models[unkn]
+                
+                #try:
+                hist, __best_unkn_models, __best_eval = jump_backprop.jump_backprop(stree_backprop_map, synth_unkn_models, self.S_train, self.S_test, max_rounds=1)
+
+                if best_eval is None or __best_eval.better_than(best_eval):
+                    best_unkn_models = __best_unkn_models
+                    best_eval = __best_eval
+                #except RuntimeError:
+                #    pass
+
+            lpbackprop.lpbackprop(self.knowledge, stree_backprop, onsynth_callback)
+
+            if best_eval is not None:
+                for unkn_label in best_unkn_models.keys():
+                    stree_backprop.set_unknown_model(unkn_label, best_unkn_models[unkn_label])
+                print(f"SAT: {stree_backprop}")
+                self.population[stree_idx] = stree_backprop
+                if id(stree) in self.eval_map: del self.eval_map[id(stree)]
+                self.eval_map[id(stree_backprop)] = self.evaluator.evaluate(stree_backprop)
+        
+        self.last_backprop = genidx
+    """
+
     def __update_qualities(self):
         currAvg = 0.0
         for stree in self.population:

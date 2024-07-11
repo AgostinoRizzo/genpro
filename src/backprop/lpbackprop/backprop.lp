@@ -170,7 +170,7 @@ odd_symm_unkn(N, Input) :- odd_symm(N, Input), unkn_tree_node(N).
 
 deriv(N, Deriv) :- tree_node(N), varidx(V), Deriv=@concat(@concat("d",V), N).
 
-
+%% variable knowledge TODO: deduce.
 root(V, 0) :- var_tree_node(V).
 :- var_tree_node(V), root(V, X), X!=0.
 :- var_tree_node(V), noroot(V).
@@ -179,6 +179,10 @@ odd_symm(V, 0) :- var_tree_node(V).
 :- var_tree_node(V), sign(V, "-", L, U), L>=0, L<U.
 :- var_tree_node(V), sign(V, "+", L, U), U<=0, L<U.
 
+%% constants knowledge.
+intv(L,U) :- sign(_, _, L, U).
+sign(C, "+", L, U) :- const_tree_node(C, Cval), intv(L,U), Cval>0.
+sign(C, "-", L, U) :- const_tree_node(C, Cval), intv(L,U), Cval<0.
 
 %sign_unkn("d0A","+",-1,0).
 %sign_unkn("d0A","-",0,1).
