@@ -5,6 +5,7 @@ import numpy as np
 
 import dataset
 from backprop import backprop, lpbackprop, jump_backprop
+from backprop import bpropagator
 
 
 class Evaluation:
@@ -22,13 +23,64 @@ class RealEvaluation(Evaluation):
             return True
         if self.minimize: return self.value < other.value
         return self.value > other.value
+    def get_value(self):
+        return self.value
     def __str__(self) -> str:
         return f"{self.value}"
 
+class FUEvaluation(Evaluation):
+    def __init__(self, know_mse, know_nv, know_n, know_ls, know_sat, data_r2, nnodes):
+        self.know_mse  = know_mse
+        self.know_nv   = know_nv
+        self.know_n    = know_n
+        self.know_ls   = know_ls
+        self.know_sat  = know_sat
+        self.data_r2   = data_r2
+        self.nnodes    = nnodes
+        self.fea_ratio = 1. - (know_nv / know_n)
+        self.fea_bucket = int( self.fea_ratio * 10. )
+        self.feasible  = know_nv == 0
+    
+    """def better_than(self, other) -> bool:
+        if self.feasible and other.feasible:
+            return self.data_r2 > other.data_r2
+        
+        if not self.feasible and not other.feasible:
+            if self.know_nv == other.know_nv: return self.know_mse < other.know_mse
+            return self.know_nv < other.know_nv
+        
+        if self.feasible and not other.feasible: return True
+        return False"""
+    
+    def better_than(self, other) -> bool:
+        #if self.know_ls and not other.know_ls: return True
+        #if not self.know_ls and other.know_ls: return False
 
-def random_population(popsize:int, max_depth:int, nvars:int=1, check_duplicates:bool=True, randstate:int=None) -> list[backprop.SyntaxTree]:
-    assert popsize >= 1
-    return backprop.SyntaxTreeGenerator(randstate, nvars).create_random(max_depth, popsize, check_duplicates)
+        #if self.know_sat < other.know_sat: return True
+        #if self.know_sat > other.know_sat: return False
+
+        #if self.know_sat and not other.know_sat: return True
+        #if not self.know_sat and other.know_sat: return False
+
+        if self.fea_bucket > other.fea_bucket: return True
+        if self.fea_bucket < other.fea_bucket: return False
+
+        #if self.nnodes < other.nnodes: return True
+        #if self.nnodes > other.nnodes: return False
+
+        return self.data_r2 > other.data_r2
+    
+    def get_value(self):
+        return self.data_r2
+    
+    def __str__(self) -> str:
+        return f"know_mse:  {self.know_mse }\n" + \
+               f"know_nv:   {self.know_nv  }\n" + \
+               f"know_n:    {self.know_n   }\n" + \
+               f"know_ls:   {self.know_ls  }\n" + \
+               f"fea_ratio: {self.fea_ratio}\n" + \
+               f"data_r2:   {self.data_r2  }"
+
 
 def sort_population(population:list[backprop.SyntaxTree], eval_map:dict) -> list[backprop.SyntaxTree]:
     def strees_cmp(stree1, stree2) -> int:
@@ -58,17 +110,63 @@ def replace_subtree(stree:backprop.SyntaxTree,
 
 
 class Evaluator:
-    def evaluate(self, stree:backprop.SyntaxTree):
-        return None
+    def evaluate(self, stree:backprop.SyntaxTree): return None
+    def create_stats(self, nbests:int=1): return GPStats(nbests)
 
-
-class R2Evaluator:
+class R2Evaluator(Evaluator):
     def __init__(self, dataset, minimize:bool=True):
         self.dataset = dataset
         self.minimize = False
     
     def evaluate(self, stree:backprop.SyntaxTree):
         return RealEvaluation(max(0., self.dataset.evaluate(stree)['r2']), self.minimize)
+
+# different from srgp.KnowledgeEvaluator
+class KnowledgeEvaluator(Evaluator):
+    def __init__(self, knowledge):
+        self.K = knowledge
+    
+    def evaluate(self, stree:backprop.SyntaxTree):
+        K_derivs = self.K.get_derivs()
+        stree_derivs = backprop.SyntaxTree.diff_all(stree, K_derivs, include_zeroth=True)
+        K_eval = self.K.evaluate(stree_derivs)
+        K_eval = (K_eval['mse0'] + K_eval['mse1'] + K_eval['mse2']) / 3  # TODO: separate?! or a weighted mean?
+        if np.isnan(K_eval): K_eval = 1e12
+        return RealEvaluation(K_eval, minimize=True)
+
+class FUEvaluator(Evaluator):
+    def __init__(self, dataset, knowledge):
+        self.data = dataset
+        self.know = knowledge
+    
+    def evaluate(self, stree:backprop.SyntaxTree):
+        know_derivs = self.know.get_derivs()
+        stree_derivs = backprop.SyntaxTree.diff_all(stree, know_derivs, include_zeroth=True)
+        
+        know_eval = self.know.evaluate(stree_derivs)
+        know_mse  = (know_eval['mse0'] + know_eval['mse1'] + know_eval['mse2']) / 3  # TODO: separate?! or a weighted mean?
+        know_nv   =  know_eval['nv0' ] + know_eval['nv1' ] + know_eval['nv2' ]
+        know_n    =  know_eval['n0'  ] + know_eval['n1'  ] + know_eval['n2'  ]
+        know_ls   =  know_eval['ls0' ] and know_eval['ls1' ] and know_eval['ls2' ]
+        know_sat  = stree.sat
+        if np.isnan(know_mse): know_mse = 1e12
+
+        data_r2 = max(0., self.data.evaluate(stree)['r2'])  # TODO: put this into data.evaluate(...).
+
+        """optCollector = backprop.SyntaxTreeOperatorCollector()
+        stree.accept(optCollector)
+        ispoly = True
+        for o in ['/', 'log', 'exp', 'sqrt']:
+            if o in optCollector.opts:
+                ispoly = False
+                break
+        if ispoly:
+            know_nv = 1e10
+            know_mse = 1e10"""
+
+        return FUEvaluation(know_mse, know_nv, know_n, know_ls, know_sat, data_r2, stree.get_nnodes())
+    
+    def create_stats(self, nbests:int=1): return FUGPStats(nbests)
 
 
 class Selector:
@@ -98,16 +196,17 @@ class SubTreeCrossover:
     
     def cross(self, parent1:backprop.SyntaxTree, parent2:backprop.SyntaxTree) -> backprop.SyntaxTree:
         nnodes1 = parent1.get_nnodes()
-        nnodes2 = parent2.get_nnodes()
         
         child = parent1.clone()
+        child.set_parent()
         nodeSelector = backprop.SyntaxTreeNodeSelector(random.randrange(nnodes1))
         child.accept(nodeSelector)
         cross_point1 = nodeSelector.node
         child.set_parent()
+        if cross_point1 is None:
+            parent1.get_nnodes()
         cross_point1_depth = cross_point1.get_depth()
-        max_nesting_depth = (self.max_depth - cross_point1_depth) - 1
-        if max_nesting_depth < 0: return child
+        max_nesting_depth = self.max_depth - cross_point1_depth
         
         nodesCollector = backprop.SyntaxTreeNodeCollector()
         parent2.accept(nodesCollector)
@@ -127,6 +226,142 @@ class SubTreeCrossover:
         #if got.get_max_depth() > self.max_depth:
         #    raise RuntimeError(f"Max depth: {got.get_max_depth()}, {max_nesting_depth}, {cross_point1.get_depth()}, {cross_point2.get_depth()}")
         return got
+
+class SubTreeImprovementCrossover:
+    def __init__(self, max_depth:int, S_train):
+        self.max_depth = max_depth
+        self.evaluator = R2Evaluator(S_train)
+    
+    def cross(self, parent1:backprop.SyntaxTree, parent2:backprop.SyntaxTree) -> backprop.SyntaxTree:
+        nnodes1 = parent1.get_nnodes()
+        nnodes2 = parent2.get_nnodes()
+        
+        child = parent1.clone()
+        nodeSelector = backprop.SyntaxTreeNodeSelector(random.randrange(nnodes1))
+        child.accept(nodeSelector)
+        cross_point1 = nodeSelector.node
+        child.set_parent()
+        if cross_point1 is None:
+            parent1.get_nnodes()
+        cross_point1_depth = cross_point1.get_depth()
+        max_nesting_depth = (self.max_depth - cross_point1_depth) - 1
+        if max_nesting_depth < 0: return child
+        
+        nodesCollector = backprop.SyntaxTreeNodeCollector()
+        parent2.accept(nodesCollector)
+        allowedNodes = []
+        for node in nodesCollector.nodes:
+            if node.get_max_depth() <= max_nesting_depth: allowedNodes.append(node)
+        
+        if len(allowedNodes) == 0: return child
+        cross_point2 = random.choice(allowedNodes)
+
+        got = replace_subtree(child, cross_point1, cross_point2.clone())
+        got.clear_cache()
+
+        p1_eval = self.evaluator.evaluate(parent1)
+        got_eval = self.evaluator.evaluate(got)
+        if got_eval.better_than(p1_eval):
+            print(f"{cross_point2.simplify()}")
+
+        return got
+
+class ExhaustiveSubTreeCrossover:
+    def __init__(self, max_depth:int, S_train, knowledge):
+        self.max_depth = max_depth
+        self.data_evaluator = R2Evaluator(S_train)
+        self.know_evaluator = KnowledgeEvaluator(knowledge)
+    
+    def cross(self, parent1:backprop.SyntaxTree, parent2:backprop.SyntaxTree) -> backprop.SyntaxTree:
+        nnodes1 = parent1.get_nnodes()
+        nnodes2 = parent2.get_nnodes()
+        
+        child = parent1.clone()
+        nodeSelector = backprop.SyntaxTreeNodeSelector(random.randrange(nnodes1))
+        child.accept(nodeSelector)
+        cross_point1 = nodeSelector.node
+        child.set_parent()
+        if cross_point1 is None:
+            return child
+        cross_point1_depth = cross_point1.get_depth()
+        max_nesting_depth = (self.max_depth - cross_point1_depth) - 1
+        if max_nesting_depth < 0: return child
+        
+        nodesCollector = backprop.SyntaxTreeNodeCollector()
+        parent2.accept(nodesCollector)
+        allowedNodes = []
+        for node in nodesCollector.nodes:
+            if node.get_max_depth() <= max_nesting_depth: allowedNodes.append(node)
+        
+        if len(allowedNodes) == 0: return child
+        best_offspring = None
+        best_know_eval = None
+        best_data_eval = None
+        for n in allowedNodes:
+            n_clone = n.clone()
+            offspring = replace_subtree(child, cross_point1, n_clone)
+            offspring.clear_cache()
+
+            know_eval = self.know_evaluator.evaluate(offspring)
+            data_eval = self.data_evaluator.evaluate(offspring)
+
+            child = replace_subtree(child, n_clone, cross_point1)
+
+            #if offspring.is_linear(): continue
+            try:
+                if offspring.diff().simplify().is_const(): continue
+            except RuntimeError:
+                continue
+
+            if best_offspring is None or know_eval.better_than(best_know_eval) or data_eval.better_than(best_data_eval):
+                best_offspring = offspring
+                best_know_eval = know_eval
+                best_data_eval = data_eval
+
+        if best_offspring is None:
+            return child
+        return best_offspring
+
+class KnowledgePropagationCrossover(Crossover):
+    def __init__(self, max_depth:int, S_train, knowledge):
+        self.max_depth = max_depth
+        self.data_evaluator = R2Evaluator(S_train)
+        self.know_evaluator = KnowledgeEvaluator(knowledge)
+    
+    def cross(self, parent1:backprop.SyntaxTree, parent2:backprop.SyntaxTree) -> backprop.SyntaxTree:
+        nnodes1 = parent1.get_nnodes()
+        nnodes2 = parent2.get_nnodes()
+        
+        # select subtree from parents.
+        cross_points = [parent1, parent2]
+        cross_points = [None, None]
+        for idx, parent in enumerate([parent1, parent2]):
+            nodesCollector = backprop.SyntaxTreeNodeCollector()
+            parent.accept(nodesCollector)
+            allowedNodes = []
+            for node in nodesCollector.nodes:
+                if node.get_max_depth() < self.max_depth: allowedNodes.append(node)
+            if len(allowedNodes) == 0: return parent1
+            cross_points[idx] = random.choice(allowedNodes).clone()
+        
+        # build best trunk.
+        best_child = None
+        best_know_eval = None
+        best_data_eval = None
+        for opt in backprop.BinaryOperatorSyntaxTree.OPERATORS:
+            if opt == '^': continue
+            
+            trunk = backprop.BinaryOperatorSyntaxTree(opt, *cross_points)
+            know_eval = self.know_evaluator.evaluate(trunk)
+            data_eval = self.data_evaluator.evaluate(trunk)
+
+            if best_child is None or know_eval.better_than(best_know_eval) or data_eval.better_than(best_data_eval):
+                best_child = trunk
+                best_know_eval = know_eval
+                best_data_eval = data_eval
+        
+        if best_child is None: return parent1
+        return best_child
         
 
 class Mutator:
@@ -141,8 +376,9 @@ class MultiMutator(Mutator):
         return random.choice(self.mutators).mutate(stree)
 
 class SubtreeReplacerMutator(Mutator):
-    def __init__(self, max_depth:int):
+    def __init__(self, max_depth, solutionCreator):
         self.max_depth = max_depth
+        self.solutionCreator = solutionCreator
     
     def mutate(self, stree:backprop.SyntaxTree) -> backprop.SyntaxTree:
         nodesCounter = backprop.SyntaxTreeNodeCounter()
@@ -160,10 +396,10 @@ class SubtreeReplacerMutator(Mutator):
         
         new_sub_stree_depth = self.max_depth - sub_stree_depth
         if new_sub_stree_depth >= 0:
-            new_sub_stree = backprop.SyntaxTreeGenerator().create_random(new_sub_stree_depth, 1)[0]
+            new_sub_stree = self.solutionCreator.create_population(1, new_sub_stree_depth)[0]
             stree = replace_subtree(stree, sub_stree, new_sub_stree)
         
-        return stree
+        return stree.simplify()
     
 class FunctionSymbolMutator(Mutator):
     def mutate(self, stree:backprop.SyntaxTree) -> backprop.SyntaxTree:
@@ -181,8 +417,9 @@ class FunctionSymbolMutator(Mutator):
             sub_stree.operator = random.choice(
                 [opt for opt in backprop.BinaryOperatorSyntaxTree.OPERATORS if opt != sub_stree.operator])
         elif type(sub_stree) is backprop.UnaryOperatorSyntaxTree:
-            sub_stree.operator = random.choice(
-                [opt for opt in backprop.UnaryOperatorSyntaxTree.OPERATORS if opt != sub_stree.operator])
+            #sub_stree.operator = random.choice(
+            #    [opt for opt in backprop.UnaryOperatorSyntaxTree.OPERATORS if opt != sub_stree.operator])
+            pass
 
         return stree
 
@@ -201,12 +438,134 @@ class NumericParameterMutator(Mutator):
 
         return stree
 
+
+class SolutionCreator:
+    def create_population(self, popsize:int, max_depth:int, noconsts:bool=False) -> list[backprop.SyntaxTree]:
+        pass
+
+class RandomSolutionCreator(SolutionCreator):
+    def __init__(self, nvars:int, randstate:int=None, trunks=None):
+        assert nvars > 0
+        self.stree_generator = backprop.SyntaxTreeGenerator(randstate, nvars)
+        self.trunks = trunks
+    
+    def create_population(self, popsize:int, max_depth:int, noconsts:bool=False) -> list[backprop.SyntaxTree]:
+        assert popsize > 0 and max_depth >= 0
+        population = self.stree_generator.create_random(max_depth, popsize, check_duplicates=True, noconsts=noconsts)
+        if self.trunks is not None:
+            population = [p for p in population if not check_unsat_trunk(self.trunks, p)]
+        return population
+
+
+def generate_trunks(max_depth:int, nvars:int, knowledge):
+    from backprop import lpbackprop
+    from backprop import xgp
+    solutionCreator = xgp.RandomTemplateSolutionCreator(nvars=nvars)
+    all_trunks = []
+    satunsat_trunks = {'sat': [], 'unsat': []}
+
+    for _ in range(100):
+        trunk = solutionCreator.create_population(1, max_depth=max_depth)[0]
+        if type(trunk) is backprop.UnknownSyntaxTree or \
+           trunk in all_trunks or \
+           check_unsat_trunk(satunsat_trunks, trunk): continue
+        all_trunks.append(trunk)
+        print(f"Checking trunk: {trunk}")
+        sat, _ = lpbackprop.lpbackprop(knowledge, trunk, None)
+        if sat:
+            satunsat_trunks['sat'].append(trunk)
+            print(f"SAT  : {trunk}")
+        else:
+            satunsat_trunks['unsat'].append(trunk)
+            print(f"UNSAT: {trunk}")
+    return satunsat_trunks
+
+def check_unsat_trunk(trunks:map, stree) -> bool:
+    for unsat_trunk in trunks['unsat']:
+        if type(stree) is backprop.BinaryOperatorSyntaxTree and stree.operator == '*' and \
+            type(stree.left) is backprop.VariableSyntaxTree and type(stree.right) is backprop.ConstantSyntaxTree and \
+                type(unsat_trunk) is backprop.BinaryOperatorSyntaxTree and \
+                type(unsat_trunk.left) is backprop.UnknownSyntaxTree and type(unsat_trunk.right) is backprop.UnknownSyntaxTree:
+                    print()
+        if stree.match(unsat_trunk): return True
+    return False
+
+
+class GPStats:
+    def __init__(self, nbests:int=1):
+        self.nbests = nbests
+        self.bests = []
+        self.bests_eval_map = {}
+        self.qualities = {'currBest': [], 'currAvg': [], 'currWorst': [], 'best': []}
+    
+    def update(self, population, eval_map):
+        self.__update_bests(population, eval_map)
+        self.__update_qualities(population, eval_map)
+
+    def __update_bests(self, population, eval_map):
+        """
+        It is assumed 'population' is already sorted.
+        """
+        merged_eval_map = {}
+        merged_eval_map.update(eval_map)
+        merged_eval_map.update(self.bests_eval_map)
+        merged = sort_population(population[:self.nbests] + self.bests, merged_eval_map)
+        
+        merged_unique = []
+        for stree in merged:
+            if stree not in merged_unique: merged_unique.append(stree)
+        
+        self.bests = merged_unique[:min(self.nbests, len(merged_unique))]
+        self.bests_eval_map.clear()
+        for b in self.bests:
+            self.bests_eval_map[id(b)] = merged_eval_map[id(b)]
+
+    def __update_qualities(self, population, eval_map):
+        currAvg = 0.0
+        for stree in population:
+            currAvg += eval_map[id(stree)].get_value()
+        currAvg /= len(population)
+
+        self.qualities['currBest' ].append(eval_map[id(population[0])].get_value())    
+        self.qualities['currAvg'  ].append(currAvg)
+        self.qualities['currWorst'].append(eval_map[id(population[-1])].get_value())
+        self.qualities['best'     ].append(self.bests_eval_map[id(self.bests[0])].get_value())
+
+class FUGPStats(GPStats):
+    def __init__(self, nbests:int=1):
+        super().__init__(nbests)
+        self.pland = []
+        self.buckets = {}
+        self.fea_ratio = {'currBest': [], 'currAvg': [], 'currWorst': [], 'best': []}
+    
+    def update(self, population, eval_map):
+        super().update(population, eval_map)
+
+        pland_ratio = 0.0
+        fea_ratio_avg = 0.0
+        nconsts = eval_map[id(population[0])].know_n
+        for stree in population:
+            stree_eval = eval_map[id(stree)]
+            if stree_eval.know_ls: pland_ratio += 1
+            fea_ratio_avg += stree_eval.fea_ratio
+        pland_ratio /= len(population)
+        fea_ratio_avg /= len(population)
+
+        self.pland.append(pland_ratio)
+        self.fea_ratio['currBest' ].append(eval_map[id(population[0])].fea_ratio)    
+        self.fea_ratio['currAvg'  ].append(fea_ratio_avg)
+        self.fea_ratio['currWorst'].append(eval_map[id(population[-1])].fea_ratio)
+        self.fea_ratio['best'     ].append(self.bests_eval_map[id(self.bests[0])].fea_ratio)
+
+
 class GP:
     def __init__(self,
-                 population:list[backprop.SyntaxTree],
+                 popsize:int,
                  ngen:int,
+                 max_depth:int,
                  S_train:dataset.NumpyDataset,
                  S_test:dataset.NumpyDataset,
+                 creator:SolutionCreator,
                  evaluator:Evaluator,
                  selector:Selector,
                  crossover:Crossover,
@@ -215,11 +574,12 @@ class GP:
                  elitism:int=0,
                  backprop_intv:int=-1,  # < 0 disabled.
                  knowledge=None,
+                 trunks=None,
                  nbests:int=1,
                  rseed=None):
-        self.population = population
+        self.population = creator.create_population(popsize, max_depth)
         self.eval_map = {}
-        self.popsize = len(population)
+        self.popsize = popsize
         self.ngen = ngen
         self.S_train = S_train
         self.S_test = S_test
@@ -232,73 +592,139 @@ class GP:
         self.backprop_intv = backprop_intv
         self.last_backprop = -1  # last backprop generation idx.
         self.knowledge = knowledge
-        self.bests = []
-        self.bests_eval_map = {}
-        self.nbests = nbests
+        self.trunks = trunks
         if rseed is not None:
             random.seed(rseed)
-        self.qualities = {'currBest': [], 'currAvg': [], 'currWorst': [], 'best': []}
+        self.stats = evaluator.create_stats(nbests)
+        self.genidx = 0
+
+        # TODO: remove it!
+        self.popsize = len(self.population)
+
+        from backprop import gp_backprop
+        self.backpropagator = gp_backprop.Backpropagator(S_train, knowledge)
+        self.backprop_rate = 1.0
+
+        self.backpropagator = bpropagator.BackPropagator(self.S_train, self.knowledge, self.evaluator)
+        
+        #for i, p in enumerate(self.population):
+        #    self.population[i] = backprop.SemanticSyntaxTree(p(self.S_train.X))
+
+        from backprop.selector import EclipseSelector
+        from backprop.crossover import EclipseCrossover
+        self.sem_selector = EclipseSelector(S_train)
+        self.sem_crossover = EclipseCrossover(self.sem_selector, S_train)
+        self.best_sem_solution = None
+        self.best_sem_eval = None
     
     # returns nbests best strees found + evaluation map.
     def evolve(self) -> tuple[list[backprop.SyntaxTree], dict]:
         print(f"Generation 0")
-        #self.__backprop(genidx=0)
-        self.__evaluate_all()
+        #self._backprop(genidx=0)
+        logging.info('Start from generation 0')
+        self._evaluate_all()
+        logging.info('After self.evaluate_all')
         self.population = sort_population(self.population, self.eval_map)
-        self.__update_bests()
-        self.__update_qualities()
+        logging.info('After pop sort')
+        self.stats.update(self.population, self.eval_map)
+        logging.info('After stats update')
 
-        for genidx in range(1, self.ngen):
-            print(f"Generation {genidx}")
-            children = self.__create_children()
-            self.__replace(children)
-            #self.__backprop(genidx)
+        for self.genidx in range(1, self.ngen):
+            print(f"Generation {self.genidx} {self.eval_map[id(self.population[0])]}")
+            #if self.genidx == 60:
+            #    self._evaluate_all()
+            #    self._replace(self.population)
+            #    self.population = sort_population(self.population, self.eval_map)
+            children = self._create_children()
+            self._replace(children)
+            #self._backprop(genidx)
             self.population = sort_population(self.population, self.eval_map)
-            self.__update_bests()
-            self.__update_qualities()
+            self.stats.update(self.population, self.eval_map)
             #logging.info(f"--- Generation {genidx} [Current best: {self.eval_map[id(self.population[0])]}," + \
             #             f"Global best: {self.bests_eval_map[id(self.bests[0])]}] ---")
         
-        return self.bests, self.bests_eval_map
-
-    def __update_bests(self):
-        """
-        It is assumed self.population is already sorted.
-        """
-        merged_eval_map = {}
-        merged_eval_map.update(self.eval_map)
-        merged_eval_map.update(self.bests_eval_map)
-        merged = sort_population(self.population[:self.nbests] + self.bests, merged_eval_map)
-        
-        merged_unique = []
-        for stree in merged:
-            if stree not in merged_unique: merged_unique.append(stree)
-        
-        self.bests = merged_unique[:min(self.nbests, len(merged_unique))]
-        self.bests_eval_map.clear()
-        for b in self.bests:
-            self.bests_eval_map[id(b)] = merged_eval_map[id(b)]
+        return self.stats.bests, self.stats.bests_eval_map
+        #return [self.backpropagator.refmod], {id(self.backpropagator.refmod): self.backpropagator.refmod_eval}
     
-    def __evaluate_all(self):
+    def _evaluate_all(self):
         self.eval_map.clear()
         for stree in self.population:
+            #self.eval_map[id(stree)] = self.backpropagator.backprop(stree) if self.genidx < 60 else self.evaluator.evaluate(stree)
             self.eval_map[id(stree)] = self.evaluator.evaluate(stree)
     
-    def __create_children(self) -> list[backprop.SyntaxTree]:
+    def _create_children(self) -> list[backprop.SyntaxTree]:
+        
+        """best_eval = self.eval_map[id(self.population[0])]
+        if self.backpropagator.refmod_eval is None or best_eval.better_than(self.backpropagator.refmod_eval):
+            self.backpropagator.update_refmod(self.population[0], best_eval)"""
+        
         children = []
+
+        # generate semantic children.
+        if self.genidx > 10 and False:
+            self.sem_selector.update(self.population)
+            sem_child = self.sem_crossover.cross( *self.sem_selector.select(self.population, self.eval_map) )
+            sem_child_eval = self.evaluator.evaluate(sem_child)
+            #children.append(sem_child)
+            #self.eval_map[id(sem_child)] = sem_child_eval
+            if self.best_sem_solution is None or sem_child_eval.better_than(self.best_sem_eval):
+                self.best_sem_solution = sem_child
+                self.best_sem_eval = sem_child_eval
+            print(f"Created sem child {sem_child_eval.get_value()} vs {self.eval_map[id(self.population[0])]}")
+
         while len(children) < self.popsize:
             for _ in range(self.popsize - len(children)):
                 parents = self.selector.select(self.population, self.eval_map, 2)
                 child = self.crossover.cross(parents[0], parents[1])  # 100% crossover rate (child must be a new object!)
                 if random.random() < self.mutrate:
                     child = self.mutator.mutate(child)
-                if child.validate(): #TODO: and child not in children:
+                if child.validate() and (self.trunks is None or not check_unsat_trunk(self.trunks, child)): #TODO: and child not in children:
+                    
+                    """if random.random() < self.backprop_rate:
+                        #print(f"Replacing {child}")
+                        if self.backpropagator.backprop(child.clone()) is None:
+                            #print(f"Unsat child: {child}")
+                            continue
+                        #print(f"With {child}")"""
+                    
+                    """if random.random() < 1.0:
+                        if type(child) is backprop.ConstantSyntaxTree:
+                            continue
+                            print(f"Constant: {child}")
+                        sat, stree_cost = lpbackprop.lpbackprop(self.knowledge, child, None)
+                        #val = child.validate()
+                        if not sat:
+                            print(f"Unsat child: {child}")
+                            continue
+                        else:
+                            print(f"SAT child: {child}")"""
+
+                    child = child.simplify()
+                    child_eval = self.evaluator.evaluate(child)
+                    
+                    #if self.backpropagator.refmod_eval.data_r2 >= 1.0: # and self.genidx % 5 == 0:
+                    
+                    #self.backpropagator.propagate(child, child_eval, True)
+                    
+                    #new_child_eval = self.backpropagator.propagate(child, child_eval)
+                    #if new_child_eval is not None: child_eval = new_child_eval
+                    
+                    #child_eval.data_r2 = max(child_eval.data_r2, child.best_match_r2)
+                    
                     children.append(child)
+                    #self.eval_map[id(child)] = self.backpropagator.backprop(child) if self.genidx < 60 else self.evaluator.evaluate(child)
+                    self.eval_map[id(child)] = child_eval
+
                     #print(f"From parents {parents[0]} and {parents[1]} got {child}")
-                    self.eval_map[id(child)] = self.evaluator.evaluate(child)
+                    #self.eval_map[id(child)] = self.evaluator.evaluate(child)
+
+        if self.best_sem_solution is not None and self.genidx == self.ngen - 1:
+            children.append(self.best_sem_solution)
+            self.eval_map[id(self.best_sem_solution)] = self.best_sem_eval
+        
         return children
     
-    def __replace(self, children:list[backprop.SyntaxTree]):
+    def _replace(self, children:list[backprop.SyntaxTree]):
         if self.elitism > 0:
             children = sort_population(children, self.eval_map)
             for i in range(self.elitism):
@@ -312,7 +738,7 @@ class GP:
         self.eval_map = new_eval_map
     
     """
-    def __backprop(self, genidx):
+    def _backprop(self, genidx):
         if self.backprop_intv < 0 or (genidx - self.last_backprop) < self.backprop_intv:
             return
         for stree_idx, stree in enumerate(self.population):
@@ -365,15 +791,4 @@ class GP:
         
         self.last_backprop = genidx
     """
-
-    def __update_qualities(self):
-        currAvg = 0.0
-        for stree in self.population:
-            currAvg += self.eval_map[id(stree)].value
-        currAvg /= self.popsize
-
-        self.qualities['currBest' ].append(self.eval_map[id(self.population[0])].value)    
-        self.qualities['currAvg'  ].append(currAvg)
-        self.qualities['currWorst'].append(self.eval_map[id(self.population[-1])].value)
-        self.qualities['best'     ].append(self.bests_eval_map[id(self.bests[0])].value)
         

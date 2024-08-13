@@ -140,19 +140,19 @@ class MagmanDatasetScaled(Dataset1d):
         infl_x = self._xmap(0.01352774925)
         #peak_x = 0.20827333333333353
         
-        # intersection points
+        """# intersection points
         self.knowledge.add_deriv(0, DataPoint( 0., 0.))
         self.knowledge.add_deriv(0, DataPoint(-peak_x, self.func(-peak_x)))
         self.knowledge.add_deriv(0, DataPoint( peak_x, self.func( peak_x)))
         self.knowledge.add_deriv(0, DataPoint(self.xl, self.func(self.xl)))
-        self.knowledge.add_deriv(0, DataPoint(self.xu, self.func(self.xu)))
+        self.knowledge.add_deriv(0, DataPoint(self.xu, self.func(self.xu)))"""
         #infty = 10
         #self.knowledge.add_deriv(0, DataPoint(-infty, 0))
         #self.knowledge.add_deriv(0, DataPoint(+infty, 0))
 
         # known (first) derivatives
-        self.knowledge.add_deriv(1, DataPoint(-peak_x,  0.))
-        self.knowledge.add_deriv(1, DataPoint( peak_x,  0.))
+        """self.knowledge.add_deriv(1, DataPoint(-peak_x,  0.))
+        self.knowledge.add_deriv(1, DataPoint( peak_x,  0.))"""
 
         #
         # positivity/negativity contraints
@@ -173,7 +173,7 @@ class MagmanDatasetScaled(Dataset1d):
         self.knowledge.add_sign(1, -peak_x, peak_x, '-')
         self.knowledge.add_sign(1, peak_x, INFTY, '+')
 
-        # concavity/convexity
+        """# concavity/convexity
         #self.knowledge.add_sign(2, self.xl, -0.4, '+')
         #self.knowledge.add_sign(2, 0.4, self.xu, '-')
         
@@ -182,7 +182,7 @@ class MagmanDatasetScaled(Dataset1d):
         self.knowledge.add_sign(2, 0, infl_x, '+')
         self.knowledge.add_sign(2, infl_x, INFTY, '-')
 
-        # symmetry
+        """# symmetry
         self.knowledge.add_symm(0, 0, iseven=False)
         self.knowledge.add_symm(1, 0, iseven=True )
         self.knowledge.add_symm(2, 0, iseven=False)

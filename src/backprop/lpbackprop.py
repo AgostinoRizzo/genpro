@@ -47,7 +47,10 @@ class ASPSpecBuilder(backprop.SyntaxTreeVisitor): # TODO: avoid multiple facts f
 
     def visitConstant(self, stree:backprop.ConstantSyntaxTree):
         self.__map_node_id(stree)
-        const_val = int(stree.val) # TODO: just positivity?
+        #const_val = int(stree.val) # TODO: just positivity?
+        const_val = 0
+        if stree.val > 0: const_val = 1
+        elif stree.val < 0: const_val = -1
         self.spec += 'const_tree_node(' + \
             f"\"{self.node_id_map[id(stree)]}\",{const_val}).\n" + \
             f"const({const_val}).\n"
@@ -242,11 +245,14 @@ def synthesize_unknowns(unknown_labels:list[str], break_points:list, break_point
         synth_unkn_models[unkn] = synthesize_unknown(unkn, unkn_knowledge_map[unkn], break_points, K_origin.nvars)
     logging.debug('End unknown model synthesizing')
         
-    onsynth_callback(synth_unkn_models)    
+    if onsynth_callback is not None:
+        onsynth_callback(synth_unkn_models)
+    
+    return unkn_knowledge_map
 
 
 # returns True when the problem is satisfiable + best model cost.
-def lpbackprop(K:dataset.DataKnowledge, stree:backprop.SyntaxTree, onsynth_callback) -> bool:
+def lpbackprop(K:dataset.DataKnowledge, stree:backprop.SyntaxTree, onsynth_callback, on_kbackprop_callback=None) -> bool:
     #
     # build ASP specification of stree and stree' (facts).
     #
@@ -255,6 +261,8 @@ def lpbackprop(K:dataset.DataKnowledge, stree:backprop.SyntaxTree, onsynth_callb
     stree_map = backprop.SyntaxTree.diff_all(stree, all_derivs, include_zeroth=True)
 
     aspSpecBuilder = ASPSpecBuilder()
+    for deriv, stree in stree_map.items():
+        stree.validate()
     for deriv, stree in stree_map.items(): aspSpecBuilder.map_root(stree, deriv)
     for deriv, stree in stree_map.items(): stree.accept(aspSpecBuilder)
     stree_spec = aspSpecBuilder.spec
@@ -285,7 +293,7 @@ def lpbackprop(K:dataset.DataKnowledge, stree:backprop.SyntaxTree, onsynth_callb
     """)
 
     # set solving options.
-    if onsynth_callback is None:
+    if onsynth_callback is None and on_kbackprop_callback is None:
         clingo_ctl.configuration.solve.models = 0  # required by opt_mode=opt.
         clingo_ctl.configuration.solve.opt_mode = 'opt'  # find an optimum model (requires models=0).
     else:
@@ -293,9 +301,9 @@ def lpbackprop(K:dataset.DataKnowledge, stree:backprop.SyntaxTree, onsynth_callb
         clingo_ctl.configuration.solve.opt_mode = 'optN'  # find optimum, then enumerate optimal models (models=0).
         clingo_ctl.configuration.solve.project = 'show'
 
-    # compute asp model(s) and synthesize each unknown node in stree (when onsynth_callback is provided).
+    # compute asp model(s) and synthesize each unknown node in stree (when onsynth_callback or on_kbackprop_callback is provided).
     unknown_labels = None
-    if onsynth_callback is not None:
+    if onsynth_callback is not None or on_kbackprop_callback is not None:
         unkn_collector = backprop.UnknownSyntaxTreeCollector()
         stree_map[()].accept(unkn_collector)
         unknown_labels = unkn_collector.unknown_labels
@@ -315,11 +323,13 @@ def lpbackprop(K:dataset.DataKnowledge, stree:backprop.SyntaxTree, onsynth_callb
         if best_model_cost is None or model_cost.better_than(best_model_cost):
             best_model_cost = model_cost
         
-        if onsynth_callback is None:
+        if onsynth_callback is None and on_kbackprop_callback is None:
             return True
         
         if not asp_model.optimality_proven: return
-        synthesize_unknowns(unknown_labels, break_points, break_point_coords_invmap, asp_model, onsynth_callback, K)
+        unkn_knowledge_map = synthesize_unknowns(unknown_labels, break_points, break_point_coords_invmap, asp_model, onsynth_callback, K)
+        if on_kbackprop_callback is not None:
+            on_kbackprop_callback(unkn_knowledge_map, model_cost)
         nopt_models += 1
         return nopt_models < config.LPBACKPROP_MAX_NMODELS
     

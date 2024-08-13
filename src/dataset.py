@@ -106,7 +106,9 @@ class DataKnowledge:
     
     def evaluate(self, model_map:dict) -> dict:
         n   = {0: 0, 1: 0, 2: 0}
+        nv  = {0: 0, 1: 0, 2: 0}
         ssr = {0: 0, 1: 0, 2: 0}
+        ls  = {0: True, 1: True, 2: True}
 
         # intersection points.
         for deriv, dps in self.derivs.items():
@@ -114,7 +116,11 @@ class DataKnowledge:
             n[derivdeg] += len(dps)
             X = np.array( [dp.x for dp in dps] )
             y = np.array( [dp.y for dp in dps] )
-            ssr[derivdeg] += np.sum( (model_map[deriv](X) - y) ** 2 )
+
+            sr = (model_map[deriv](X) - y) ** 2
+            nv [derivdeg] += np.count_nonzero(sr)
+            nv [derivdeg] += np.sum(np.isnan(sr))
+            ssr[derivdeg] += np.sum(sr)
         
         # positivity constraints.
         for deriv, constrs in self.sign.items():
@@ -126,21 +132,76 @@ class DataKnowledge:
                 X = self.spsampler.meshspace(l, u, 20)  # TODO: factorize sample size.
                 n[derivdeg] += X.shape[0]
                 model_y = model_map[deriv](X)
-                ssr[derivdeg] += np.sum( ( np.minimum(0, model_y - th) if sign == '+' else np.maximum(0, model_y - th) ) ** 2 )
+
+                sr = ( np.minimum(0, model_y - th) if sign == '+' else np.maximum(0, model_y - th) ) ** 2
+                nv [derivdeg] += (( model_y <= th ) if sign == '+' else ( model_y >= th )).sum()  #np.count_nonzero(sr)
+                nv [derivdeg] += np.sum(np.isnan(sr))
+                ssr[derivdeg] += np.sum(sr)
+        
+        # positivity landscape.
+        """X = self.spsampler.meshspace(self.dataset.xl, self.dataset.xu, 20)
+        model_y0 = np.sign( model_map[()](X) )
+        model_y1 = np.sign( model_map[(0,)](X) )
+        
+        from itertools import groupby
+        model_y0 = [k for k,g in groupby(model_y0)]
+        model_y1 = [k for k,g in groupby(model_y1)]
+        ls[0] = model_y0 == [1, -1]
+        ls[1] = model_y1 == [1, -1, 1]"""
+
         
         # symmetry constraints.
-        for deriv, (x0, iseven) in self.symm.items():
+        """for deriv, (x0, iseven) in self.symm.items():
             assert type(x0) is float or type(x0) is int  # TODO: manage symmetry constraints in multivar (*).
             derivdeg = len(deriv)
             X = self.spsampler.meshspace(x0 + self.numlims.EPSILON, self.numlims.INFTY, 20)  # TODO: factorize sample size.
             n[derivdeg] += X.shape[0]
             model_y1 = model_map[deriv](X)
             model_y2 = model_map[deriv](x0-(X-x0))
-            ssr[derivdeg] += np.sum( ( (model_y1 - model_y2) if iseven else (model_y1 + model_y2) ) ** 2 )
+            
+            sr = ( (model_y1 - model_y2) if iseven else (model_y1 + model_y2) ) ** 2
+            nv [derivdeg] += np.count_nonzero(sr)
+            nv [derivdeg] += np.sum(np.isnan(sr))
+            ssr[derivdeg] += np.sum(sr)"""
         
         return {'mse0': (ssr[0]/n[0]) if n[0] > 0. else 0.,
                 'mse1': (ssr[1]/n[1]) if n[1] > 0. else 0.,
-                'mse2': (ssr[2]/n[2]) if n[2] > 0. else 0.}
+                'mse2': (ssr[2]/n[2]) if n[2] > 0. else 0.,
+                'nv0' : nv[0], 'nv1' : nv[1], 'nv2' : nv[2],
+                'n0'  : n [0], 'n1'  : n [1], 'n2'  : n [2],
+                'ls0' : ls[0], 'ls1' : ls[1], 'ls2' : ls[2]}
+    
+    def synthesize(self, refmod, X) -> dict:
+        #X = np.append(X, self.spsampler.meshspace(self.dataset.xl, self.dataset.xu, 20))
+        K_derivs = self.get_derivs()
+        from backprop import backprop
+        model_derivs = backprop.SyntaxTree.diff_all(refmod, K_derivs, include_zeroth=True)
+        valid = np.full(X.shape[0], True)
+
+        # TODO: intersection points.
+        
+        # positivity constraints.
+        for deriv, constrs in self.sign.items():
+            derivdeg = len(deriv)
+            for (_l,_u,sign,th) in constrs:
+                l = _l + self.numlims.EPSILON
+                u = _u - self.numlims.EPSILON
+                if np.any(l > u): continue
+                
+                y_valid = model_derivs[deriv](X) > th if sign == '+' else model_derivs[deriv](X) < th
+                valid &= (X < l).ravel() | (X > u).ravel() | y_valid
+        
+        # TODO: symmetry constraints.
+        
+        X_valid = X[valid]
+        S = NumpyDataset(nvars=self.nvars)
+        S.xl = self.dataset.xl
+        S.xu = self.dataset.xu
+        S.yl = self.dataset.yl
+        S.yu = self.dataset.yu
+        S.X = X_valid
+        S.y = model_derivs[()](X_valid)
+        return S
     
     def get_derivs(self) -> set[tuple[int]]:
         derivs = set()
@@ -184,6 +245,24 @@ class DataKnowledge:
             out_str += f"Deriv: {deriv}, x0={x0}, {iseven_str}\n"
         
         return out_str
+    
+    def synth_dataset(self, deriv:tuple[int]=()):
+        S = Dataset(self.dataset.nvars, self.dataset.xl, self.dataset.xu, self.spsampler)
+
+        # positivity constraints.
+        for (_l,_u,sign,th) in self.sign[deriv]:
+            assert th == 0.0
+            l = _l + self.numlims.EPSILON
+            u = _u - self.numlims.EPSILON
+            if np.any(l > u): continue
+            
+            X = self.spsampler.meshspace(l, u, 20)  # TODO: factorize sample size.
+            y = [1.0 if sign == '+' else -1.0] * X.shape[0]
+            
+            for i, y_i in enumerate(y):
+                S.data.append( DataPoint(X[i], y_i) )
+        
+        return NumpyDataset(S)
             
 
 def compute_sst(dpoints:list) -> float:

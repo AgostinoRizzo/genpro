@@ -2,7 +2,7 @@ import numpy as np
 import sympy
 import math
 
-from backprop import utils
+from backprop import utils, backprop
 
 
 class Model:
@@ -18,7 +18,10 @@ class Model:
     def is_poly(self) -> bool: return False
     def get_degree(self) -> int: return 0
     def to_sympy(self, dps:int=None): return None
+    def to_stree(self): return None
     def __str__(self) -> str: return str(self.to_sympy())
+    def clone(self): return None
+    def __eq__(self, other) -> bool: return False
 
 
 class Poly(Model):
@@ -83,6 +86,24 @@ class Poly1d(Poly):
             i += 1
         return P_sympy
     
+    def to_stree(self):
+        if self.P.c.size == 0: return backprop.ConstantSyntaxTree(0.0)
+        x = backprop.VariableSyntaxTree(0)
+        P_stree = backprop.BinaryOperatorSyntaxTree('*',
+            backprop.ConstantSyntaxTree(self.P.c[0]),
+            backprop.BinaryOperatorSyntaxTree('^', x, backprop.ConstantSyntaxTree(self.P.c.size-1))
+        )
+        i = 1
+        for power in range(self.P.c.size-2, -1, -1):
+            P_stree = backprop.BinaryOperatorSyntaxTree('+', P_stree,
+                backprop.BinaryOperatorSyntaxTree('*',
+                    backprop.ConstantSyntaxTree(self.P.c[i]),
+                    backprop.BinaryOperatorSyntaxTree('^', x, backprop.ConstantSyntaxTree(power))
+                )
+            )
+            i += 1
+        return P_stree.simplify()
+    
     def simplify_from_qp(self, constrs_map:dict):
         canBeZeroCoeffs = [True] * self.P.c.size
         for deriv, constrs in constrs_map.items():
@@ -101,6 +122,14 @@ class Poly1d(Poly):
         n_zero_coeffs = ncoeffs - V.shape[1]
         if n_zero_coeffs == 0: return V
         return np.hstack(( V, np.zeros((V.shape[0], n_zero_coeffs)) ))
+    
+    def clone(self):
+        return Poly1d(self.deg, np.poly1d(self.P.c))
+    
+    def __eq__(self, other) -> bool:
+        if type(other) is not Poly1d: return False
+        if id(self) == id(other): return True
+        return self.deg == other.deg and (self.P.c == other.P.c).all()
     
     @staticmethod
     def get_powers(deg:int):
@@ -179,6 +208,9 @@ class Polynd(Poly):
         
         return P_sympy
     
+    def to_stree(self):
+        raise RuntimeError('Not implemented.')
+    
     def simplify_from_qp(self, constrs_map:dict):
         pass
         #TODO: raise RuntimeError('No implementation (yet).')
@@ -201,6 +233,9 @@ class Polynd(Poly):
                 V[i,j] = np.prod( X[i,:] ** self.CIDX[:,j] )
         
         return V
+    
+    def clone(self): raise RuntimeError('Not implemented.')
+    def __eq__(self, other) -> bool: raise RuntimeError('Not implemented.')
     
     @staticmethod
     def __get_cidx(nvars:int, deg:int) -> tuple[tuple[np.array],np.ndarray]:

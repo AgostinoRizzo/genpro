@@ -1,5 +1,6 @@
 from scipy.interpolate import lagrange as scipy_interp_lagrange
 import numpy as np
+import math
 
 import dataset
 
@@ -240,3 +241,43 @@ def squarify(M, paddingval=0.):
     for dimsize in M.shape:
         padding.append((0,maxdimsize-dimsize))
     return np.pad(M, padding, mode='constant', constant_values=paddingval)
+
+
+def flatten(v):
+    return np.sign(v)
+
+
+def random_test(y) -> float:
+    """
+    returns the value of |Z-statistic|
+        * The higher the value the more the null hypo (random values) is rejected.
+    """
+
+    y_median = np.median(y)
+
+    runs, n1, n2 = 0, 0, 0
+      
+    # Checking for start of new run 
+    for i in range(y.size): 
+          
+        # no. of runs 
+        if (y[i] >= y_median and y[i-1] < y_median) or \
+                (y[i] < y_median and y[i-1] >= y_median): 
+            runs += 1  
+          
+        # no. of positive values 
+        if(y[i]) >= y_median: 
+            n1 += 1   
+          
+        # no. of negative values 
+        else: 
+            n2 += 1   
+  
+    runs_exp = ((2*n1*n2)/(n1+n2))+1
+    stan_dev = math.sqrt((2*n1*n2*(2*n1*n2-n1-n2))/ \
+                       (((n1+n2)**2)*(n1+n2-1))) 
+    
+    if stan_dev == 0: return np.inf
+    z = (runs-runs_exp)/stan_dev 
+  
+    return abs(z)
