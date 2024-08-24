@@ -104,7 +104,7 @@ class DataKnowledge:
             np.array(deriv_points))).sort()
     """
     
-    def evaluate(self, model_map:dict) -> dict:
+    def evaluate(self, model_map:dict, eval_deriv=False) -> dict:
         n   = {0: 0, 1: 0, 2: 0}
         nv  = {0: 0, 1: 0, 2: 0}
         ssr = {0: 0, 1: 0, 2: 0}
@@ -113,6 +113,7 @@ class DataKnowledge:
         # intersection points.
         for deriv, dps in self.derivs.items():
             derivdeg = len(deriv)
+            #if derivdeg != 0 and not eval_deriv: continue
             n[derivdeg] += len(dps)
             X = np.array( [dp.x for dp in dps] )
             y = np.array( [dp.y for dp in dps] )
@@ -125,16 +126,18 @@ class DataKnowledge:
         # positivity constraints.
         for deriv, constrs in self.sign.items():
             derivdeg = len(deriv)
+            #if derivdeg != 0 and not eval_deriv: continue
             for (_l,_u,sign,th) in constrs:
                 l = _l + self.numlims.EPSILON
                 u = _u - self.numlims.EPSILON
                 if np.any(l > u): continue
+                
                 X = self.spsampler.meshspace(l, u, 20)  # TODO: factorize sample size.
                 n[derivdeg] += X.shape[0]
                 model_y = model_map[deriv](X)
 
                 sr = ( np.minimum(0, model_y - th) if sign == '+' else np.maximum(0, model_y - th) ) ** 2
-                nv [derivdeg] += (( model_y <= th ) if sign == '+' else ( model_y >= th )).sum()  #np.count_nonzero(sr)
+                nv [derivdeg] += (( model_y < th ) if sign == '+' else ( model_y > th )).sum()  #np.count_nonzero(sr)
                 nv [derivdeg] += np.sum(np.isnan(sr))
                 ssr[derivdeg] += np.sum(sr)
         

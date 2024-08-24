@@ -2,6 +2,8 @@ from functools import cmp_to_key
 import random
 import logging
 import numpy as np
+from scipy.spatial.distance import pdist as scipy_pdist
+from scipy.spatial.distance import squareform as scipy_squareform
 
 import dataset
 from backprop import backprop, lpbackprop, jump_backprop
@@ -37,10 +39,16 @@ class FUEvaluation(Evaluation):
         self.know_sat  = know_sat
         self.data_r2   = data_r2
         self.nnodes    = nnodes
+        self.crowdist  = 0
+
         self.fea_ratio = 1. - (know_nv / know_n)
         self.fea_bucket = int( self.fea_ratio * 10. )
         self.feasible  = know_nv == 0
     
+        self.data_nnodes = data_r2 / nnodes
+
+        self.genidx = 0
+
     """def better_than(self, other) -> bool:
         if self.feasible and other.feasible:
             return self.data_r2 > other.data_r2
@@ -62,13 +70,31 @@ class FUEvaluation(Evaluation):
         #if self.know_sat and not other.know_sat: return True
         #if not self.know_sat and other.know_sat: return False
 
-        if self.fea_bucket > other.fea_bucket: return True
-        if self.fea_bucket < other.fea_bucket: return False
+        #if self.fea_bucket > other.fea_bucket: return True
+        #if self.fea_bucket < other.fea_bucket: return False
+
+        #if self.feasible and not other.feasible: return True
+        #if not self.feasible and other.feasible: return False
+
+        if self.data_r2 < 0.1: return False
+
+        if self.fea_ratio > other.fea_ratio: return True
+        if self.fea_ratio < other.fea_ratio: return False
+
+        #if self.fea_ratio > other.fea_ratio and self.data_r2 > 0: return True
+        #if self.fea_ratio < other.fea_ratio and other.data_r2 > 0: return False
 
         #if self.nnodes < other.nnodes: return True
         #if self.nnodes > other.nnodes: return False
 
+        #if self.fea_ratio < 1.0:
+        #    return self.know_mse < other.know_mse
+
         return self.data_r2 > other.data_r2
+
+        #return self.data_nnodes > other.data_nnodes
+        #if self.crowdist > other.crowdist: return True
+        #if self.crowdist < other.crowdist: return False
     
     def get_value(self):
         return self.data_r2
@@ -126,10 +152,28 @@ class KnowledgeEvaluator(Evaluator):
     def __init__(self, knowledge):
         self.K = knowledge
     
+    def _compute_stree_derivs(self, stree, derivs):
+        return backprop.SyntaxTree.diff_all(stree, derivs, include_zeroth=True)
+    
     def evaluate(self, stree:backprop.SyntaxTree):
         K_derivs = self.K.get_derivs()
-        stree_derivs = backprop.SyntaxTree.diff_all(stree, K_derivs, include_zeroth=True)
+        stree_derivs = self._compute_stree_derivs(stree, K_derivs)
         K_eval = self.K.evaluate(stree_derivs)
+        K_eval = (K_eval['mse0'] + K_eval['mse1'] + K_eval['mse2']) / 3  # TODO: separate?! or a weighted mean?
+        if np.isnan(K_eval): K_eval = 1e12
+        return RealEvaluation(K_eval, minimize=True)
+
+class NumericalKnowledgeEvaluator(KnowledgeEvaluator):
+    def __init__(self, knowledge):
+        super().__init__(knowledge)
+    
+    def _compute_stree_derivs(self, stree, derivs):
+        return backprop.Derivative.create_all(stree, derivs, self.K.nvars, self.K.numlims)
+    
+    def evaluate(self, stree:backprop.SyntaxTree):
+        K_derivs = self.K.get_derivs()
+        stree_derivs = self._compute_stree_derivs(stree, K_derivs)
+        K_eval = self.K.evaluate(stree_derivs, eval_deriv=True)
         K_eval = (K_eval['mse0'] + K_eval['mse1'] + K_eval['mse2']) / 3  # TODO: separate?! or a weighted mean?
         if np.isnan(K_eval): K_eval = 1e12
         return RealEvaluation(K_eval, minimize=True)
@@ -139,11 +183,14 @@ class FUEvaluator(Evaluator):
         self.data = dataset
         self.know = knowledge
     
-    def evaluate(self, stree:backprop.SyntaxTree):
+    def _compute_stree_derivs(self, stree, derivs):
+        return backprop.SyntaxTree.diff_all(stree, derivs, include_zeroth=True)
+
+    def evaluate(self, stree:backprop.SyntaxTree, eval_deriv=False):
         know_derivs = self.know.get_derivs()
-        stree_derivs = backprop.SyntaxTree.diff_all(stree, know_derivs, include_zeroth=True)
+        stree_derivs = self._compute_stree_derivs(stree, know_derivs)
         
-        know_eval = self.know.evaluate(stree_derivs)
+        know_eval = self.know.evaluate(stree_derivs, eval_deriv)
         know_mse  = (know_eval['mse0'] + know_eval['mse1'] + know_eval['mse2']) / 3  # TODO: separate?! or a weighted mean?
         know_nv   =  know_eval['nv0' ] + know_eval['nv1' ] + know_eval['nv2' ]
         know_n    =  know_eval['n0'  ] + know_eval['n1'  ] + know_eval['n2'  ]
@@ -151,7 +198,7 @@ class FUEvaluator(Evaluator):
         know_sat  = stree.sat
         if np.isnan(know_mse): know_mse = 1e12
 
-        data_r2 = max(0., self.data.evaluate(stree)['r2'])  # TODO: put this into data.evaluate(...).
+        data_r2 = max(0., self.data.evaluate(stree)['r2']) # TODO: put this into data.evaluate(...).
 
         """optCollector = backprop.SyntaxTreeOperatorCollector()
         stree.accept(optCollector)
@@ -167,6 +214,14 @@ class FUEvaluator(Evaluator):
         return FUEvaluation(know_mse, know_nv, know_n, know_ls, know_sat, data_r2, stree.get_nnodes())
     
     def create_stats(self, nbests:int=1): return FUGPStats(nbests)
+
+class NumericalFUEvaluator(FUEvaluator):
+    def __init__(self, dataset, knowledge):
+        super().__init__(dataset, knowledge)
+    
+    def _compute_stree_derivs(self, stree, derivs):
+        return backprop.Derivative.create_all(stree, derivs, self.know.nvars, self.know.numlims)
+
 
 
 class Selector:
@@ -457,6 +512,58 @@ class RandomSolutionCreator(SolutionCreator):
         return population
 
 
+class Diversifier:
+    def diversify(self, population, eval_map):
+        pass
+
+class SemanticCrowdingDiversifier(Diversifier):
+    def __init__(self, data):
+        self.data = data
+        self.mean_dist = None
+    
+    def track(self, population):
+        welldef_sems = []
+        for p in population:
+            sem_p = p(self.data.X)
+            if np.isnan(sem_p).any() or np.isinf(sem_p).any(): continue
+            welldef_sems.append(sem_p)
+
+        dists = scipy_pdist( np.array(welldef_sems) )
+        self.mean_dist = np.quantile( dists[np.isfinite(dists)], 0.01 )
+
+    def diversify(self, population, eval_map):
+        #self.track(population)
+        #return
+        welldef_fronts = {}
+        undef_fronts = {}
+        T_dist = {}
+
+        for p in population:
+            sem_p = p(self.data.X)
+            front_p = eval_map[id(p)].fea_ratio
+
+            if np.isnan(sem_p).any() or np.isinf(sem_p).any():
+                if front_p not in undef_fronts: undef_fronts[front_p] = []
+                undef_fronts[front_p].append(p)
+            else:
+                if front_p not in welldef_fronts: welldef_fronts[front_p] = []
+                welldef_fronts[front_p].append(p)
+                T_dist[id(p)] = scipy_squareform( scipy_pdist( np.array([p(self.data.X), self.data.y]) ) )[0].max()
+        
+        for front, ps in welldef_fronts.items():
+            sem = np.array([p(self.data.X) for p in ps])
+            #dist = np.min( scipy_squareform(scipy_pdist(sem)), axis=1 )
+            dist_sort = np.sort( scipy_squareform(scipy_pdist(sem)), axis=1 )
+            dist = dist_sort[:,0] if dist_sort.shape[1] == 1 else dist_sort[:,1]
+
+            for i, p in enumerate(ps):
+                eval_map[id(p)].crowdist = dist[i] / T_dist[id(p)]
+
+        for front, ps in undef_fronts.items():
+            for i, p in enumerate(ps):
+                eval_map[id(p)].crowdist = 0
+
+
 def generate_trunks(max_depth:int, nvars:int, knowledge):
     from backprop import lpbackprop
     from backprop import xgp
@@ -571,6 +678,7 @@ class GP:
                  crossover:Crossover,
                  mutator:Mutator,
                  mutrate:float,
+                 diversifier:Diversifier=None,
                  elitism:int=0,
                  backprop_intv:int=-1,  # < 0 disabled.
                  knowledge=None,
@@ -588,6 +696,7 @@ class GP:
         self.crossover = crossover
         self.mutator = mutator
         self.mutrate = mutrate
+        self.diversifier = diversifier
         self.elitism = elitism
         self.backprop_intv = backprop_intv
         self.last_backprop = -1  # last backprop generation idx.
@@ -616,6 +725,9 @@ class GP:
         self.sem_crossover = EclipseCrossover(self.sem_selector, S_train)
         self.best_sem_solution = None
         self.best_sem_eval = None
+
+        from backprop.pareto_front import DataLengthFrontTracker
+        self.fea_front_tracker = DataLengthFrontTracker()
     
     # returns nbests best strees found + evaluation map.
     def evolve(self) -> tuple[list[backprop.SyntaxTree], dict]:
@@ -624,6 +736,8 @@ class GP:
         logging.info('Start from generation 0')
         self._evaluate_all()
         logging.info('After self.evaluate_all')
+        if self.diversifier is not None:
+            self.diversifier.diversify(self.population, self.eval_map)
         self.population = sort_population(self.population, self.eval_map)
         logging.info('After pop sort')
         self.stats.update(self.population, self.eval_map)
@@ -638,11 +752,17 @@ class GP:
             children = self._create_children()
             self._replace(children)
             #self._backprop(genidx)
+            if self.diversifier is not None:
+                self.diversifier.diversify(self.population, self.eval_map)
+            
             self.population = sort_population(self.population, self.eval_map)
             self.stats.update(self.population, self.eval_map)
             #logging.info(f"--- Generation {genidx} [Current best: {self.eval_map[id(self.population[0])]}," + \
             #             f"Global best: {self.bests_eval_map[id(self.bests[0])]}] ---")
         
+        print()
+        for p in self.population:
+            print(p, self.eval_map[id(p)].fea_ratio, self.eval_map[id(p)].data_r2, self.eval_map[id(p)].know_mse)
         return self.stats.bests, self.stats.bests_eval_map
         #return [self.backpropagator.refmod], {id(self.backpropagator.refmod): self.backpropagator.refmod_eval}
     
@@ -715,6 +835,9 @@ class GP:
                     #self.eval_map[id(child)] = self.backpropagator.backprop(child) if self.genidx < 60 else self.evaluator.evaluate(child)
                     self.eval_map[id(child)] = child_eval
 
+                    if child_eval.fea_ratio == 1.0:
+                        self.fea_front_tracker.track(child, child_eval)
+
                     #print(f"From parents {parents[0]} and {parents[1]} got {child}")
                     #self.eval_map[id(child)] = self.evaluator.evaluate(child)
 
@@ -730,6 +853,8 @@ class GP:
             for i in range(self.elitism):
                 children[-1-i] = self.population[i]
         self.population = children  # generational replacement.
+
+        self.population = (self.fea_front_tracker.get_population() + self.population)[:self.popsize]
         
         # update evaluation map based on new population.
         new_eval_map = {}

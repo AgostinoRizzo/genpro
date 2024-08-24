@@ -69,7 +69,7 @@ class Library:
         d, idx = self.sem_index.query(sem)
         
         if d == np.infty: return None
-        if const_fit_d <= d: return backprop.ConstantSyntaxTree(const_fit)
+        #if const_fit_d <= d: return backprop.ConstantSyntaxTree(const_fit)
 
         return self.stree_index[idx].clone()
     

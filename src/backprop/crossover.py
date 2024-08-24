@@ -1,6 +1,9 @@
 from scipy.special import softmax as scipy_softmax
 import random
 import numpy as np
+from scipy.spatial.distance import pdist as scipy_pdist
+from scipy.spatial.distance import squareform as scipy_squareform
+
 from backprop import backprop, gp, models
 
 
@@ -313,9 +316,10 @@ class EclipseCrossover(gp.Crossover):
 
 class ApproxGeometricCrossover(gp.Crossover):
 
-    def __init__(self, lib, max_depth):
+    def __init__(self, lib, max_depth, diversifier=None):
         self.lib = lib
         self.fallback_crossover = gp.SubTreeCrossover(max_depth)
+        self.diversifier = diversifier
     
     def cross(self, parent1:backprop.SyntaxTree, parent2:backprop.SyntaxTree) -> backprop.SyntaxTree:
         
@@ -358,7 +362,21 @@ class ApproxGeometricCrossover(gp.Crossover):
 
         bp_node = random.choice(backprop_nodes)"""
         
-        pulled_y, _ = cross_node.pull_output(self.lib.data.y)
+        target_cross = True
+
+        """sem1 = parent1(self.lib.data.X)
+        sem2 = parent2(self.lib.data.X)
+        undef_sem1 = np.isnan(sem1).any() or np.isinf(sem1).any()
+        undef_sem2 = np.isnan(sem2).any() or np.isinf(sem2).any()
+        if undef_sem1 and undef_sem2: target_cross = False
+        if self.diversifier is not None and not undef_sem1 and not undef_sem2:
+            dist = scipy_squareform( scipy_pdist( np.array([sem1, sem2]) ) )[0].max()
+            if dist > self.diversifier.mean_dist:
+                target_cross = False"""
+
+        pulled_y = None
+        if target_cross: pulled_y, _ = cross_node.pull_output(self.lib.data.y)
+        else: pulled_y, _ = cross_node.pull_output(parent1(self.lib.data.X) * 0.5 + parent2(self.lib.data.X) * 0.5)
         if (pulled_y == 0).all(): return self.fallback_crossover.cross(parent1, parent2)
 
         sat_pulled_y = not np.isnan(pulled_y).any() and not np.isinf(pulled_y).any()
@@ -370,5 +388,47 @@ class ApproxGeometricCrossover(gp.Crossover):
         offspring = gp.replace_subtree(child, cross_node, new_sub_stree)
         if offspring.get_max_depth() > 5:  # TODO: lookup based on max admissible depth.
             return self.fallback_crossover.cross(parent1, parent2)
+        
+        return offspring
+
+
+class CrossNPushCrossover(gp.Crossover):
+
+    def __init__(self, lib, max_depth):
+        self.lib = lib
+        self.main_crossover = gp.SubTreeCrossover(max_depth)
+    
+    def cross(self, parent1:backprop.SyntaxTree, parent2:backprop.SyntaxTree) -> backprop.SyntaxTree:
+        
+        child = self.main_crossover.cross(parent1, parent2)
+        nodesCollector = backprop.SyntaxTreeNodeCollector()
+        child.accept(nodesCollector)
+
+        backprop_nodes = []
+        for n in nodesCollector.nodes:
+            if backprop.SyntaxTree.is_invertible_path(n):
+                backprop_nodes.append(n)
+
+        if len(backprop_nodes) == 0:
+            return child
+        
+        cross_node = random.choice(backprop_nodes)
+
+        child.set_parent()        
+        y = child(self.lib.data.X)
+
+        pulled_y, _ = cross_node.pull_output(self.lib.data.y)
+        if (pulled_y == 0).all(): return child
+
+        sat_pulled_y = not np.isnan(pulled_y).any() and not np.isinf(pulled_y).any()
+        if not sat_pulled_y: return child
+
+        new_sub_stree = self.lib.query(pulled_y)
+        if new_sub_stree is None: return child
+
+        origin_child = child.clone()
+        offspring = gp.replace_subtree(child, cross_node, new_sub_stree)
+        if offspring.get_max_depth() > 5:  # TODO: lookup based on max admissible depth.
+            return origin_child
         
         return offspring

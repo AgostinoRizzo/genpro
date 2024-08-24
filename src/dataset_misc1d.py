@@ -169,9 +169,9 @@ class MagmanDatasetScaled(Dataset1d):
         #self.knowledge.add_sign(1, self.xl, -peak_x, '+')
         #self.knowledge.add_sign(1, -peak_x, peak_x, '-')
         #self.knowledge.add_sign(1, peak_x, self.xu, '+')
-        self.knowledge.add_sign(1, -INFTY, -peak_x, '+')
-        self.knowledge.add_sign(1, -peak_x, peak_x, '-')
-        self.knowledge.add_sign(1, peak_x, INFTY, '+')
+        self.knowledge.add_sign(1, -INFTY, -peak_x-0.1, '+')
+        #self.knowledge.add_sign(1, -peak_x, peak_x, '-')
+        self.knowledge.add_sign(1, peak_x+0.1, INFTY, '+')
 
         """# concavity/convexity
         #self.knowledge.add_sign(2, self.xl, -0.4, '+')
@@ -180,9 +180,9 @@ class MagmanDatasetScaled(Dataset1d):
         self.knowledge.add_sign(2, -INFTY, -infl_x, '+')
         self.knowledge.add_sign(2, -infl_x, 0, '-')
         self.knowledge.add_sign(2, 0, infl_x, '+')
-        self.knowledge.add_sign(2, infl_x, INFTY, '-')
+        self.knowledge.add_sign(2, infl_x, INFTY, '-')"""
 
-        """# symmetry
+        # symmetry
         self.knowledge.add_symm(0, 0, iseven=False)
         self.knowledge.add_symm(1, 0, iseven=True )
         self.knowledge.add_symm(2, 0, iseven=False)
