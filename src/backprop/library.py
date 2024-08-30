@@ -4,6 +4,8 @@ from backprop import backprop, gp
 
 
 class Library:
+    DIST_EPSILON = 1e-8
+    UNIQUENESS_MAX_DECIMALS = 8
 
     def __init__(self, size:int, max_depth:int, data):
         """
@@ -36,7 +38,7 @@ class Library:
                 t = t.simplify()  # TODO: ensure executed once.
                 st = t(data.X)
                 st_extra = t(X_extra)
-                st_key = tuple(st.tolist())
+                st_key = tuple(st.round(Library.UNIQUENESS_MAX_DECIMALS).tolist())
 
                 if np.isnan(st_extra).any() or np.isnan(st_extra).any() or \
                    np.isnan(st).any() or np.isinf(st).any() or (st == st[0]).all():
@@ -61,6 +63,9 @@ class Library:
 
         self.lib_data = np.stack(self.lib_data)
         self.sem_index = KDTree(self.lib_data)
+
+        from backprop.pareto_front import SymbolicFrequencies
+        self.symbfreq = SymbolicFrequencies()
     
     def query(self, sem) -> backprop.SyntaxTree:
         const_fit = sem.mean()
@@ -71,5 +76,36 @@ class Library:
         if d == np.infty: return None
         #if const_fit_d <= d: return backprop.ConstantSyntaxTree(const_fit)
 
-        return self.stree_index[idx].clone()
+        stree = self.stree_index[idx].clone()
+        self.symbfreq.add(stree)
+        return stree
     
+    def find_best_similarity(self):
+        min_d = None
+        min_i = None
+        min_idx = None
+
+        for i in range(self.lib_data.shape[0]):
+            d, idx = self.sem_index.query(self.lib_data[i], k=2)
+            d = d[1]
+            idx = idx[1]
+
+            if min_d is None or d < min_d:
+                stree_a = self.stree_index[i]
+                stree_b = self.stree_index[idx]
+                
+                optCollectorA = backprop.SyntaxTreeIneqOperatorCollector()
+                stree_a.accept(optCollectorA)
+                
+                optCollectorB = backprop.SyntaxTreeIneqOperatorCollector()
+                stree_b.accept(optCollectorB)
+
+                if optCollectorA.opts == optCollectorB.opts: continue
+
+                min_d = d
+                min_i = i
+                min_idx = idx
+
+        print(f"{self.stree_index[min_i]} => {self.stree_index[min_idx]} [{min_d}]")
+        return self.stree_index[min_i], self.stree_index[min_idx], min_d
+
