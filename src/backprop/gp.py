@@ -76,7 +76,7 @@ class FUEvaluation(Evaluation):
         #if self.feasible and not other.feasible: return True
         #if not self.feasible and other.feasible: return False
 
-        if self.data_r2 < 0.1: return False
+        if self.data_r2 == 0.0: return False
 
         if self.fea_ratio > other.fea_ratio: return True
         if self.fea_ratio < other.fea_ratio: return False
@@ -726,8 +726,9 @@ class GP:
         self.best_sem_solution = None
         self.best_sem_eval = None
 
-        from backprop.pareto_front import DataLengthFrontTracker
-        self.fea_front_tracker = DataLengthFrontTracker()
+        from backprop.pareto_front import DataLengthFrontTracker, MultiHeadFrontTracker
+        #self.fea_front_tracker = DataLengthFrontTracker()
+        self.fea_front_tracker = MultiHeadFrontTracker()
     
     # returns nbests best strees found + evaluation map.
     def evolve(self) -> tuple[list[backprop.SyntaxTree], dict]:
@@ -736,8 +737,8 @@ class GP:
         logging.info('Start from generation 0')
         self._evaluate_all()
         logging.info('After self.evaluate_all')
-        if self.diversifier is not None:
-            self.diversifier.diversify(self.population, self.eval_map)
+        #if self.diversifier is not None:
+        #    self.diversifier.diversify(self.population, self.eval_map)
         self.population = sort_population(self.population, self.eval_map)
         logging.info('After pop sort')
         self.stats.update(self.population, self.eval_map)
@@ -752,10 +753,10 @@ class GP:
             children = self._create_children()
             self._replace(children)
             #self._backprop(genidx)
-            if self.diversifier is not None:
-                self.diversifier.diversify(self.population, self.eval_map)
+            #if self.diversifier is not None:
+            #    self.diversifier.diversify(self.population, self.eval_map)
             
-            self.population = sort_population(self.population, self.eval_map)
+            #self.population = sort_population(self.population, self.eval_map)
             self.stats.update(self.population, self.eval_map)
             #logging.info(f"--- Generation {genidx} [Current best: {self.eval_map[id(self.population[0])]}," + \
             #             f"Global best: {self.bests_eval_map[id(self.bests[0])]}] ---")
@@ -820,6 +821,10 @@ class GP:
                             print(f"SAT child: {child}")"""
 
                     child = child.simplify()
+
+                    if self.diversifier is not None and random.random() < 0.8:
+                        child = self.diversifier.diversify(child)
+
                     child_eval = self.evaluator.evaluate(child)
                     
                     #if self.backpropagator.refmod_eval.data_r2 >= 1.0: # and self.genidx % 5 == 0:
@@ -854,7 +859,13 @@ class GP:
                 children[-1-i] = self.population[i]
         self.population = children  # generational replacement.
 
+        self.population = sort_population(self.population, self.eval_map)
+
         self.population = (self.fea_front_tracker.get_population() + self.population)[:self.popsize]
+        #if self.genidx % 2 == 0:
+        #self.population = (self.fea_front_tracker.front_tracker_a.get_population() + self.population)[:self.popsize]
+        #else:
+        #    self.population = (self.fea_front_tracker.front_tracker_b.get_population() + self.population)[:self.popsize]
         
         # update evaluation map based on new population.
         new_eval_map = {}

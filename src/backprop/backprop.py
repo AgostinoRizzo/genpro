@@ -241,6 +241,8 @@ class BinaryOperatorSyntaxTree(SyntaxTree):
                 return self.right
             if (is_right_const and self.right.val == 1):
                 return self.left
+            if self.left == self.right:
+                return UnaryOperatorSyntaxTree('square', self.left)
         
         if self.operator == '/':
             if self.left == self.right: return ConstantSyntaxTree(1.0)
@@ -1102,6 +1104,24 @@ class SyntaxTreeOperatorCollector(SyntaxTreeVisitor):
         self.opts = set()
     def visitUnaryOperator (self, stree:UnaryOperatorSyntaxTree):  self.opts.add(stree.operator)
     def visitBinaryOperator(self, stree:BinaryOperatorSyntaxTree): self.opts.add(stree.operator)
+
+class SyntaxTreeIneqOperatorCollector(SyntaxTreeVisitor):
+    def __init__(self):
+        self.opts = set()
+    
+    def visitUnaryOperator (self, stree:UnaryOperatorSyntaxTree):
+        self.opts.add(stree.operator)
+    
+    def visitBinaryOperator(self, stree:BinaryOperatorSyntaxTree):
+        if stree.operator in ['+', '-', '*'] and \
+           (type(stree.left) is ConstantSyntaxTree or type(stree.right) is ConstantSyntaxTree):
+            return
+        
+        if stree.operator == '/' and type(stree.right) is ConstantSyntaxTree:
+            return
+
+        if stree.operator == '-': self.opts.add('+')
+        else: self.opts.add(stree.operator)
 
 
 class SyntaxTreeNodeSelector(SyntaxTreeVisitor):
