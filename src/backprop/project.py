@@ -1,5 +1,8 @@
 import numpy as np
 from qpsolvers import solve_ls
+import random
+
+from backprop import backprop, gp
 
 
 def __add_sign_constrs(sign_constrs:dict, data, G, h):
@@ -145,3 +148,58 @@ def project(data, know):
 
     y_proj = solve_ls(R, s, G, h, A, b, solver="osqp")
     data.y = y_proj
+
+
+def project_semantic(sem, data, know):
+
+    # sign constraints.
+    for (l,u,sign,th) in know.sign[()]:
+        
+        if sign == '+':
+            sem[ (data.X >= l).flatten() & (data.X <= u).flatten() & (sem <= th) ] = th + 1e-8
+        else:
+            sem[ (data.X >= l).flatten() & (data.X <= u).flatten() & (sem >= th) ] = th - 1e-8
+    
+    return sem
+
+
+class Projector:
+    def __init__(self, lib, know):
+        self.lib = lib
+        self.know = know
+    
+    def project(self, stree):
+        y = stree(self.lib.data.X)
+        proj_sem = project_semantic(y, self.lib.data, self.know)
+        print(proj_sem)
+
+        nodesCollector = backprop.SyntaxTreeNodeCollector()
+        stree.accept(nodesCollector)
+
+        backprop_nodes = []
+        for n in nodesCollector.nodes:
+            if backprop.SyntaxTree.is_invertible_path(n):
+                backprop_nodes.append(n)
+
+        if len(backprop_nodes) == 0:
+            return stree
+        
+        cross_node = random.choice(backprop_nodes)
+
+        stree.set_parent()
+
+        pulled_y, _ = cross_node.pull_output(proj_sem)
+        if (pulled_y == 0).all(): return stree
+
+        sat_pulled_y = not np.isnan(pulled_y).any() and not np.isinf(pulled_y).any()
+        if not sat_pulled_y: return stree
+
+        new_sub_stree = self.lib.query(pulled_y)
+        if new_sub_stree is None: return stree
+
+        origin_stree = stree.clone()
+        new_stree = gp.replace_subtree(stree, cross_node, new_sub_stree)
+        if new_stree.get_max_depth() > 5:  # TODO: lookup based on max admissible depth.
+            return origin_stree
+        
+        return new_stree

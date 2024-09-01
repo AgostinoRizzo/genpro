@@ -8,6 +8,7 @@ from scipy.spatial.distance import squareform as scipy_squareform
 import dataset
 from backprop import backprop, lpbackprop, jump_backprop
 from backprop import bpropagator
+from backprop import project
 
 
 class Evaluation:
@@ -509,6 +510,8 @@ class RandomSolutionCreator(SolutionCreator):
         population = self.stree_generator.create_random(max_depth, popsize, check_duplicates=True, noconsts=noconsts)
         if self.trunks is not None:
             population = [p for p in population if not check_unsat_trunk(self.trunks, p)]
+            left = popsize - len(population)
+            if left > 0: population += self.create_population(left, max_depth, noconsts)
         return population
 
 
@@ -577,24 +580,25 @@ def generate_trunks(max_depth:int, nvars:int, knowledge):
            trunk in all_trunks or \
            check_unsat_trunk(satunsat_trunks, trunk): continue
         all_trunks.append(trunk)
-        print(f"Checking trunk: {trunk}")
+        #print(f"Checking trunk: {trunk}")
         sat, _ = lpbackprop.lpbackprop(knowledge, trunk, None)
         if sat:
             satunsat_trunks['sat'].append(trunk)
-            print(f"SAT  : {trunk}")
+            #print(f"SAT  : {trunk}")
         else:
             satunsat_trunks['unsat'].append(trunk)
-            print(f"UNSAT: {trunk}")
+            #print(f"UNSAT: {trunk}")
     return satunsat_trunks
 
 def check_unsat_trunk(trunks:map, stree) -> bool:
     for unsat_trunk in trunks['unsat']:
-        if type(stree) is backprop.BinaryOperatorSyntaxTree and stree.operator == '*' and \
+        """if type(stree) is backprop.BinaryOperatorSyntaxTree and stree.operator == '*' and \
             type(stree.left) is backprop.VariableSyntaxTree and type(stree.right) is backprop.ConstantSyntaxTree and \
                 type(unsat_trunk) is backprop.BinaryOperatorSyntaxTree and \
                 type(unsat_trunk.left) is backprop.UnknownSyntaxTree and type(unsat_trunk.right) is backprop.UnknownSyntaxTree:
-                    print()
-        if stree.match(unsat_trunk): return True
+                    print()"""
+        if stree.match(unsat_trunk):
+            return True
     return False
 
 
@@ -679,6 +683,7 @@ class GP:
                  mutator:Mutator,
                  mutrate:float,
                  diversifier:Diversifier=None,
+                 projector:project.Projector=None,
                  elitism:int=0,
                  backprop_intv:int=-1,  # < 0 disabled.
                  knowledge=None,
@@ -697,6 +702,7 @@ class GP:
         self.mutator = mutator
         self.mutrate = mutrate
         self.diversifier = diversifier
+        self.projector = projector
         self.elitism = elitism
         self.backprop_intv = backprop_intv
         self.last_backprop = -1  # last backprop generation idx.
@@ -826,6 +832,10 @@ class GP:
                         child = self.diversifier.diversify(child)
 
                     child_eval = self.evaluator.evaluate(child)
+
+                    #if self.projector is not None and child_eval.fea_ratio < 1.0:
+                    #    child = self.projector.project(child)
+                    #    child_eval = self.evaluator.evaluate(child)  # TODO: only when necessary.
                     
                     #if self.backpropagator.refmod_eval.data_r2 >= 1.0: # and self.genidx % 5 == 0:
                     
