@@ -195,23 +195,32 @@ class DataLengthFrontTracker:
             return a[1] - b[1]
         sorted_front = sorted(self.front[frontidx], key=cmp_to_key(fcmp))
 
+        # data stats.
+        all_data = np.array([data for _, data, length in sorted_front])
+        data_min = all_data.min()
+        data_max = all_data.max()
+        data_range = data_max - data_min
+
+        # length stats.
         all_lengths = np.array([length for _, data, length in sorted_front])
         length_min = all_lengths.min()
         length_max = all_lengths.max()
-        length_span = length_max - length_min
+        length_range = length_max - length_min
 
         crowdist[id(sorted_front[0 ][0])] = np.infty
         crowdist[id(sorted_front[-1][0])] = np.infty
         for i, (stree, data, length) in enumerate(sorted_front[1:len(sorted_front)-1]):
             i += 1
 
-            data_next = sorted_front[i+1][1]  # already normalized (R2 score).
+            data_next = sorted_front[i+1][1]
             data_prev = sorted_front[i-1][1]
+            data_next = (data_next - data_min) / data_range  # normalize data (R2 score) objective.
+            data_prev = (data_prev - data_min) / data_range
 
             length_next = sorted_front[i+1][2]
             length_prev = sorted_front[i-1][2]
-            length_next = (length_next - length_min) / length_span  # normalize length objective.
-            length_prev = (length_prev - length_min) / length_span
+            length_next = (length_next - length_min) / length_range  # normalize length objective.
+            length_prev = (length_prev - length_min) / length_range
 
             crowdist[id(stree)] = data_next - data_prev + length_next - length_prev
         

@@ -432,3 +432,69 @@ class CrossNPushCrossover(gp.Crossover):
             return origin_child
         
         return offspring
+
+
+class ConstrainedCrossNPushCrossover(CrossNPushCrossover):
+
+    def __init__(self, lib, max_depth, know):
+        super().__init__(lib, max_depth)
+        self.know = know
+    
+    def cross(self, parent1:backprop.SyntaxTree, parent2:backprop.SyntaxTree) -> backprop.SyntaxTree:
+        
+        child = self.main_crossover.cross(parent1, parent2)
+        nodesCollector = backprop.SyntaxTreeNodeCollector()
+        child.accept(nodesCollector)
+
+        backprop_nodes = []
+        for n in nodesCollector.nodes:
+            if backprop.SyntaxTree.is_invertible_path(n):
+                backprop_nodes.append(n)
+
+        if len(backprop_nodes) == 0:
+            return child
+        
+        cross_node = random.choice(backprop_nodes)
+
+        child.set_parent()        
+        y = child(self.lib.data.X)
+
+        pulled_y, _ = cross_node.pull_output(self.lib.data.y)
+        if (pulled_y == 0).all(): return child
+
+        sat_pulled_y = not np.isnan(pulled_y).any() and not np.isinf(pulled_y).any()
+        if not sat_pulled_y: return child
+
+        new_sub_strees = self.lib.multiquery(pulled_y)
+        if new_sub_strees is None: return child
+
+        origin_child = child.clone()
+        best_offspring = None
+        best_know_nv = None
+
+        for new_sub_sem, new_sub_stree in new_sub_strees:
+
+            offspring = gp.replace_subtree(child, cross_node, new_sub_stree).clone()
+            gp.replace_subtree(child, new_sub_stree, cross_node)
+
+            if offspring.get_max_depth() > 5:  # TODO: lookup based on max admissible depth.
+                continue
+            
+            know_nv = self.evaluate_offspring(offspring)
+            if best_offspring is None or know_nv < best_know_nv:
+                best_offspring = offspring
+                best_know_nv = know_nv
+        
+        if best_offspring is None:
+            return origin_child
+        
+        return best_offspring
+    
+    def evaluate_offspring(self, offspring) -> int:
+        know_derivs = self.know.get_derivs()
+        offspring_derivs = backprop.SyntaxTree.diff_all(offspring, know_derivs, include_zeroth=True)
+        
+        know_eval = self.know.evaluate(offspring_derivs, eval_deriv=False)
+        know_nv   =  know_eval['nv0'] + know_eval['nv1'] + know_eval['nv2']
+
+        return know_nv

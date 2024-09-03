@@ -632,41 +632,51 @@ class GPStats:
             self.bests_eval_map[id(b)] = merged_eval_map[id(b)]
 
     def __update_qualities(self, population, eval_map):
-        currAvg = 0.0
+        currBest  = 0.0
+        currAvg   = 0.0
+        currWorst = 1.0
+
         for stree in population:
-            currAvg += eval_map[id(stree)].get_value()
+            stree_eval = eval_map[id(stree)].get_value()
+            
+            currBest   = max(currBest, stree_eval)
+            currAvg   += stree_eval
+            currWorst  = min(currWorst, stree_eval)
+
         currAvg /= len(population)
 
-        self.qualities['currBest' ].append(eval_map[id(population[0])].get_value())    
+        self.qualities['currBest' ].append(currBest)    
         self.qualities['currAvg'  ].append(currAvg)
-        self.qualities['currWorst'].append(eval_map[id(population[-1])].get_value())
-        self.qualities['best'     ].append(self.bests_eval_map[id(self.bests[0])].get_value())
+        self.qualities['currWorst'].append(currWorst)
+        #self.qualities['best'     ].append(self.bests_eval_map[id(self.bests[0])].get_value())
 
 class FUGPStats(GPStats):
     def __init__(self, nbests:int=1):
         super().__init__(nbests)
-        self.pland = []
         self.buckets = {}
         self.fea_ratio = {'currBest': [], 'currAvg': [], 'currWorst': [], 'best': []}
     
     def update(self, population, eval_map):
         super().update(population, eval_map)
 
-        pland_ratio = 0.0
-        fea_ratio_avg = 0.0
+        fea_ratio_best  = 0.0
+        fea_ratio_avg   = 0.0
+        fea_ratio_worst = 1.0
+
         nconsts = eval_map[id(population[0])].know_n
         for stree in population:
-            stree_eval = eval_map[id(stree)]
-            if stree_eval.know_ls: pland_ratio += 1
-            fea_ratio_avg += stree_eval.fea_ratio
-        pland_ratio /= len(population)
+            fea_ratio = eval_map[id(stree)].fea_ratio
+
+            fea_ratio_best   = max(fea_ratio_best, fea_ratio)
+            fea_ratio_avg   += fea_ratio
+            fea_ratio_worst  = min(fea_ratio_worst, fea_ratio)
+        
         fea_ratio_avg /= len(population)
 
-        self.pland.append(pland_ratio)
-        self.fea_ratio['currBest' ].append(eval_map[id(population[0])].fea_ratio)    
+        self.fea_ratio['currBest' ].append(fea_ratio_best)    
         self.fea_ratio['currAvg'  ].append(fea_ratio_avg)
-        self.fea_ratio['currWorst'].append(eval_map[id(population[-1])].fea_ratio)
-        self.fea_ratio['best'     ].append(self.bests_eval_map[id(self.bests[0])].fea_ratio)
+        self.fea_ratio['currWorst'].append(fea_ratio_worst)
+        #self.fea_ratio['best'     ].append(self.bests_eval_map[id(self.bests[0])].fea_ratio)
 
 
 class GP:

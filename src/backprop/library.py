@@ -4,8 +4,8 @@ from backprop import backprop, gp
 
 
 class Library:
-    DIST_EPSILON = 1e-8
-    UNIQUENESS_MAX_DECIMALS = 8
+    DIST_EPSILON = 1e-1 #1e-8
+    UNIQUENESS_MAX_DECIMALS = 1 #8
 
     def __init__(self, size:int, max_depth:int, data):
         """
@@ -79,6 +79,11 @@ class Library:
         stree = self.stree_index[idx].clone()
         self.symbfreq.add(stree)
         return stree
+    
+    def multiquery(self, sem, k=8) -> list[tuple[np.array, backprop.SyntaxTree]]:
+        d, idx = self.sem_index.query(sem, k=k)
+        if d[0] == np.infty: return None  # nearest firts.
+        return [ (self.lib_data[__idx], self.stree_index[__idx].clone()) for __idx in idx ]
     
     def find_best_similarity(self):
         min_d = None
