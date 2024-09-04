@@ -80,7 +80,7 @@ class Library:
         self.symbfreq.add(stree)
         return stree
     
-    def multiquery(self, sem, k=8) -> list[tuple[np.array, backprop.SyntaxTree]]:
+    def multiquery(self, sem, k=4) -> list[tuple[np.array, backprop.SyntaxTree]]:
         d, idx = self.sem_index.query(sem, k=k)
         if d[0] == np.infty: return None  # nearest firts.
         return [ (self.lib_data[__idx], self.stree_index[__idx].clone()) for __idx in idx ]

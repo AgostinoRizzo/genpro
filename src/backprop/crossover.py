@@ -436,9 +436,9 @@ class CrossNPushCrossover(gp.Crossover):
 
 class ConstrainedCrossNPushCrossover(CrossNPushCrossover):
 
-    def __init__(self, lib, max_depth, know):
+    def __init__(self, lib, max_depth, know_evaluator):
         super().__init__(lib, max_depth)
-        self.know = know
+        self.know_evaluator = know_evaluator
     
     def cross(self, parent1:backprop.SyntaxTree, parent2:backprop.SyntaxTree) -> backprop.SyntaxTree:
         
@@ -491,10 +491,6 @@ class ConstrainedCrossNPushCrossover(CrossNPushCrossover):
         return best_offspring
     
     def evaluate_offspring(self, offspring) -> int:
-        know_derivs = self.know.get_derivs()
-        offspring_derivs = backprop.SyntaxTree.diff_all(offspring, know_derivs, include_zeroth=True)
-        
-        know_eval = self.know.evaluate(offspring_derivs, eval_deriv=False)
+        know_eval = self.know_evaluator.evaluate(offspring)
         know_nv   =  know_eval['nv0'] + know_eval['nv1'] + know_eval['nv2']
-
         return know_nv
