@@ -2,6 +2,17 @@ import numpy as np
 from backprop import gp, backprop
 
 
+class FastR2Evaluator(gp.Evaluator):
+    def __init__(self, dataset):
+        self.dataset = dataset
+    
+    def evaluate(self, stree:backprop.SyntaxTree):
+        ssr   = np.sum( (stree.cache.y - self.dataset.y) ** 2 )
+        r2    = max( 0., 1 - ((ssr / self.dataset.sst) if self.dataset.sst > 0. else 1.) )
+        return r2
+        #return RealEvaluation(r2, minimize=False)
+
+
 class FastKnowledgeEvaluator(gp.Evaluator):
     def __init__(self, know, npoints:int=100):
         self.know = know
@@ -15,7 +26,8 @@ class FastKnowledgeEvaluator(gp.Evaluator):
         nv  = {0: 0, 1: 0, 2: 0}
         ssr = {0: 0, 1: 0, 2: 0}
 
-        meshspace_y = {(): stree(self.meshspace), (0,): (stree(self.meshspace + self.know.numlims.STEPSIZE) - stree(self.meshspace)) / self.know.numlims.STEPSIZE}  # TODO: avoid recalling 'stree(self.meshspace)'.
+        y0 = stree(self.meshspace)
+        meshspace_y = {(): y0, (0,): (stree(self.meshspace + self.know.numlims.STEPSIZE) - y0) / self.know.numlims.STEPSIZE}
 
         # positivity constraints.
         for deriv, constrs in self.know.sign.items():
@@ -27,10 +39,10 @@ class FastKnowledgeEvaluator(gp.Evaluator):
 
                 y = meshspace_y[deriv][meshspace_idx]
 
-                sr = ( np.minimum(0, y - th) if sign == '+' else np.maximum(0, y - th) ) ** 2
-                nv [derivdeg] += (( y < th ) if sign == '+' else ( y > th )).sum()
-                nv [derivdeg] += np.sum(np.isnan(sr))
-                ssr[derivdeg] += np.sum(sr)
+                #sr = ( np.minimum(0, y - th) if sign == '+' else np.maximum(0, y - th) ) ** 2
+                nv [derivdeg] += np.sum( (( y < th ) if sign == '+' else ( y > th )) | np.isnan(y) )
+                #nv [derivdeg] += np.sum(np.isnan(sr))
+                #ssr[derivdeg] += np.sum(sr)
         
         return {'mse0': (ssr[0]/n[0]) if n[0] > 0. else 0.,
                 'mse1': (ssr[1]/n[1]) if n[1] > 0. else 0.,
@@ -57,7 +69,7 @@ class FastKnowledgeEvaluator(gp.Evaluator):
 
 class FastFUEvaluator(gp.Evaluator):
     def __init__(self, dataset, knowledge):
-        self.data = dataset
+        self.data_evaluator = FastR2Evaluator(dataset)
         self.know_evaluator = FastKnowledgeEvaluator(knowledge)
 
     def evaluate(self, stree:backprop.SyntaxTree, eval_deriv=False):
@@ -70,9 +82,9 @@ class FastFUEvaluator(gp.Evaluator):
         know_sat  = stree.sat
         if np.isnan(know_mse): know_mse = 1e12
 
-        data_r2 = max(0., self.data.evaluate(stree)['r2']) # TODO: put this into data.evaluate(...).
+        data_r2 = self.data_evaluator.evaluate(stree)
 
-        return gp.FUEvaluation(know_mse, know_nv, know_n, know_ls, know_sat, data_r2, stree.get_nnodes())
+        return gp.FUEvaluation(know_mse, know_nv, know_n, know_ls, know_sat, data_r2, stree.cache.nnodes)
     
     def create_stats(self, nbests:int=1):
         return gp.FUGPStats(nbests)

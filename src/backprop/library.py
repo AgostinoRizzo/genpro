@@ -68,8 +68,8 @@ class Library:
         self.symbfreq = SymbolicFrequencies()
     
     def query(self, sem) -> backprop.SyntaxTree:
-        const_fit = sem.mean()
-        const_fit_d = np.linalg.norm(const_fit - sem)
+        #const_fit = sem.mean()
+        #const_fit_d = np.linalg.norm(const_fit - sem)
         
         d, idx = self.sem_index.query(sem)
         
@@ -77,7 +77,7 @@ class Library:
         #if const_fit_d <= d: return backprop.ConstantSyntaxTree(const_fit)
 
         stree = self.stree_index[idx].clone()
-        self.symbfreq.add(stree)
+        #self.symbfreq.add(stree)
         return stree
     
     def multiquery(self, sem, k=4) -> list[tuple[np.array, backprop.SyntaxTree]]:

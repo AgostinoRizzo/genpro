@@ -401,21 +401,14 @@ class CrossNPushCrossover(gp.Crossover):
     def cross(self, parent1:backprop.SyntaxTree, parent2:backprop.SyntaxTree) -> backprop.SyntaxTree:
         
         child = self.main_crossover.cross(parent1, parent2)
-        nodesCollector = backprop.SyntaxTreeNodeCollector()
-        child.accept(nodesCollector)
-
-        backprop_nodes = []
-        for n in nodesCollector.nodes:
-            if backprop.SyntaxTree.is_invertible_path(n):
-                backprop_nodes.append(n)
-
+        
+        backprop_nodes = child.cache.backprop_nodes
         if len(backprop_nodes) == 0:
             return child
-        
         cross_node = random.choice(backprop_nodes)
 
-        child.set_parent()        
-        y = child(self.lib.data.X)
+        child.set_parent()
+        y = child.cache.y  # needed for 'pull_output'.
 
         pulled_y, _ = cross_node.pull_output(self.lib.data.y)
         if (pulled_y == 0).all(): return child
@@ -443,21 +436,15 @@ class ConstrainedCrossNPushCrossover(CrossNPushCrossover):
     def cross(self, parent1:backprop.SyntaxTree, parent2:backprop.SyntaxTree) -> backprop.SyntaxTree:
         
         child = self.main_crossover.cross(parent1, parent2)
-        nodesCollector = backprop.SyntaxTreeNodeCollector()
-        child.accept(nodesCollector)
-
-        backprop_nodes = []
-        for n in nodesCollector.nodes:
-            if backprop.SyntaxTree.is_invertible_path(n):
-                backprop_nodes.append(n)
-
+        
+        backprop_nodes = child.cache.backprop_nodes
         if len(backprop_nodes) == 0:
             return child
         
         cross_node = random.choice(backprop_nodes)
 
-        child.set_parent()        
-        y = child(self.lib.data.X)
+        child.set_parent()
+        y = child.cache.y  # needed for 'pull_output'.
 
         pulled_y, _ = cross_node.pull_output(self.lib.data.y)
         if (pulled_y == 0).all(): return child
@@ -467,26 +454,27 @@ class ConstrainedCrossNPushCrossover(CrossNPushCrossover):
 
         new_sub_strees = self.lib.multiquery(pulled_y)
         if new_sub_strees is None: return child
-
-        origin_child = child.clone()
+        
         best_offspring = None
         best_know_nv = None
 
         for new_sub_sem, new_sub_stree in new_sub_strees:
 
-            offspring = gp.replace_subtree(child, cross_node, new_sub_stree).clone()
-            gp.replace_subtree(child, new_sub_stree, cross_node)
+            child = gp.replace_subtree(child, cross_node, new_sub_stree)
 
-            if offspring.get_max_depth() > 5:  # TODO: lookup based on max admissible depth.
+            if child.get_max_depth() > 5:  # TODO: lookup based on max admissible depth.
+                gp.replace_subtree(child, new_sub_stree, cross_node)
                 continue
             
-            know_nv = self.evaluate_offspring(offspring)
+            know_nv = self.evaluate_offspring(child)
             if best_offspring is None or know_nv < best_know_nv:
-                best_offspring = offspring
+                best_offspring = child.clone()
                 best_know_nv = know_nv
+            
+            gp.replace_subtree(child, new_sub_stree, cross_node)
         
         if best_offspring is None:
-            return origin_child
+            return child
         
         return best_offspring
     

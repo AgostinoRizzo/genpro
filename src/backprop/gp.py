@@ -10,6 +10,9 @@ from backprop import backprop, lpbackprop, jump_backprop
 from backprop import bpropagator
 from backprop import project
 
+from symbols import syntax_tree
+import profiling
+
 
 class Evaluation:
     def __init__(self, minimize:bool=True):
@@ -251,37 +254,23 @@ class SubTreeCrossover:
         self.max_depth = max_depth
     
     def cross(self, parent1:backprop.SyntaxTree, parent2:backprop.SyntaxTree) -> backprop.SyntaxTree:
-        nnodes1 = parent1.get_nnodes()
-        
         child = parent1.clone()
         child.set_parent()
-        nodeSelector = backprop.SyntaxTreeNodeSelector(random.randrange(nnodes1))
-        child.accept(nodeSelector)
-        cross_point1 = nodeSelector.node
-        child.set_parent()
-        if cross_point1 is None:
-            parent1.get_nnodes()
+
+        cross_point1 = random.choice(child.cache.nodes)
         cross_point1_depth = cross_point1.get_depth()
         max_nesting_depth = self.max_depth - cross_point1_depth
         
-        nodesCollector = backprop.SyntaxTreeNodeCollector()
-        parent2.accept(nodesCollector)
         allowedNodes = []
-        for node in nodesCollector.nodes:
+        for node in parent2.cache.nodes:
             if node.get_max_depth() <= max_nesting_depth: allowedNodes.append(node)
         
         if len(allowedNodes) == 0: return child
         cross_point2 = random.choice(allowedNodes)
         
-        #print(f"From {child}")
-        #print(f"\tReplacing {cross_point1}")
-        #print(f"\tWith {cross_point2}")
-        got = replace_subtree(child, cross_point1, cross_point2.clone())
-        got.clear_cache()
-        #print(f"Got {got}")
-        #if got.get_max_depth() > self.max_depth:
-        #    raise RuntimeError(f"Max depth: {got.get_max_depth()}, {max_nesting_depth}, {cross_point1.get_depth()}, {cross_point2.get_depth()}")
-        return got
+        child = replace_subtree(child, cross_point1, cross_point2.clone())
+        child.cache.clear()
+        return child
 
 class SubTreeImprovementCrossover:
     def __init__(self, max_depth:int, S_train):
@@ -700,6 +689,7 @@ class GP:
                  trunks=None,
                  nbests:int=1,
                  rseed=None):
+        
         self.population = creator.create_population(popsize, max_depth)
         self.eval_map = {}
         self.popsize = popsize
@@ -761,25 +751,31 @@ class GP:
         logging.info('After stats update')
 
         for self.genidx in range(1, self.ngen):
-            print(f"Generation {self.genidx} {self.eval_map[id(self.population[0])]}")
-            #if self.genidx == 60:
-            #    self._evaluate_all()
-            #    self._replace(self.population)
-            #    self.population = sort_population(self.population, self.eval_map)
+            print(f"\nGeneration {self.genidx} {self.eval_map[id(self.population[0])]}")
+
+            logging.info('Before _create_children')
             children = self._create_children()
+            logging.info('After _create_children')
+            logging.info('Before _replace')
             self._replace(children)
+            logging.info('After _replace')
+
             #self._backprop(genidx)
             #if self.diversifier is not None:
             #    self.diversifier.diversify(self.population, self.eval_map)
             
             #self.population = sort_population(self.population, self.eval_map)
+            
+            logging.info('Before stats.update')
             self.stats.update(self.population, self.eval_map)
+            logging.info('After stats.update')
+            
             #logging.info(f"--- Generation {genidx} [Current best: {self.eval_map[id(self.population[0])]}," + \
             #             f"Global best: {self.bests_eval_map[id(self.bests[0])]}] ---")
         
-        print()
+        """print()
         for p in self.population:
-            print(p, self.eval_map[id(p)].fea_ratio, self.eval_map[id(p)].data_r2, self.eval_map[id(p)].know_mse)
+            print(p, self.eval_map[id(p)].fea_ratio, self.eval_map[id(p)].data_r2, self.eval_map[id(p)].know_mse)"""
         return self.stats.bests, self.stats.bests_eval_map
         #return [self.backpropagator.refmod], {id(self.backpropagator.refmod): self.backpropagator.refmod_eval}
     
@@ -812,7 +808,13 @@ class GP:
         while len(children) < self.popsize:
             for _ in range(self.popsize - len(children)):
                 parents = self.selector.select(self.population, self.eval_map, 2)
+
+                logging.info('Before crossover.cross')
+                profiling.enable()
                 child = self.crossover.cross(parents[0], parents[1])  # 100% crossover rate (child must be a new object!)
+                profiling.disable()
+                logging.info('After crossover.cross')
+
                 if random.random() < self.mutrate:
                     child = self.mutator.mutate(child)
                 if child.validate() and (self.trunks is None or not check_unsat_trunk(self.trunks, child)): #TODO: and child not in children:
@@ -836,12 +838,16 @@ class GP:
                         else:
                             print(f"SAT child: {child}")"""
 
+                    logging.info('Before child.simplify')
                     child = child.simplify()
+                    logging.info('After child.simplify')
 
                     if self.diversifier is not None and random.random() < 0.8:
                         child = self.diversifier.diversify(child)
 
+                    logging.info('Before evaluator.evaluate')
                     child_eval = self.evaluator.evaluate(child)
+                    logging.info('After evaluator.evaluate')
 
                     #if self.projector is not None and child_eval.fea_ratio < 1.0:
                     #    child = self.projector.project(child)

@@ -6,6 +6,7 @@ import re
 
 import numlims
 from backprop import utils
+from symbols import syntax_tree
 
 
 class PropositionalConstraint:
@@ -114,6 +115,8 @@ class SyntaxTree:
         self.sat_y = True
         self.match_r2 = 1.0
         self.best_match_r2 = 1.0
+
+        self.cache = syntax_tree.SyntaxTreeInfo(self)
     
     def clone(self): return None
     def compute_output(self, x): return None
