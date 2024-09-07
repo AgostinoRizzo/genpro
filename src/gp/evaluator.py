@@ -7,7 +7,7 @@ class FastR2Evaluator(gp.Evaluator):
         self.dataset = dataset
     
     def evaluate(self, stree:backprop.SyntaxTree):
-        ssr   = np.sum( (stree.cache.y - self.dataset.y) ** 2 )
+        ssr   = np.sum( (stree(self.dataset.X) - self.dataset.y) ** 2 )
         r2    = max( 0., 1 - ((ssr / self.dataset.sst) if self.dataset.sst > 0. else 1.) )
         return r2
         #return RealEvaluation(r2, minimize=False)
@@ -26,12 +26,13 @@ class FastKnowledgeEvaluator(gp.Evaluator):
         nv  = {0: 0, 1: 0, 2: 0}
         ssr = {0: 0, 1: 0, 2: 0}
 
-        y0 = stree(self.meshspace)
-        meshspace_y = {(): y0, (0,): (stree(self.meshspace + self.know.numlims.STEPSIZE) - y0) / self.know.numlims.STEPSIZE}
+        y0 = stree[self.meshspace]
+        meshspace_y = {(): y0} #, (0,): (stree(self.meshspace + self.know.numlims.STEPSIZE) - y0) / self.know.numlims.STEPSIZE}
 
         # positivity constraints.
         for deriv, constrs in self.know.sign.items():
             derivdeg = len(deriv)
+            if derivdeg > 0: continue
 
             for (l,u,sign,th) in constrs:
                 meshspace_idx = self.meshspace_map[(deriv, l, u, sign, th)]

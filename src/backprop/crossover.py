@@ -408,7 +408,7 @@ class CrossNPushCrossover(gp.Crossover):
         cross_node = random.choice(backprop_nodes)
 
         child.set_parent()
-        y = child.cache.y  # needed for 'pull_output'.
+        y = child(self.lib.data.X)  # needed for 'pull_output'.
 
         pulled_y, _ = cross_node.pull_output(self.lib.data.y)
         if (pulled_y == 0).all(): return child
@@ -424,6 +424,9 @@ class CrossNPushCrossover(gp.Crossover):
         if offspring.get_max_depth() > 5:  # TODO: lookup based on max admissible depth.
             return origin_child
         
+        offspring.set_parent()
+        if new_sub_stree.has_parent():
+            new_sub_stree.parent.invalidate_output()
         return offspring
 
 
@@ -444,7 +447,7 @@ class ConstrainedCrossNPushCrossover(CrossNPushCrossover):
         cross_node = random.choice(backprop_nodes)
 
         child.set_parent()
-        y = child.cache.y  # needed for 'pull_output'.
+        y = child(self.lib.data.X)  # needed for 'pull_output'.
 
         pulled_y, _ = cross_node.pull_output(self.lib.data.y)
         if (pulled_y == 0).all(): return child
@@ -454,7 +457,7 @@ class ConstrainedCrossNPushCrossover(CrossNPushCrossover):
 
         new_sub_strees = self.lib.multiquery(pulled_y)
         if new_sub_strees is None: return child
-        
+
         best_offspring = None
         best_know_nv = None
 
@@ -466,12 +469,21 @@ class ConstrainedCrossNPushCrossover(CrossNPushCrossover):
                 gp.replace_subtree(child, new_sub_stree, cross_node)
                 continue
             
+            child.set_parent()
+            if new_sub_stree.has_parent():
+                new_sub_stree.parent.stash_output()
+            
             know_nv = self.evaluate_offspring(child)
+
             if best_offspring is None or know_nv < best_know_nv:
                 best_offspring = child.clone()
                 best_know_nv = know_nv
             
+            if new_sub_stree.has_parent():
+                new_sub_stree.parent.backup_output()
+            
             gp.replace_subtree(child, new_sub_stree, cross_node)
+            child.set_parent()
         
         if best_offspring is None:
             return child

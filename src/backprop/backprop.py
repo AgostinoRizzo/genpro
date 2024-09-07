@@ -107,7 +107,10 @@ class SyntaxTree:
 
     def __init__(self):
         self.parent = None
-        self.output = None
+        self.output = None  # TODO: change name to y_data.
+        self.y_know = None
+        self.output_stash = None
+        self.y_know_stash = None
         #self.cache = [None] * 2
         self.parents = None
 
@@ -118,9 +121,41 @@ class SyntaxTree:
 
         self.cache = syntax_tree.SyntaxTreeInfo(self)
     
+    def __call__(self, x): pass
+    def __getitem__(self, x): pass
+
+    def invalidate_output(self):
+        self.output = None
+        self.y_know = None
+        if self.parent is not None:
+            self.parent.invalidate_output()
+    
+    def clear_output(self):
+        self.output = None
+        self.y_know = None
+    
+    def stash_output(self):
+        self.output_stash = self.output
+        self.y_know_stash = self.y_know
+        self.output = None
+        self.y_know = None
+        if self.parent is not None:
+            self.parent.stash_output()
+    
+    def backup_output(self):
+        self.output = self.output_stash
+        self.y_know = self.y_know_stash
+        if self.parent is not None:
+            self.parent.backup_output()
+    
+    def copy_output_from(self, other):
+        self.output = other.output
+        self.y_know = other.y_know
+
+    def has_parent(self) -> bool:
+        return self.parent is not None
+
     def clone(self): return None
-    def compute_output(self, x): return None
-    def __call__(self, x): return self.compute_output(x)
     def set_parent(self, parent=None): self.parent = parent
     def validate(self) -> bool: return True
     def simplify(self): return self
@@ -204,15 +239,24 @@ class BinaryOperatorSyntaxTree(SyntaxTree):
         self.right = right
     
     def clone(self):
-        return BinaryOperatorSyntaxTree(self.operator, self.left.clone(), self.right.clone())
+        c = BinaryOperatorSyntaxTree(self.operator, self.left.clone(), self.right.clone())
+        c.copy_output_from(self)
+        return c
     
-    def compute_output(self, x):
-        self.output  = None
-        left_output  = self.left.compute_output(x)
-        right_output = self.right.compute_output(x)
-        if left_output is None or right_output is None: return None
-        self.output = self.__operate(left_output, right_output)
+    def __call__(self, x):
+        if self.output is None:
+            self.output = self.__operate(self.left(x), self.right(x))
         return self.output
+    
+    def __getitem__(self, x):
+        if self.y_know is None:
+            self.y_know = self.__operate(self.left[x], self.right[x])
+        return self.y_know
+    
+    def clear_output(self):
+        super().clear_output()
+        self.left.clear_output()
+        self.right.clear_output()
     
     def set_parent(self, parent=None):
         super().set_parent(parent)
@@ -229,6 +273,7 @@ class BinaryOperatorSyntaxTree(SyntaxTree):
         return self.left.validate() and self.right.validate()
 
     def simplify(self):
+        return self
         self.left = self.left.simplify()
         self.right = self.right.simplify()
         is_left_const  = type(self.left)  is ConstantSyntaxTree
@@ -535,14 +580,23 @@ class UnaryOperatorSyntaxTree(SyntaxTree):
         self.inner = inner
     
     def clone(self):
-        return UnaryOperatorSyntaxTree(self.operator, self.inner.clone())
+        c = UnaryOperatorSyntaxTree(self.operator, self.inner.clone())
+        c.copy_output_from(self)
+        return c
     
-    def compute_output(self, x):
-        self.output  = None
-        inner_output  = self.inner.compute_output(x)
-        if inner_output is None: return None
-        self.output = self.__operate(inner_output)
+    def __call__(self, x):
+        if self.output is None:
+            self.output = self.__operate(self.inner(x))
         return self.output
+    
+    def __getitem__(self, x):
+        if self.y_know is None:
+            self.y_know = self.__operate(self.inner[x])
+        return self.y_know
+    
+    def clear_output(self):
+        super().clear_output()
+        self.inner.clear_output()
     
     def set_parent(self, parent=None):
         super().set_parent(parent)
@@ -552,6 +606,7 @@ class UnaryOperatorSyntaxTree(SyntaxTree):
         return self.inner.validate()
 
     def simplify(self):
+        return self
         self.inner = self.inner.simplify()
 
         if type(self.inner) is ConstantSyntaxTree:
@@ -728,11 +783,19 @@ class ConstantSyntaxTree(SyntaxTree):
         self.val = val
     
     def clone(self):
-        return ConstantSyntaxTree(self.val)
+        c = ConstantSyntaxTree(self.val)
+        c.copy_output_from(self)
+        return c
     
-    def compute_output(self, x):
-        self.output = np.full(x.shape[0], self.val)
+    def __call__(self, x):
+        if self.output is None:
+            self.output = np.full(x.shape[0], self.val)
         return self.output
+    
+    def __getitem__(self, x):
+        if self.y_know is None:
+            self.y_know = np.full(x.shape[0], self.val)
+        return self.y_know
     
     def __str__(self) -> str:
         return "%.2f" % self.val
@@ -783,11 +846,19 @@ class VariableSyntaxTree(SyntaxTree):
         self.idx = idx
     
     def clone(self):
-        return VariableSyntaxTree(self.idx)
+        c = VariableSyntaxTree(self.idx)
+        c.copy_output_from(self)
+        return c
     
-    def compute_output(self, x):
-        self.output = x[:,self.idx] if x.ndim == 2 else x
+    def __call__(self, x):
+        if self.output is None:
+            self.output = x[:,self.idx] if x.ndim == 2 else x
         return self.output
+    
+    def __getitem__(self, x):
+        if self.y_know is None:
+            self.y_know = x[:,self.idx] if x.ndim == 2 else x
+        return self.y_know
     
     def __str__(self) -> str:
         return f"x{self.idx}"
@@ -827,11 +898,19 @@ class FunctionSyntaxTree(SyntaxTree):
         self.f = f
     
     def clone(self):
-        return FunctionSyntaxTree(self.f.clone())
+        c = FunctionSyntaxTree(self.f.clone())
+        c.copy_output_from(self)
+        return c
     
-    def compute_output(self, x):
-        self.output = self.f(x)
+    def __call__(self, x):
+        if self.output is None:
+            self.output = self.f(x)
         return self.output
+    
+    def __getitem__(self, x):
+        if self.y_know is None:
+            self.y_know = self.f(x)
+        return self.y_know
     
     def __str__(self) -> str:
         return 'f(X)'
@@ -868,11 +947,17 @@ class SemanticSyntaxTree(SyntaxTree):
         self.sem = sem
     
     def clone(self):
-        return SemanticSyntaxTree(self.sem)
+        c = SemanticSyntaxTree(self.sem)
+        c.copy_output_from(self)
+        return c
     
-    def compute_output(self, x):
-        self.output = self.sem
+    def __call__(self, x):
+        if self.output is None:
+            self.output = self.sem
         return self.output
+    
+    def __getitem__(self, x):
+        raise NotImplementedError()
     
     def __str__(self) -> str:
         return f"{self.sem}"#'SST(X)'
@@ -918,15 +1003,23 @@ class UnknownSyntaxTree(SyntaxTree):
         self.knowledge = None
     
     def clone(self):
-        return UnknownSyntaxTree(self.name, self.deriv, self.nvars, model=self.model)  # TODO: clone model
+        c = UnknownSyntaxTree(self.name, self.deriv, self.nvars, model=self.model)  # TODO: clone model
+        c.copy_output_from(self)
+        return c
     
-    def compute_output(self, x):
-        self.output = None
-        if self.model is None:
-            raise RuntimeError('None unknown model.')
-            #return None
-        self.output = self.model(x)
+    def __call__(self, x):
+        if self.output is None:
+            if self.model is None:
+                raise RuntimeError('None unknown model.')
+            self.output = self.model(x)
         return self.output
+    
+    def __getitem__(self, x):
+        if self.y_know is None:
+            if self.model is None:
+                raise RuntimeError('None unknown model.')
+            self.y_know = self.model(x)
+        return self.y_know
     
     def __str__(self) -> str:
         xs = ''

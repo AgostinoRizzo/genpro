@@ -1,6 +1,56 @@
 import numpy as np
 from scipy.spatial import KDTree
+from multiprocessing import Process, Lock, Condition
 from backprop import backprop, gp
+
+
+class SyntaxTreeCloneProvider:
+    def __init__(self, stree_index:list):
+        self.stree_index = stree_index
+    
+    def get_stree(self, idx:int):
+        return self.stree_index[idx]
+
+
+class MultiprocSyntaxTreeCloneProvider:
+    def __init__(self, stree_index:list):
+        self.stree_index = stree_index
+        self.stree_clone = [None] * len(stree_index)
+        
+        self.to_clone_buff = []
+        self.lock = Lock()
+        self.to_clone_cond = Condition(lock=self.lock)
+        self.cloned_cond = Condition(lock=self.lock)
+        self.pr = Process(target=self.__run, daemon=True)
+        self.pr.start()
+    
+    def get_stree(self, idx:int):
+        with self.lock:
+            if self.stree_clone[idx] is None:
+                self.to_clone_buff.append(idx)
+                self.to_clone_cond.notify()
+            while self.stree_clone[idx] is None:
+                self.cloned_cond.wait()
+            
+            stree = self.stree_clone[idx]
+            self.stree_clone[idx] = None
+            
+            return stree
+    
+    def __run(self):
+        with self.lock:
+            #for i in range(len(self.stree_clone)):
+            #    self.stree_clone[i] = self.stree_index[i].clone()
+
+            while True:
+                while len(self.to_clone_buff) == 0:
+                    self.to_clone_cond.wait()
+                
+                for idx in self.to_clone_buff:
+                    self.stree_clone[idx] = self.stree_index[idx].clone()
+                
+                self.to_clone_buff.clear()
+                self.cloned_cond.notify()
 
 
 class Library:
@@ -64,6 +114,8 @@ class Library:
         self.lib_data = np.stack(self.lib_data)
         self.sem_index = KDTree(self.lib_data)
 
+        self.stree_provider = SyntaxTreeCloneProvider(self.stree_index)
+
         from backprop.pareto_front import SymbolicFrequencies
         self.symbfreq = SymbolicFrequencies()
     
@@ -76,14 +128,14 @@ class Library:
         if d == np.infty: return None
         #if const_fit_d <= d: return backprop.ConstantSyntaxTree(const_fit)
 
-        stree = self.stree_index[idx].clone()
+        stree = self.stree_provider.get_stree(idx)
         #self.symbfreq.add(stree)
         return stree
     
     def multiquery(self, sem, k=4) -> list[tuple[np.array, backprop.SyntaxTree]]:
         d, idx = self.sem_index.query(sem, k=k)
         if d[0] == np.infty: return None  # nearest firts.
-        return [ (self.lib_data[__idx], self.stree_index[__idx].clone()) for __idx in idx ]
+        return [ (self.lib_data[__idx], self.stree_provider.get_stree(__idx)) for __idx in idx ]
     
     def find_best_similarity(self):
         min_d = None

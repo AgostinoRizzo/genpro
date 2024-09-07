@@ -266,10 +266,13 @@ class SubTreeCrossover:
             if node.get_max_depth() <= max_nesting_depth: allowedNodes.append(node)
         
         if len(allowedNodes) == 0: return child
-        cross_point2 = random.choice(allowedNodes)
+        cross_point2 = random.choice(allowedNodes).clone()
         
-        child = replace_subtree(child, cross_point1, cross_point2.clone())
+        child = replace_subtree(child, cross_point1, cross_point2)
         child.cache.clear()
+        child.set_parent()
+        if cross_point2.has_parent():
+            cross_point2.parent.invalidate_output()
         return child
 
 class SubTreeImprovementCrossover:
@@ -443,6 +446,10 @@ class SubtreeReplacerMutator(Mutator):
         if new_sub_stree_depth >= 0:
             new_sub_stree = self.solutionCreator.create_population(1, new_sub_stree_depth)[0]
             stree = replace_subtree(stree, sub_stree, new_sub_stree)
+
+            stree.set_parent()
+            if new_sub_stree.has_parent():
+                new_sub_stree.parent.invalidate_output()
         
         return stree.simplify()
     
@@ -455,15 +462,23 @@ class FunctionSymbolMutator(Mutator):
         nodeSelector = backprop.SyntaxTreeNodeSelector(random.randrange(nnodes))
         stree.accept(nodeSelector)
         sub_stree = nodeSelector.node
+
+        stree.set_parent()
   
         # change a single function symbol.
 
         if   type(sub_stree) is backprop.BinaryOperatorSyntaxTree:
             sub_stree.operator = random.choice(
                 [opt for opt in backprop.BinaryOperatorSyntaxTree.OPERATORS if opt != sub_stree.operator])
+            
+            sub_stree.invalidate_output()
+
         elif type(sub_stree) is backprop.UnaryOperatorSyntaxTree:
             #sub_stree.operator = random.choice(
             #    [opt for opt in backprop.UnaryOperatorSyntaxTree.OPERATORS if opt != sub_stree.operator])
+
+            #sub_stree.invalidate_output()
+
             pass
 
         return stree
@@ -476,10 +491,13 @@ class NumericParameterMutator(Mutator):
         constsCollector = backprop.ConstantSyntaxTreeCollector()
         stree.accept(constsCollector)
 
+        stree.set_parent()
+
         if len(constsCollector.constants) == 0: return stree
         constsToMutate = constsCollector.constants if self.all else [random.choice(constsCollector.constants)]
         for c in constsToMutate:
             c.val += random.gauss(mu=0.0, sigma=1.0)
+            c.invalidate_output()
 
         return stree
 

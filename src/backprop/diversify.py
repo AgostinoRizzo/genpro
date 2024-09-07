@@ -27,4 +27,8 @@ class SymbolicDiversifier:
         if new_nnodes == nnodes and new_symbset == symbset:
             return stree
 
-        return gp.replace_subtree(stree, node, new_node)
+        stree = gp.replace_subtree(stree, node, new_node)
+        stree.set_parent()
+        if new_node.has_parent():
+            new_node.parent.invalidate_output()
+        return stree
