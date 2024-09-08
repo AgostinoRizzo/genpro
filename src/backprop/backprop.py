@@ -108,7 +108,7 @@ class SyntaxTree:
     def __init__(self):
         self.parent = None
         self.output = None  # TODO: change name to y_data.
-        self.y_know = None
+        self.y_know = {}
         self.output_stash = None
         self.y_know_stash = None
         #self.cache = [None] * 2
@@ -122,23 +122,23 @@ class SyntaxTree:
         self.cache = syntax_tree.SyntaxTreeInfo(self)
     
     def __call__(self, x): pass
-    def __getitem__(self, x): pass
+    def __getitem__(self, x_d): pass
 
     def invalidate_output(self):
         self.output = None
-        self.y_know = None
+        self.y_know.clear()
         if self.parent is not None:
             self.parent.invalidate_output()
     
     def clear_output(self):
         self.output = None
-        self.y_know = None
+        self.y_know.clear()
     
     def stash_output(self):
         self.output_stash = self.output
         self.y_know_stash = self.y_know
         self.output = None
-        self.y_know = None
+        self.y_know.clear()
         if self.parent is not None:
             self.parent.stash_output()
     
@@ -248,10 +248,11 @@ class BinaryOperatorSyntaxTree(SyntaxTree):
             self.output = self.__operate(self.left(x), self.right(x))
         return self.output
     
-    def __getitem__(self, x):
-        if self.y_know is None:
-            self.y_know = self.__operate(self.left[x], self.right[x])
-        return self.y_know
+    def __getitem__(self, x_d):
+        x, d = x_d
+        if d not in self.y_know:
+            self.y_know[d] = self.__operate(self.left[x_d], self.right[x_d])
+        return self.y_know[d]
     
     def clear_output(self):
         super().clear_output()
@@ -589,10 +590,11 @@ class UnaryOperatorSyntaxTree(SyntaxTree):
             self.output = self.__operate(self.inner(x))
         return self.output
     
-    def __getitem__(self, x):
-        if self.y_know is None:
-            self.y_know = self.__operate(self.inner[x])
-        return self.y_know
+    def __getitem__(self, x_d):
+        x, d = x_d
+        if d not in self.y_know:
+            self.y_know[d] = self.__operate(self.inner[x_d])
+        return self.y_know[d]
     
     def clear_output(self):
         super().clear_output()
@@ -792,10 +794,11 @@ class ConstantSyntaxTree(SyntaxTree):
             self.output = np.full(x.shape[0], self.val)
         return self.output
     
-    def __getitem__(self, x):
-        if self.y_know is None:
-            self.y_know = np.full(x.shape[0], self.val)
-        return self.y_know
+    def __getitem__(self, x_d):
+        x, d = x_d
+        if d not in self.y_know:
+            self.y_know[d] = np.full(x.shape[0], self.val)
+        return self.y_know[d]
     
     def __str__(self) -> str:
         return "%.2f" % self.val
@@ -855,10 +858,11 @@ class VariableSyntaxTree(SyntaxTree):
             self.output = x[:,self.idx] if x.ndim == 2 else x
         return self.output
     
-    def __getitem__(self, x):
-        if self.y_know is None:
-            self.y_know = x[:,self.idx] if x.ndim == 2 else x
-        return self.y_know
+    def __getitem__(self, x_d):
+        x, d = x_d
+        if d not in self.y_know:
+            self.y_know[d] = x[:,self.idx] if x.ndim == 2 else x
+        return self.y_know[d]
     
     def __str__(self) -> str:
         return f"x{self.idx}"
@@ -907,10 +911,11 @@ class FunctionSyntaxTree(SyntaxTree):
             self.output = self.f(x)
         return self.output
     
-    def __getitem__(self, x):
-        if self.y_know is None:
-            self.y_know = self.f(x)
-        return self.y_know
+    def __getitem__(self, x_d):
+        x, d = x_d
+        if d not in self.y_know:
+            self.y_know[d] = self.f(x)
+        return self.y_know[d]
     
     def __str__(self) -> str:
         return 'f(X)'
@@ -1014,12 +1019,13 @@ class UnknownSyntaxTree(SyntaxTree):
             self.output = self.model(x)
         return self.output
     
-    def __getitem__(self, x):
-        if self.y_know is None:
+    def __getitem__(self, x_d):
+        x, d = x_d
+        if d not in self.y_know:
             if self.model is None:
                 raise RuntimeError('None unknown model.')
-            self.y_know = self.model(x)
-        return self.y_know
+            self.y_know[d] = self.model(x)
+        return self.y_know[d]
     
     def __str__(self) -> str:
         xs = ''

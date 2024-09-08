@@ -17,31 +17,72 @@ class FastKnowledgeEvaluator(gp.Evaluator):
     def __init__(self, know, npoints:int=100):
         self.know = know
         data = know.dataset
-        self.meshspace = know.spsampler.meshspace(data.xl, data.xu, npoints)
+        
+        self.meshspace = {}
+        self.derivs = know.get_derivs()
+        meshspace_0 = know.spsampler.meshspace(data.xl, data.xu, npoints)
+        nvars = data.nvars
+        for d in self.derivs:
+            derivdeg = len(d)
+            if derivdeg == 0: self.meshspace[d] = meshspace_0
+            if derivdeg != 1: continue  # TODO: only up to first derivative (*).
+            h = np.zeros(data.nvars)
+            h[d[0]] = self.know.numlims.STEPSIZE
+            self.meshspace[d] = meshspace_0 + h
+        
         self.meshspace_map = {}
         self.__init_meshspace_map()
     
     def evaluate(self, stree:backprop.SyntaxTree):
+        """stree = backprop.BinaryOperatorSyntaxTree('*',
+            backprop.BinaryOperatorSyntaxTree('/',
+                backprop.ConstantSyntaxTree(-1.79),
+                backprop.VariableSyntaxTree()
+            ),
+
+            backprop.UnaryOperatorSyntaxTree('exp',
+                backprop.BinaryOperatorSyntaxTree('-',
+                    backprop.UnaryOperatorSyntaxTree('log',
+                        backprop.VariableSyntaxTree()
+                    ),
+                    backprop.UnaryOperatorSyntaxTree('square',
+                        backprop.BinaryOperatorSyntaxTree('+',
+                            backprop.VariableSyntaxTree(),
+                            backprop.VariableSyntaxTree()
+                        )
+                    )
+                )
+            )
+        )"""
         n   = {0: 0, 1: 0, 2: 0}
         nv  = {0: 0, 1: 0, 2: 0}
         ssr = {0: 0, 1: 0, 2: 0}
-
-        y0 = stree[self.meshspace]
-        meshspace_y = {(): y0} #, (0,): (stree(self.meshspace + self.know.numlims.STEPSIZE) - y0) / self.know.numlims.STEPSIZE}
+        
+        meshspace_y = {}
+        y0 = stree[(self.meshspace[()], ())]
+        for d in self.derivs:
+            derivdeg = len(d)
+            if derivdeg == 0: meshspace_y[()] = y0
+            if derivdeg != 1: continue  # TODO: only up to first derivative (*).
+            meshspace_y[d] = (stree[(self.meshspace[d], (0,))] - y0) / self.know.numlims.STEPSIZE
 
         # positivity constraints.
         for deriv, constrs in self.know.sign.items():
             derivdeg = len(deriv)
-            if derivdeg > 0: continue
 
             for (l,u,sign,th) in constrs:
                 meshspace_idx = self.meshspace_map[(deriv, l, u, sign, th)]
-                n[derivdeg] += meshspace_idx.shape[0]
+                n[derivdeg] += meshspace_idx.size
 
                 y = meshspace_y[deriv][meshspace_idx]
 
                 #sr = ( np.minimum(0, y - th) if sign == '+' else np.maximum(0, y - th) ) ** 2
+
+                #if derivdeg == 0:
                 nv [derivdeg] += np.sum( (( y < th ) if sign == '+' else ( y > th )) | np.isnan(y) )
+                #else:
+                #    nv [derivdeg] += np.sum( (( y < th - 1e-2 ) if sign == '+' else ( y > th + 1e-2 )) | np.isnan(y) )
+                
                 #nv [derivdeg] += np.sum(np.isnan(sr))
                 #ssr[derivdeg] += np.sum(sr)
         
@@ -59,8 +100,8 @@ class FastKnowledgeEvaluator(gp.Evaluator):
             for (l,u,sign,th) in constrs:
                 
                 meshspace_idx = []
-                for i in range(self.meshspace.shape[0]):
-                    pt = self.meshspace[i]
+                for i in range(self.meshspace[()].shape[0]):
+                    pt = self.meshspace[()][i]
 
                     if (pt >= l).all() and (pt <= u).all():
                         meshspace_idx.append(i)
