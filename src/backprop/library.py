@@ -1,5 +1,6 @@
 import numpy as np
 from scipy.spatial import KDTree
+import nmslib
 from multiprocessing import Process, Lock, Condition
 from backprop import backprop, gp
 
@@ -51,6 +52,30 @@ class MultiprocSyntaxTreeCloneProvider:
                 
                 self.to_clone_buff.clear()
                 self.cloned_cond.notify()
+
+
+class KnnIndex:
+    def query(self, point, k:int=1):
+        pass
+
+class ExactKnnIndex(KnnIndex):
+    def __init__(self, points):
+        self.index = KDTree(points)
+    
+    def query(self, point, k:int=1):
+        return self.index.query(point, k=k)
+
+class ApproxKnnIndex(KnnIndex):
+    def __init__(self, points):
+        self.index = nmslib.init(method='hnsw', space='cosinesimil')
+        self.index.addDataPointBatch(points)
+        self.index.createIndex({'post': 2}, print_progress=True)
+    
+    def query(self, point, k:int=1):
+        idx, dist = self.index.knnQuery(point, k=k)
+        if k == 1: return dist[0], idx[0]
+        return dist, idx
+
 
 
 class Library:
@@ -112,7 +137,8 @@ class Library:
                     self.lib_data.append(st)
 
         self.lib_data = np.stack(self.lib_data)
-        self.sem_index = KDTree(self.lib_data)
+        self.sem_index = ExactKnnIndex(self.lib_data)
+        #self.sem_index = ApproxKnnIndex(self.lib_data)
 
         self.stree_provider = SyntaxTreeCloneProvider(self.stree_index)
 
