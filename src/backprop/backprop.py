@@ -126,19 +126,19 @@ class SyntaxTree:
 
     def invalidate_output(self):
         self.output = None
-        self.y_know.clear()
+        self.y_know = {}  # important: create new.
         if self.parent is not None:
             self.parent.invalidate_output()
     
     def clear_output(self):
         self.output = None
-        self.y_know.clear()
+        self.y_know = {}  # important: create new.
     
     def stash_output(self):
         self.output_stash = self.output
         self.y_know_stash = self.y_know
         self.output = None
-        self.y_know.clear()
+        self.y_know = {}  # important: create new.
         if self.parent is not None:
             self.parent.stash_output()
     
@@ -170,6 +170,11 @@ class SyntaxTree:
         if self.parent is None:
             return ((utils.flatten(target_output) if flatten else target_output), relopt)
         return self.parent.pull_output(target_output, relopt, self, flatten)
+    
+    def pull_know(self, k_target:np.array, noroot_target:bool=False, child=None) -> np.array:
+        if self.parent is None:
+            return k_target, noroot_target
+        return self.parent.pull_know(k_target, noroot_target, self)
     
     def get_unknown_stree(self, unknown_stree_label:str): return None
     def set_unknown_model(self, model_label:str, model, coeffs_mask:list[float]=None, constrs:dict=None): pass
@@ -488,6 +493,59 @@ class BinaryOperatorSyntaxTree(SyntaxTree):
             pulled_output = utils.flatten(pulled_output)
         return pulled_output, pulled_relopt
     
+    def pull_know(self, k_target:np.array, noroot_target:bool=False, child=None) -> np.array:
+        
+        k_pulled, noroot_pulled = super().pull_know(k_target, noroot_target)
+        if child is None or k_pulled is None or noroot_pulled is None:
+            return k_pulled, noroot_pulled
+        
+        A = None
+        B = None
+        pull_left = True
+        child_id = id(child)
+        if child_id == id(self.left):
+            A = self.left
+            B = self.righ
+        elif child_id == id(self.right):
+            A = self.right
+            B = self.left
+            pull_left = False
+        else:
+            raise RuntimeError('Invalid child.')
+        k_A = np.sign(A.y_know[()])
+        k_B = np.sign(B.y_know[()])
+        
+        k_pulled = np.full(k_target.shape, np.nan)
+        noroot_pulled = False
+
+        if self.operator == '+':
+            k_pulled[(k_target > 0.0) & (k_B < 0.0)] = +1.0
+            k_pulled[(k_target < 0.0) & (k_B > 0.0)] = -1.0
+        
+        elif self.operator == '-':
+            if pull_left:
+                k_pulled[(k_target > 0.0) & (k_B > 0.0)] = +1.0
+                k_pulled[(k_target < 0.0) & (k_B < 0.0)] = -1.0
+            else:
+                k_pulled[(k_target > 0.0) & (k_B < 0.0)] = -1.0
+                k_pulled[(k_target < 0.0) & (k_B > 0.0)] = +1.0
+        
+        elif self.operator == '*' or self.operator == '/':
+            pos_mask = k_target > 0.0
+            neg_mask = k_target < 0.0
+            k_pulled[pos_mask] =  k_B[pos_mask]
+            k_pulled[neg_mask] = -k_B[neg_mask]
+
+            if noroot_target:
+                noroot_pulled = True
+            elif self.operator == '/' and not pull_left:
+                noroot_pulled = True
+        
+        else:
+            raise RuntimeError('Invalid operator.')
+        
+        return k_pulled, noroot_pulled
+
     def get_unknown_stree(self, unknown_stree_label:str):
         stree = self.left.get_unknown_stree(unknown_stree_label)
         if stree is not None: return stree
@@ -722,6 +780,49 @@ class UnaryOperatorSyntaxTree(SyntaxTree):
             if flatten: utils.flatten(pulled_output)
             return pulled_output, pulled_relopt
         raise RuntimeError('Invalid child.')
+    
+    def pull_know(self, k_target:np.array, noroot_target:bool=False, child=None) -> np.array:
+        
+        k_pulled, noroot_pulled = super().pull_know(k_target, noroot_target)
+        if child is None or k_pulled is None or noroot_pulled is None:
+            return k_pulled, noroot_pulled
+        
+        if id(child) != id(self.inner):
+            raise RuntimeError('Invalid child.')
+        
+        k_pulled = np.full(k_target.shape, np.nan)
+        noroot_pulled = False
+
+        if self.operator == 'square':
+            if (k_target < 0.0).any():
+                return None, None
+            if noroot_target:
+                noroot_pulled = True
+        
+        elif self.operator == 'cube':
+            k_pulled[:] = k_target
+            if noroot_target:
+                noroot_pulled = True
+        
+        elif self.operator == 'sqrt':
+            if (k_target < 0.0).any():
+                return None, None
+            k_pulled[:] = +1.0
+            if noroot_target:
+                noroot_pulled = True
+        
+        elif self.operator == 'exp':
+            if (k_target < 0.0).any():
+                return None, None
+        
+        elif self.operator == 'log':
+            k_pulled[:] = +1.0
+            noroot_pulled = True
+        
+        else:
+            raise RuntimeError('Invalid operator.')
+        
+        return k_pulled, noroot_pulled
     
     def get_unknown_stree(self, unknown_stree_label:str):
         return self.inner.get_unknown_stree(unknown_stree_label)

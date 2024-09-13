@@ -249,23 +249,25 @@ class DataKnowledge:
         
         return out_str
     
-    def synth_dataset(self, deriv:tuple[int]=()):
+    def synth_dataset(self, npoints:int=100, deriv:tuple[int]=()):
         S = Dataset(self.dataset.nvars, self.dataset.xl, self.dataset.xu, self.spsampler)
 
+        X = self.spsampler.meshspace(S.xl, S.xu, npoints)
+        y = np.full(npoints, np.nan)
+        
         # positivity constraints.
-        for (_l,_u,sign,th) in self.sign[deriv]:
+        for (l, u,sign,th) in self.sign[deriv]:
             assert th == 0.0
-            l = _l + self.numlims.EPSILON
-            u = _u - self.numlims.EPSILON
-            if np.any(l > u): continue
-            
-            X = self.spsampler.meshspace(l, u, 20)  # TODO: factorize sample size.
-            y = [1.0 if sign == '+' else -1.0] * X.shape[0]
+
+            y[(X >= l) & (X <= u)] = 1.0 if sign == '+' else -1.0
             
             for i, y_i in enumerate(y):
                 S.data.append( DataPoint(X[i], y_i) )
         
-        return NumpyDataset(S)
+        S = NumpyDataset(S)
+        S.X = X
+        S.y = y
+        return S
             
 
 def compute_sst(dpoints:list) -> float:

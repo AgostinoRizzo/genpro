@@ -4,11 +4,12 @@ import numpy as np
 import string
 
 from backprop.backprop import \
-    SyntaxTree, BinaryOperatorSyntaxTree, UnaryOperatorSyntaxTree, ConstantSyntaxTree, \
+    SyntaxTree, BinaryOperatorSyntaxTree, UnaryOperatorSyntaxTree, ConstantSyntaxTree, VariableSyntaxTree, \
     UnknownSyntaxTree, UnknownSyntaxTreeCollector, Derivative
 from backprop import models
 import space
 import numlims
+import dataset_misc1d
 
 
 @pytest.mark.parametrize("stree", [
@@ -167,3 +168,24 @@ def test_derivative(stree, nvars):
             ae = ae[np.where(~np.isnan(ae) & ~np.isinf(ae))]
             mae = ae.sum() / ae.size
             assert mae == pytest.approx(0, abs=1e-1)
+
+
+def test_pull_know():
+    S = dataset_misc1d.MagmanDatasetScaled()
+    S_know  = S.knowledge.synth_dataset()
+
+    backprop_node = ConstantSyntaxTree(2.0)
+    stree = BinaryOperatorSyntaxTree('/',
+            BinaryOperatorSyntaxTree('*',
+                ConstantSyntaxTree(-0.05),
+                VariableSyntaxTree(),
+            ),
+            backprop_node
+        )
+    
+    stree.set_parent()
+    stree[(S_know.X, ())]  # needed for 'pull_know'.
+    k_pulled, noroot_pulled = backprop_node.pull_know(S_know.y)
+
+    assert (k_pulled == 1.0).all()
+    assert noroot_pulled
