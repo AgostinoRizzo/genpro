@@ -609,8 +609,8 @@ class NumpyDataset:
         Q1 = np.percentile(self.y, 25, method='midpoint')
         Q3 = np.percentile(self.y, 75, method='midpoint')
         IQR = Q3 - Q1
-        upper = Q3+70.5*IQR  # TODO: fix coeffs.
-        lower = Q1-70.5*IQR
+        upper = Q3+1.5*IQR  # TODO: fix coeffs.
+        lower = Q1-1.5*IQR
         
         mask = (self.y >= lower) & (self.y <= upper)  # true are kept.
         self.X = self.X[mask,:]

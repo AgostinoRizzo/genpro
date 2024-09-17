@@ -5,12 +5,19 @@ from multiprocessing import Process, Lock, Condition
 from backprop import backprop, gp
 
 
+def compute_distance(p1:np.array, p2:np.array):
+    return np.linalg.norm(p1 - p2)
+
+def compute_mse(p1:np.array, p2:np.array):
+    return ((p1 - p2) ** 2).sum() / p1.size
+
+
 class SyntaxTreeCloneProvider:
     def __init__(self, stree_index:list):
         self.stree_index = stree_index
     
     def get_stree(self, idx:int):
-        return self.stree_index[idx]
+        return self.stree_index[idx].clone()
 
 
 class MultiprocSyntaxTreeCloneProvider:
@@ -55,15 +62,15 @@ class MultiprocSyntaxTreeCloneProvider:
 
 
 class KnnIndex:
-    def query(self, point, k:int=1):
+    def query(self, point, k:int=1, max_dist=np.inf):
         pass
 
 class ExactKnnIndex(KnnIndex):
     def __init__(self, points):
         self.index = KDTree(points)
     
-    def query(self, point, k:int=1):
-        return self.index.query(point, k=k)
+    def query(self, point, k:int=1, max_dist=np.inf):
+        return self.index.query(point, k=k, p=2, distance_upper_bound=max_dist)
 
 class ApproxKnnIndex(KnnIndex):
     def __init__(self, points):
@@ -71,7 +78,7 @@ class ApproxKnnIndex(KnnIndex):
         self.index.addDataPointBatch(points)
         self.index.createIndex({'post': 2}, print_progress=True)
     
-    def query(self, point, k:int=1):
+    def query(self, point, k:int=1, max_dist=np.inf):
         idx, dist = self.index.knnQuery(point, k=k)
         if k == 1: return dist[0], idx[0]
         return dist, idx
@@ -115,6 +122,10 @@ class Library:
                 st_extra = t(X_extra)
                 st_key = tuple(st.round(Library.UNIQUENESS_MAX_DECIMALS).tolist())
 
+                if (st <= 0.).any():
+                    extra_trees += 1
+                    continue
+                
                 if np.isnan(st_extra).any() or np.isnan(st_extra).any() or \
                    np.isnan(st).any() or np.isinf(st).any() or (st == st[0]).all():
                     extra_trees += 1
@@ -145,11 +156,11 @@ class Library:
         from backprop.pareto_front import SymbolicFrequencies
         self.symbfreq = SymbolicFrequencies()
     
-    def query(self, sem) -> backprop.SyntaxTree:
+    def query(self, sem, max_dist=np.inf) -> backprop.SyntaxTree:
         #const_fit = sem.mean()
         #const_fit_d = np.linalg.norm(const_fit - sem)
         
-        d, idx = self.sem_index.query(sem)
+        d, idx = self.sem_index.query(sem, max_dist=max_dist)
         
         if d == np.infty: return None
         #if const_fit_d <= d: return backprop.ConstantSyntaxTree(const_fit)
@@ -158,8 +169,8 @@ class Library:
         #self.symbfreq.add(stree)
         return stree
     
-    def multiquery(self, sem, k=4) -> list[tuple[np.array, backprop.SyntaxTree]]:
-        d, idx = self.sem_index.query(sem, k=k)
+    def multiquery(self, sem, k=4, max_dist=np.inf) -> list[tuple[np.array, backprop.SyntaxTree]]:
+        d, idx = self.sem_index.query(sem, k=k, max_dist=max_dist)
         if d[0] == np.infty: return None  # nearest firts.
         return [ (self.lib_data[__idx], self.stree_provider.get_stree(__idx)) for __idx in idx ]
     
@@ -192,3 +203,79 @@ class Library:
         print(f"{self.stree_index[min_i]} => {self.stree_index[min_idx]} [{min_d}]")
         return self.stree_index[min_i], self.stree_index[min_idx], min_d
 
+
+class ConstrainedLibrary(Library):
+    def __init__(self, size:int, max_depth:int, data, X_mesh):
+        super().__init__(size, max_depth, data)
+        self.clibs = {}
+        self.clibs_idxmap = {}
+        self.clibs_negmap = {}
+
+        X_extra = np.array([
+            [ 0.0] * data.nvars,
+            [ 1.0] * data.nvars,
+            [-1.0] * data.nvars,
+        ])
+
+        for i, t in enumerate(self.stree_index):
+            k_t = np.sign(t[(X_mesh, ())])
+            t.clear_output()
+            t_extra = t(X_extra)
+            t.clear_output()
+
+            noroot = (k_t != 0.0).all() and (t_extra != 0.0).all() and not np.isnan(t_extra).any()
+
+            for sign in [1.0, -1.0]:
+                K_t = ((k_t * sign).tobytes(), noroot)
+                if K_t not in self.clibs_idxmap:
+                    self.clibs_idxmap[K_t] = []
+                    self.clibs_negmap[K_t] = []
+                self.clibs_idxmap[K_t].append(i)
+                self.clibs_negmap[K_t].append(sign < 0.0)
+        
+        for K_t in self.clibs_idxmap.keys():
+            self.clibs[K_t] = ExactKnnIndex(self.lib_data[self.clibs_idxmap[K_t]])
+
+    def cquery(self, y, K, max_dist=np.inf) -> backprop.SyntaxTree:
+        
+        if K not in self.clibs:
+            return None
+        
+        d, idx = self.clibs[K].query(y, max_dist=max_dist)
+        if d == np.infty: return None
+
+        idx = self.clibs_idxmap[K][idx]
+        return self.stree_provider.get_stree(idx)
+    
+    def cquery_brute(self, y, K, max_dist=np.inf, w:np.array=None, S_train=None) -> backprop.SyntaxTree:
+        
+        if K not in self.clibs:
+            return None
+        
+        data = self.clibs[K].index.data
+        
+        yy = S_train.y
+        ddata = (-0.05*S_train.X[:,0]) / data
+        q = yy - ddata
+        idx = None
+        if w is None:
+            idx = np.argmin( np.sqrt( np.sum(q ** 2, axis=1) ) )
+        else:
+            idx = np.argmin( np.sqrt( np.sum(w * (q ** 2), axis=1) ) )
+
+        idx = self.clibs_idxmap[K][idx]
+        if self.clibs_negmap[K][idx]:
+            return self.stree_provider.get_stree(idx).scale(-1.0)
+        return self.stree_provider.get_stree(idx)
+    
+    def cquery_stoch(self, y, K, max_dist=np.inf) -> backprop.SyntaxTree:
+        
+        if K not in self.clibs:
+            return None
+        
+        import random
+        idx = random.randrange(self.clibs[K].index.data.shape[0])
+        idx = self.clibs_idxmap[K][idx]
+        if self.clibs_negmap[K][idx]:
+            return self.stree_provider.get_stree(idx).scale(-1.0)
+        return self.stree_provider.get_stree(idx)

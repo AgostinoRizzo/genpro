@@ -1,5 +1,6 @@
 import numpy as np
 import itertools
+from scipy.spatial import KDTree
 
 
 DERIV_IDENTIFIERS:dict[tuple,list] = {}
@@ -66,6 +67,19 @@ class MultidimSpaceSampler(SpaceSampler):
         xsize = xl.size
         assert xsize == xu.size and xsize > 0 and npoints > 0
         return int(npoints ** (1/xsize))
+
+
+class MeshSpace:
+    def __init__(self, mesh, X_data):
+        if len(mesh.shape) == 1: mesh = np.asmatrix(mesh).T
+        self.index = KDTree(mesh)
+        self.X_data_map = np.empty(X_data.shape[0], dtype=np.int64)
+        for i in range(self.X_data_map.size):
+            _, i_mesh = self.index.query(X_data[i])
+            self.X_data_map[i] = i_mesh
+    
+    def nearest_meshpoint(self, X_data_idx:int):
+        return self.X_data_map[X_data_idx]
 
 
 def get_all_derivs(nvars:int=1, max_derivdeg:int=2) -> list:

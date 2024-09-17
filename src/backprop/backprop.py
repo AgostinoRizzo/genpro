@@ -176,6 +176,12 @@ class SyntaxTree:
             return k_target, noroot_target
         return self.parent.pull_know(k_target, noroot_target, self)
     
+    def get_coeffs(self, coeffs:list):
+        pass
+    
+    def set_coeffs(self, coeffs:list, start:int=0):
+        pass
+
     def get_unknown_stree(self, unknown_stree_label:str): return None
     def set_unknown_model(self, model_label:str, model, coeffs_mask:list[float]=None, constrs:dict=None): pass
     def set_all_unknown_models(self, model): pass
@@ -546,6 +552,14 @@ class BinaryOperatorSyntaxTree(SyntaxTree):
         
         return k_pulled, noroot_pulled
 
+    def get_coeffs(self, coeffs:list):
+        self.left.get_coeffs(coeffs)
+        self.right.get_coeffs(coeffs)
+    
+    def set_coeffs(self, coeffs:list, start:int=0):
+        self.left.set_coeffs(coeffs, start)
+        self.right.set_coeffs(coeffs, start)
+    
     def get_unknown_stree(self, unknown_stree_label:str):
         stree = self.left.get_unknown_stree(unknown_stree_label)
         if stree is not None: return stree
@@ -824,6 +838,12 @@ class UnaryOperatorSyntaxTree(SyntaxTree):
         
         return k_pulled, noroot_pulled
     
+    def get_coeffs(self, coeffs:list):
+        self.inner.get_coeffs(coeffs)
+    
+    def set_coeffs(self, coeffs:list, start:int=0):
+        self.inner.set_coeffs(coeffs, start)
+    
     def get_unknown_stree(self, unknown_stree_label:str):
         return self.inner.get_unknown_stree(unknown_stree_label)
 
@@ -900,6 +920,13 @@ class ConstantSyntaxTree(SyntaxTree):
         if d not in self.y_know:
             self.y_know[d] = np.full(x.shape[0], self.val)
         return self.y_know[d]
+    
+    def get_coeffs(self, coeffs:list):
+        coeffs.append(self.val)
+    
+    def set_coeffs(self, coeffs:list, start:int=0):
+        self.val = coeffs[start]
+        start += 1
     
     def __str__(self) -> str:
         return "%.2f" % self.val
