@@ -34,26 +34,10 @@ class FastKnowledgeEvaluator(gp.Evaluator):
         self.__init_meshspace_map()
     
     def evaluate(self, stree:backprop.SyntaxTree):
-        """stree = backprop.BinaryOperatorSyntaxTree('*',
-            backprop.BinaryOperatorSyntaxTree('/',
-                backprop.ConstantSyntaxTree(-1.79),
-                backprop.VariableSyntaxTree()
-            ),
 
-            backprop.UnaryOperatorSyntaxTree('exp',
-                backprop.BinaryOperatorSyntaxTree('-',
-                    backprop.UnaryOperatorSyntaxTree('log',
-                        backprop.VariableSyntaxTree()
-                    ),
-                    backprop.UnaryOperatorSyntaxTree('square',
-                        backprop.BinaryOperatorSyntaxTree('+',
-                            backprop.VariableSyntaxTree(),
-                            backprop.VariableSyntaxTree()
-                        )
-                    )
-                )
-            )
-        )"""
+        #from symbols.parsing import parse_syntax_tree
+        #stree = parse_syntax_tree('((square(x0) * (sqrt(0.64) / x0)) / square((square(x0) - (-0.18 / 1.94))))')
+
         n   = {0: 0, 1: 0, 2: 0}
         nv  = {0: 0, 1: 0, 2: 0}
         ssr = {0: 0, 1: 0, 2: 0}
@@ -64,11 +48,12 @@ class FastKnowledgeEvaluator(gp.Evaluator):
             derivdeg = len(d)
             if derivdeg == 0: meshspace_y[()] = y0
             if derivdeg != 1: continue  # TODO: only up to first derivative (*).
-            meshspace_y[d] = (stree[(self.meshspace[d], (0,))] - y0) / self.know.numlims.STEPSIZE
+            meshspace_y[d] = (stree[(self.meshspace[d], d)] - y0) / self.know.numlims.STEPSIZE
 
         # positivity constraints.
         for deriv, constrs in self.know.sign.items():
             derivdeg = len(deriv)
+            if derivdeg > 0: continue
 
             for (l,u,sign,th) in constrs:
                 meshspace_idx = self.meshspace_map[(deriv, l, u, sign, th)]

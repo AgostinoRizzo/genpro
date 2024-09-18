@@ -2,6 +2,8 @@ import numpy as np
 from scipy.spatial import KDTree
 import nmslib
 from multiprocessing import Process, Lock, Condition
+import random
+
 from backprop import backprop, gp
 
 
@@ -273,9 +275,77 @@ class ConstrainedLibrary(Library):
         if K not in self.clibs:
             return None
         
-        import random
         idx = random.randrange(self.clibs[K].index.data.shape[0])
         idx = self.clibs_idxmap[K][idx]
         if self.clibs_negmap[K][idx]:
             return self.stree_provider.get_stree(idx).scale(-1.0)
         return self.stree_provider.get_stree(idx)
+
+
+class DynamicConstrainedLibrary:
+    def __init__(self, population:list, eval_map:dict, selector:gp.Selector, data, X_mesh):
+        parents = selector.select(population, eval_map, len(population))
+        self.strees = [random.choice(p.cache.nodes) for p in parents]
+        self.sem    = [t(data.X) for t in self.strees]
+        self.lib  = {0:[], 1:[], 2:[], 3:[], 4:[], 5:[]}
+        self.clib = {0:{}, 1:{}, 2:{}, 3:{}, 4:{}, 5:{}}
+
+        X_extra = np.array([
+            [ 0.0] * data.nvars,
+            [ 1.0] * data.nvars,
+            [-1.0] * data.nvars,
+        ])
+
+        for i, t in enumerate(self.strees):
+            k_t = np.sign(t[(X_mesh, ())])
+            t.clear_output()
+            t_extra = t(X_extra)
+            t.clear_output()
+
+            noroot = (k_t != 0.0).all() and (t_extra != 0.0).all() and not np.isnan(t_extra).any()
+
+            K_t = (k_t.tobytes(), noroot)
+
+            max_depth = t.get_max_depth()
+            for d in range(max_depth, 6):
+                if K_t not in self.clib[d]:
+                    self.clib[d][K_t] = []
+                self.clib[d][K_t].append(i)
+                self.lib[d].append(i)
+        
+    def query(self, max_depth:int, y=None):
+        #idx = random.choice(self.lib[max_depth])
+        #return self.strees[idx].clone()
+        return self.__query(y, self.lib[max_depth])
+    
+    def cquery(self, K, max_depth:int, y=None):
+        k_t, noroot = K
+        
+        k_t_nan = np.isnan(k_t)
+        if k_t_nan.all():
+            return self.query(max_depth)
+        if k_t_nan.any():
+            return self.query(max_depth)  # TODO: linear/brute search.
+        
+        K = (k_t.tobytes(), noroot)
+        if K not in self.clib[max_depth]:
+            return self.query(max_depth)
+        #idx = random.choice(self.clib[max_depth][K])
+        #return self.strees[idx].clone()
+        return self.__query(y, self.clib[max_depth][K])
+    
+    def __query(self, y, indices:list):
+        if y is None or not np.isfinite(y).all() or True:
+            return self.strees[random.choice(indices)].clone()
+        
+        best_i = None
+        best_d = None
+
+        for i in indices:
+            y0 = self.sem[i]
+            d = compute_distance(y, y0)
+            if best_i is None or d < best_d:
+                best_i = i
+                best_d = d
+        
+        return self.strees[best_i].clone()

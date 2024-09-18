@@ -4,7 +4,7 @@ import numpy as np
 from scipy.spatial.distance import pdist as scipy_pdist
 from scipy.spatial.distance import squareform as scipy_squareform
 
-from backprop import backprop, gp, models
+from backprop import backprop, gp, models, library
 
 
 class ConstrBackpropCrossover(gp.Crossover):
@@ -416,9 +416,12 @@ class CrossNPushCrossover(gp.Crossover):
         sat_pulled_y = not np.isnan(pulled_y).any() and not np.isinf(pulled_y).any()
         if not sat_pulled_y: return child
 
-        new_sub_stree = self.lib.query(pulled_y)
-        if new_sub_stree is None: return child
+        cross_node_sem = cross_node(self.lib.data.X)
+        cross_node_dist = np.linalg.norm(cross_node_sem - pulled_y)
 
+        new_sub_stree = self.lib.query(pulled_y, max_dist=cross_node_dist)
+        if new_sub_stree is None: return child
+        
         origin_child = child.clone()
         offspring = gp.replace_subtree(child, cross_node, new_sub_stree)
         if offspring.get_max_depth() > 5:  # TODO: lookup based on max admissible depth.
@@ -494,3 +497,47 @@ class ConstrainedCrossNPushCrossover(CrossNPushCrossover):
         know_eval = self.know_evaluator.evaluate(offspring)
         know_nv   =  know_eval['nv0'] + know_eval['nv1'] + know_eval['nv2']
         return know_nv
+
+
+class ConstrainedSubTreeCrossover(gp.Crossover):
+    def __init__(self, population:list, eval_map:dict, selector:gp.Selector, S_data, S_know, X_mesh):
+        self.lib = library.DynamicConstrainedLibrary(population, eval_map, selector, S_data, X_mesh)
+        self.max_depth = 5
+        self.S_data = S_data
+        self.S_know = S_know
+    
+    def cross(self, parent1:backprop.SyntaxTree, parent2:backprop.SyntaxTree) -> backprop.SyntaxTree:
+        child = parent1.clone()
+        child.set_parent()
+
+        cross_point1 = random.choice(child.cache.nodes)
+        cross_point1_depth = cross_point1.get_depth()
+        max_nesting_depth = self.max_depth - cross_point1_depth
+        max_nesting_depth = max(max_nesting_depth, 0)  # TODO
+        
+        cross_point2 = None
+
+        if backprop.SyntaxTree.is_invertible_path(cross_point1):
+            child.clear_output()
+            child[(self.S_know.X, ())]  # needed for 'pull_know'.
+            k_pulled, noroot_pulled = cross_point1.pull_know(self.S_know.y)
+            K_pulled = (k_pulled, noroot_pulled)
+
+            y = child(self.S_data.X)  # needed for 'pull_output'.
+            pulled_y, _ = cross_point1.pull_output(self.S_data.y)
+
+            if k_pulled is None or noroot_pulled is None:
+                cross_point2 = self.lib.query(max_nesting_depth, pulled_y)  # TODO: unsat stree.
+            else:
+                cross_point2 = self.lib.cquery(K_pulled, max_nesting_depth, pulled_y)
+        
+        else:
+            cross_point2 = self.lib.query(max_nesting_depth)
+            
+        child = gp.replace_subtree(child, cross_point1, cross_point2)
+        child.cache.clear()
+        child.set_parent()
+        if cross_point2.has_parent():
+            cross_point2.parent.invalidate_output()
+        return child
+    

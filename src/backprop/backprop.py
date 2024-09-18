@@ -511,7 +511,7 @@ class BinaryOperatorSyntaxTree(SyntaxTree):
         child_id = id(child)
         if child_id == id(self.left):
             A = self.left
-            B = self.righ
+            B = self.right
         elif child_id == id(self.right):
             A = self.right
             B = self.left
