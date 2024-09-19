@@ -113,5 +113,5 @@ class FastFUEvaluator(gp.Evaluator):
 
         return gp.FUEvaluation(know_mse, know_nv, know_n, know_ls, know_sat, data_r2, stree.cache.nnodes)
     
-    def create_stats(self, nbests:int=1):
-        return gp.FUGPStats(nbests)
+    def create_stats(self):
+        return gp.FUGPStats()

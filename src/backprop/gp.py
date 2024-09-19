@@ -79,7 +79,7 @@ class FUEvaluation(Evaluation):
 
         #if self.feasible and not other.feasible: return True
         #if not self.feasible and other.feasible: return False
-
+        
         if self.data_r2 == 0.0: return False
 
         if self.fea_ratio > other.fea_ratio: return True
@@ -141,7 +141,7 @@ def replace_subtree(stree:backprop.SyntaxTree,
 
 class Evaluator:
     def evaluate(self, stree:backprop.SyntaxTree): return None
-    def create_stats(self, nbests:int=1): return GPStats(nbests)
+    def create_stats(self): return GPStats()
 
 class R2Evaluator(Evaluator):
     def __init__(self, dataset, minimize:bool=True):
@@ -217,7 +217,7 @@ class FUEvaluator(Evaluator):
 
         return FUEvaluation(know_mse, know_nv, know_n, know_ls, know_sat, data_r2, stree.get_nnodes())
     
-    def create_stats(self, nbests:int=1): return FUGPStats(nbests)
+    def create_stats(self): return FUGPStats()
 
 class NumericalFUEvaluator(FUEvaluator):
     def __init__(self, dataset, knowledge):
@@ -610,45 +610,27 @@ def check_unsat_trunk(trunks:map, stree) -> bool:
 
 
 class GPStats:
-    def __init__(self, nbests:int=1):
-        self.nbests = nbests
-        self.bests = []
-        self.bests_eval_map = {}
+    def __init__(self):
+        self.best = None
+        self.best_eval = None
         self.qualities = {'currBest': [], 'currAvg': [], 'currWorst': [], 'best': []}
     
     def update(self, population, eval_map):
-        self.__update_bests(population, eval_map)
-        self.__update_qualities(population, eval_map)
-
-    def __update_bests(self, population, eval_map):
-        """
-        It is assumed 'population' is already sorted.
-        """
-        merged_eval_map = {}
-        merged_eval_map.update(eval_map)
-        merged_eval_map.update(self.bests_eval_map)
-        merged = sort_population(population[:self.nbests] + self.bests, merged_eval_map)
-        
-        merged_unique = []
-        for stree in merged:
-            if stree not in merged_unique: merged_unique.append(stree)
-        
-        self.bests = merged_unique[:min(self.nbests, len(merged_unique))]
-        self.bests_eval_map.clear()
-        for b in self.bests:
-            self.bests_eval_map[id(b)] = merged_eval_map[id(b)]
-
-    def __update_qualities(self, population, eval_map):
         currBest  = 0.0
         currAvg   = 0.0
         currWorst = 1.0
 
         for stree in population:
-            stree_eval = eval_map[id(stree)].get_value()
+            stree_eval = eval_map[id(stree)]
+            stree_eval_value = stree_eval.get_value()
             
-            currBest   = max(currBest, stree_eval)
-            currAvg   += stree_eval
-            currWorst  = min(currWorst, stree_eval)
+            currBest   = max(currBest, stree_eval_value)
+            currAvg   += stree_eval_value
+            currWorst  = min(currWorst, stree_eval_value)
+
+            if self.best is None or stree_eval.better_than(self.best_eval):
+                self.best = stree
+                self.best_eval = stree_eval
 
         currAvg /= len(population)
 
@@ -656,10 +638,11 @@ class GPStats:
         self.qualities['currAvg'  ].append(currAvg)
         self.qualities['currWorst'].append(currWorst)
         #self.qualities['best'     ].append(self.bests_eval_map[id(self.bests[0])].get_value())
+        
 
 class FUGPStats(GPStats):
-    def __init__(self, nbests:int=1):
-        super().__init__(nbests)
+    def __init__(self,):
+        super().__init__()
         self.buckets = {}
         self.fea_ratio = {'currBest': [], 'currAvg': [], 'currWorst': [], 'best': []}
     
@@ -699,13 +682,8 @@ class GP:
                  crossover:Crossover,
                  mutator:Mutator,
                  mutrate:float,
-                 diversifier:Diversifier=None,
-                 projector:project.Projector=None,
                  elitism:int=0,
-                 backprop_intv:int=-1,  # < 0 disabled.
                  knowledge=None,
-                 trunks=None,
-                 nbests:int=1,
                  rseed=None):
         
         self.population = creator.create_population(popsize, max_depth)
@@ -719,180 +697,79 @@ class GP:
         self.crossover = crossover
         self.mutator = mutator
         self.mutrate = mutrate
-        self.diversifier = diversifier
-        self.projector = projector
         self.elitism = elitism
-        self.backprop_intv = backprop_intv
-        self.last_backprop = -1  # last backprop generation idx.
         self.knowledge = knowledge
-        self.trunks = trunks
         if rseed is not None:
             random.seed(rseed)
-        self.stats = evaluator.create_stats(nbests)
+        self.stats = evaluator.create_stats()
         self.genidx = 0
-
-        # TODO: remove it!
-        self.popsize = len(self.population)
-
-        from backprop import gp_backprop
-        self.backpropagator = gp_backprop.Backpropagator(S_train, knowledge)
-        self.backprop_rate = 1.0
-
-        self.backpropagator = bpropagator.BackPropagator(self.S_train, self.knowledge, self.evaluator)
         
-        #for i, p in enumerate(self.population):
-        #    self.population[i] = backprop.SemanticSyntaxTree(p(self.S_train.X))
-
-        from backprop.selector import EclipseSelector
-        from backprop.crossover import EclipseCrossover
-        self.sem_selector = EclipseSelector(S_train)
-        self.sem_crossover = EclipseCrossover(self.sem_selector, S_train)
-        self.best_sem_solution = None
-        self.best_sem_eval = None
-
         from backprop.pareto_front import DataLengthFrontTracker, MultiHeadFrontTracker
         #self.fea_front_tracker = DataLengthFrontTracker()
         self.fea_front_tracker = MultiHeadFrontTracker()
+
+        from gp import correct
+        self.corrector = correct.Corrector(S_train, knowledge.synth_dataset())
     
-    # returns nbests best strees found + evaluation map.
-    def evolve(self) -> tuple[list[backprop.SyntaxTree], dict]:
-        print(f"Generation 0")
-        #self._backprop(genidx=0)
-        logging.info('Start from generation 0')
-        self._evaluate_all()
-        logging.info('After self.evaluate_all')
-        #if self.diversifier is not None:
-        #    self.diversifier.diversify(self.population, self.eval_map)
-        self.population = sort_population(self.population, self.eval_map)
-        logging.info('After pop sort')
-        self.stats.update(self.population, self.eval_map)
-        logging.info('After stats update')
-
-        for self.genidx in range(1, self.ngen):
-            print(f"\nGeneration {self.genidx} {self.eval_map[id(self.population[0])]}")
-
-            logging.info('Before _create_children')
-            children = self._create_children()
-            logging.info('After _create_children')
-            logging.info('Before _replace')
-            self._replace(children)
-            logging.info('After _replace')
-
-            #self._backprop(genidx)
-            #if self.diversifier is not None:
-            #    self.diversifier.diversify(self.population, self.eval_map)
-            
-            #self.population = sort_population(self.population, self.eval_map)
-            
-            logging.info('Before stats.update')
-            self.stats.update(self.population, self.eval_map)
-            logging.info('After stats.update')
-            
-            #logging.info(f"--- Generation {genidx} [Current best: {self.eval_map[id(self.population[0])]}," + \
-            #             f"Global best: {self.bests_eval_map[id(self.bests[0])]}] ---")
+    def evolve(self, newgen_callback=None) -> tuple[list[backprop.SyntaxTree], dict]:
+        """
+        returns best syntax tree and its evaluation.
+        """
         
-        """print()
+        self._evaluate_all()
+        self.population = sort_population(self.population, self.eval_map)
+        self.stats.update(self.population, self.eval_map)
+        
+        for self.genidx in range(1, self.ngen):
+
+            if newgen_callback is not None:
+                newgen_callback(self.genidx, f"\nGeneration {self.genidx} {self.stats.best_eval}")
+            
+            children = self._create_children()
+            self._replace(children)
+            self.stats.update(self.population, self.eval_map)
+            
+        """
+        print()
         for p in self.population:
-            print(p, self.eval_map[id(p)].fea_ratio, self.eval_map[id(p)].data_r2, self.eval_map[id(p)].know_mse)"""
-        return self.stats.bests, self.stats.bests_eval_map
-        #return [self.backpropagator.refmod], {id(self.backpropagator.refmod): self.backpropagator.refmod_eval}
-    
+            print(p, self.eval_map[id(p)].fea_ratio, self.eval_map[id(p)].data_r2, self.eval_map[id(p)].know_mse)
+        """
+        
+        return self.stats.best, self.stats.best_eval
+        
     def _evaluate_all(self):
         self.eval_map.clear()
         for stree in self.population:
-            #self.eval_map[id(stree)] = self.backpropagator.backprop(stree) if self.genidx < 60 else self.evaluator.evaluate(stree)
             self.eval_map[id(stree)] = self.evaluator.evaluate(stree)
     
     def _create_children(self) -> list[backprop.SyntaxTree]:
         
-        """best_eval = self.eval_map[id(self.population[0])]
-        if self.backpropagator.refmod_eval is None or best_eval.better_than(self.backpropagator.refmod_eval):
-            self.backpropagator.update_refmod(self.population[0], best_eval)"""
-        
         children = []
-
-        # generate semantic children.
-        if self.genidx > 10 and False:
-            self.sem_selector.update(self.population)
-            sem_child = self.sem_crossover.cross( *self.sem_selector.select(self.population, self.eval_map) )
-            sem_child_eval = self.evaluator.evaluate(sem_child)
-            #children.append(sem_child)
-            #self.eval_map[id(sem_child)] = sem_child_eval
-            if self.best_sem_solution is None or sem_child_eval.better_than(self.best_sem_eval):
-                self.best_sem_solution = sem_child
-                self.best_sem_eval = sem_child_eval
-            print(f"Created sem child {sem_child_eval.get_value()} vs {self.eval_map[id(self.population[0])]}")
-
+        
         while len(children) < self.popsize:
             for _ in range(self.popsize - len(children)):
+
                 parents = self.selector.select(self.population, self.eval_map, 2)
 
-                logging.info('Before crossover.cross')
                 profiling.enable()
                 child = self.crossover.cross(parents[0], parents[1])  # 100% crossover rate (child must be a new object!)
                 profiling.disable()
-                logging.info('After crossover.cross')
-
+                
                 if random.random() < self.mutrate:
                     child = self.mutator.mutate(child)
-                if child.validate() and (self.trunks is None or not check_unsat_trunk(self.trunks, child)): #TODO: and child not in children:
+                
+                if child.validate(): #TODO: and child not in children:
                     
-                    """if random.random() < self.backprop_rate:
-                        #print(f"Replacing {child}")
-                        if self.backpropagator.backprop(child.clone()) is None:
-                            #print(f"Unsat child: {child}")
-                            continue
-                        #print(f"With {child}")"""
-                    
-                    """if random.random() < 1.0:
-                        if type(child) is backprop.ConstantSyntaxTree:
-                            continue
-                            print(f"Constant: {child}")
-                        sat, stree_cost = lpbackprop.lpbackprop(self.knowledge, child, None)
-                        #val = child.validate()
-                        if not sat:
-                            print(f"Unsat child: {child}")
-                            continue
-                        else:
-                            print(f"SAT child: {child}")"""
-
-                    logging.info('Before child.simplify')
                     child = child.simplify()
-                    logging.info('After child.simplify')
+                    child = self.corrector.correct(child)
 
-                    if self.diversifier is not None and random.random() < 0.8:
-                        child = self.diversifier.diversify(child)
-
-                    logging.info('Before evaluator.evaluate')
                     child_eval = self.evaluator.evaluate(child)
-                    logging.info('After evaluator.evaluate')
 
-                    #if self.projector is not None and child_eval.fea_ratio < 1.0:
-                    #    child = self.projector.project(child)
-                    #    child_eval = self.evaluator.evaluate(child)  # TODO: only when necessary.
-                    
-                    #if self.backpropagator.refmod_eval.data_r2 >= 1.0: # and self.genidx % 5 == 0:
-                    
-                    #self.backpropagator.propagate(child, child_eval, True)
-                    
-                    #new_child_eval = self.backpropagator.propagate(child, child_eval)
-                    #if new_child_eval is not None: child_eval = new_child_eval
-                    
-                    #child_eval.data_r2 = max(child_eval.data_r2, child.best_match_r2)
-                    
                     children.append(child)
-                    #self.eval_map[id(child)] = self.backpropagator.backprop(child) if self.genidx < 60 else self.evaluator.evaluate(child)
                     self.eval_map[id(child)] = child_eval
 
                     if child_eval.fea_ratio == 1.0:
                         self.fea_front_tracker.track(child, child_eval)
-
-                    #print(f"From parents {parents[0]} and {parents[1]} got {child}")
-                    #self.eval_map[id(child)] = self.evaluator.evaluate(child)
-
-        if self.best_sem_solution is not None and self.genidx == self.ngen - 1:
-            children.append(self.best_sem_solution)
-            self.eval_map[id(self.best_sem_solution)] = self.best_sem_eval
         
         return children
     
@@ -904,71 +781,12 @@ class GP:
         self.population = children  # generational replacement.
 
         self.population = sort_population(self.population, self.eval_map)
-
-        self.population = (self.fea_front_tracker.get_population() + self.population)[:self.popsize]
-        #if self.genidx % 2 == 0:
-        #self.population = (self.fea_front_tracker.front_tracker_a.get_population() + self.population)[:self.popsize]
-        #else:
-        #    self.population = (self.fea_front_tracker.front_tracker_b.get_population() + self.population)[:self.popsize]
+        #self.population = (self.fea_front_tracker.get_population() + self.population)[:self.popsize]
         
         # update evaluation map based on new population.
         new_eval_map = {}
         for stree in self.population:
             new_eval_map[id(stree)] = self.eval_map[id(stree)]
+
+            assert self.eval_map[id(stree)].fea_ratio == self.evaluator.evaluate(stree).fea_ratio
         self.eval_map = new_eval_map
-    
-    """
-    def _backprop(self, genidx):
-        if self.backprop_intv < 0 or (genidx - self.last_backprop) < self.backprop_intv:
-            return
-        for stree_idx, stree in enumerate(self.population):
-            
-            nodesCounter = backprop.SyntaxTreeNodeCounter()
-            stree.accept(nodesCounter)
-            nnodes = nodesCounter.nnodes
-            
-            stree_backprop = stree.clone()
-            nodeSelector = backprop.SyntaxTreeNodeSelector(random.randrange(nnodes))
-            stree_backprop.accept(nodeSelector)
-            
-            stree_backprop = replace_subtree(stree_backprop, nodeSelector.node, backprop.UnknownSyntaxTree())
-            print(f"Backprop: {stree_backprop}")
-            
-            try:
-                all_derivs = self.knowledge.get_derivs()
-                stree_backprop_map = backprop.SyntaxTree.diff_all(stree_backprop, all_derivs, include_zeroth=True)
-            except RuntimeError():
-                continue
-
-            best_unkn_models = {}
-            best_eval = None
-
-            def onsynth_callback(synth_unkn_models:dict):
-                nonlocal best_unkn_models
-                nonlocal best_eval
-                
-                for unkn in synth_unkn_models.keys():
-                    unkn_model, coeffs_mask, constrs = synth_unkn_models[unkn]
-                
-                #try:
-                hist, __best_unkn_models, __best_eval = jump_backprop.jump_backprop(stree_backprop_map, synth_unkn_models, self.S_train, self.S_test, max_rounds=1)
-
-                if best_eval is None or __best_eval.better_than(best_eval):
-                    best_unkn_models = __best_unkn_models
-                    best_eval = __best_eval
-                #except RuntimeError:
-                #    pass
-
-            lpbackprop.lpbackprop(self.knowledge, stree_backprop, onsynth_callback)
-
-            if best_eval is not None:
-                for unkn_label in best_unkn_models.keys():
-                    stree_backprop.set_unknown_model(unkn_label, best_unkn_models[unkn_label])
-                print(f"SAT: {stree_backprop}")
-                self.population[stree_idx] = stree_backprop
-                if id(stree) in self.eval_map: del self.eval_map[id(stree)]
-                self.eval_map[id(stree_backprop)] = self.evaluator.evaluate(stree_backprop)
-        
-        self.last_backprop = genidx
-    """
-        

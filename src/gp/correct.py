@@ -11,7 +11,7 @@ class Corrector:
         self.lib = library.ConstrainedLibrary(2000, 3, S_data, X_mesh)
     
     def correct(self, stree):
-        for _ in range(5):
+        for _ in range(1):
             stree.cache.clear()
             stree.set_parent()
 

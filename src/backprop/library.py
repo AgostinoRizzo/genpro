@@ -74,7 +74,19 @@ class ExactKnnIndex(KnnIndex):
     def query(self, point, k:int=1, max_dist=np.inf):
         return self.index.query(point, k=k, p=2, distance_upper_bound=max_dist)
 
-class ApproxKnnIndex(KnnIndex):
+from sklearn.preprocessing import StandardScaler
+from sklearn.decomposition import PCA
+class ReducedExactKnnIndex(KnnIndex):
+    def __init__(self, points):
+        self.pca = PCA(n_components=min(20, *points.shape))
+        points_proj = self.pca.fit_transform(points)
+        self.index = KDTree(points_proj)
+    
+    def query(self, point, k:int=1, max_dist=np.inf):
+        point_proj = self.pca.transform(np.array([point]))[0]
+        return self.index.query(point_proj, k=k, p=2, distance_upper_bound=max_dist)
+
+"""class ApproxKnnIndex(KnnIndex):
     def __init__(self, points):
         self.index = nmslib.init(method='hnsw', space='cosinesimil')
         self.index.addDataPointBatch(points)
@@ -83,7 +95,19 @@ class ApproxKnnIndex(KnnIndex):
     def query(self, point, k:int=1, max_dist=np.inf):
         idx, dist = self.index.knnQuery(point, k=k)
         if k == 1: return dist[0], idx[0]
-        return dist, idx
+        return dist, idx"""
+
+class ApproxKnnIndex(KnnIndex):
+    def __init__(self, points, nanchors:int=8):
+        self.anchors = [np.random.uniform(points.min(), points.max(), points.shape[1])]
+        anchored_points = []
+        for i in range(points.shape[0]):
+            anchored_points.append( [compute_distance(points[i], a) for a in self.anchors] )
+        self.index = KDTree(np.asmatrix(anchored_points))
+    
+    def query(self, point, k:int=1, max_dist=np.inf):
+        anchored_point = np.asarray( [compute_distance(point, a) for a in self.anchors] )
+        return self.index.query(anchored_point, k=k, p=2, distance_upper_bound=max_dist)
 
 
 
@@ -124,7 +148,10 @@ class Library:
                 st_extra = t(X_extra)
                 st_key = tuple(st.round(Library.UNIQUENESS_MAX_DECIMALS).tolist())
 
-                if (st <= 0.).any():
+                """if (st <= 0.).any():
+                    extra_trees += 1
+                    continue"""
+                if not np.isfinite(st**2).all():
                     extra_trees += 1
                     continue
                 
