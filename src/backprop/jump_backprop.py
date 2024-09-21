@@ -5,7 +5,8 @@ from qpsolvers import solve_ls
 import logging
 
 import dataset
-from backprop import backprop
+from symbols.syntax_tree import SyntaxTree, PullError, PullViolation
+from symbols.misc  import UnknownSyntaxTree
 from backprop import utils
 from backprop import qp
 from backprop import models
@@ -31,15 +32,15 @@ class History:
     def __init__(self):
         self.entries = []
     
-    def log_pull(self, unkn_stree:backprop.UnknownSyntaxTree,
+    def log_pull(self, unkn_stree:UnknownSyntaxTree,
                  pulled_S:dataset.Dataset, pulled_constrs:dict[qp.Constraints], violated_constrs:list=[]):
         self.entries.append(
             HistoryEntry(f"Pull from {unkn_stree}", unkn_stree.label, pulled_S, pulled_constrs, violated_constrs, unkn_stree.model))
 
 
 def __fit_pulled_dataset(pulled_S:dataset.NumpyDataset, pulled_constrs:dict[dict[qp.Constraints]],
-                         unknown_stree:backprop.UnknownSyntaxTree, unkn_name:str,
-                         global_stree:backprop.SyntaxTree,
+                         unknown_stree:UnknownSyntaxTree, unkn_name:str,
+                         global_stree:SyntaxTree,
                          hist:History, phase:str) -> models.Model:
     """
     returns a fit model if successful, None otherwise.
@@ -67,7 +68,7 @@ def __fit_pulled_dataset(pulled_S:dataset.NumpyDataset, pulled_constrs:dict[dict
     return P
 
 
-def jump_backprop(stree_map:dict[tuple,backprop.SyntaxTree], synth_unkn_models:dict,
+def jump_backprop(stree_map:dict[tuple,SyntaxTree], synth_unkn_models:dict,
                   S_train:dataset.NumpyDataset, S_test:dataset.NumpyDataset, max_rounds:int=1):
     """
     synth_unkn_models:dict of unknown model name to (unknown model map:dict, constrs:dict).
@@ -148,7 +149,7 @@ def jump_backprop(stree_map:dict[tuple,backprop.SyntaxTree], synth_unkn_models:d
                             pulled_S[unkn_name].y = pulled_Y
                             pulled_S[unkn_name].on_y_changed()
 
-                            #except backprop.PullError:
+                            #except PullError:
                             #    pass # TODO: just ignore the data point? (now it is like this).
                             
                             pulled_S[unkn_name].clear()  # remove nan and inf values from X and Y.
@@ -175,9 +176,9 @@ def jump_backprop(stree_map:dict[tuple,backprop.SyntaxTree], synth_unkn_models:d
                                     pulled_constrs[unkn_name][unkn_model_deriv].eq_ineq \
                                         .append( (dataset.DataPoint(dp.x, pulled_th), pulled_relopt) )
                                 
-                                except backprop.PullError:
+                                except PullError:
                                     pass
-                                except backprop.PullViolation:
+                                except PullViolation:
                                     violated_constrs.append( (dataset.DataPoint(dp.x, dp.y), relopt) )
                             
                             if pulled_constrs[unkn_name][unkn_model_deriv].isempty():  # skip the rest (TODO).

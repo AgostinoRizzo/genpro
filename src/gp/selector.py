@@ -1,8 +1,26 @@
-import numpy as np
-from backprop import backprop, gp
+import random
+from symbols.syntax_tree import SyntaxTree
+from gp import gp
+
+class Selector:
+    def select(self, population:list[SyntaxTree], eval_map:dict, nparents:int=2) -> list[SyntaxTree]:
+        return None
 
 
-class EclipseSelector(gp.Selector):
+class TournamentSelector(Selector):
+    def __init__(self, group_size:int):
+        self.group_size = group_size
+    
+    def select(self, population:list[SyntaxTree], eval_map:dict, nparents:int=2) -> list[SyntaxTree]:
+        parents = []
+        for _ in range(nparents):
+            group = random.choices(population, k=self.group_size)
+            sorted_group = gp.sort_population(group, eval_map)
+            parents.append(sorted_group[0])
+        return parents
+
+
+class EclipseSelector(Selector):
     def __init__(self, data):
         self.data = data
         self.sT = data.y
@@ -10,7 +28,7 @@ class EclipseSelector(gp.Selector):
         self.cross_map = {}
         self.next_selidx = -1
         
-    def update(self, population:list[backprop.SyntaxTree]):
+    def update(self, population:list[SyntaxTree]):
         self.cross_coeffs = {}
         self.cross_map = {}
 
@@ -53,10 +71,9 @@ class EclipseSelector(gp.Selector):
         self.sorted_cross_val = sorted(self.cross_map.keys(), reverse=True)
         self.next_selidx = len(self.sorted_cross_val) - 1
 
-    def select(self, population:list[backprop.SyntaxTree], eval_map:dict, nparents:int=2) -> list[backprop.SyntaxTree]:
+    def select(self, population:list[SyntaxTree], eval_map:dict, nparents:int=2) -> list[SyntaxTree]:
         assert nparents == 2 and self.next_selidx >= 0
 
         selidx = self.next_selidx
         self.next_selidx -= 1
         return self.cross_map[ self.sorted_cross_val[selidx] ]
-        

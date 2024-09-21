@@ -1,5 +1,6 @@
 import random
-from backprop import library, gp
+from backprop import library
+from gp import gp
 
 
 class Corrector:
@@ -31,7 +32,7 @@ class Corrector:
 
             # backprop data...
             y = stree(self.S_data.X)  # needed for 'pull_output'.
-            y_pulled, _ = backprop_node.pull_output(self.S_data.y)
+            y_pulled = backprop_node.pull_output(self.S_data.y)
 
             y_backprop_node = backprop_node(self.S_data.X)
             max_dist = library.compute_distance(y_backprop_node, y_pulled)

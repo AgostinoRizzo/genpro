@@ -2,7 +2,10 @@ import numpy as np
 import sympy
 import math
 
-from backprop import utils, backprop
+from symbols.binop import BinaryOperatorSyntaxTree
+from symbols.const import ConstantSyntaxTree
+from symbols.var   import VariableSyntaxTree
+from backprop import utils
 
 
 class Model:
@@ -87,18 +90,18 @@ class Poly1d(Poly):
         return P_sympy
     
     def to_stree(self):
-        if self.P.c.size == 0: return backprop.ConstantSyntaxTree(0.0)
-        x = backprop.VariableSyntaxTree(0)
-        P_stree = backprop.BinaryOperatorSyntaxTree('*',
-            backprop.ConstantSyntaxTree(self.P.c[0]),
-            backprop.BinaryOperatorSyntaxTree('^', x, backprop.ConstantSyntaxTree(self.P.c.size-1))
+        if self.P.c.size == 0: return ConstantSyntaxTree(0.0)
+        x = VariableSyntaxTree(0)
+        P_stree = BinaryOperatorSyntaxTree('*',
+            ConstantSyntaxTree(self.P.c[0]),
+            BinaryOperatorSyntaxTree('^', x, ConstantSyntaxTree(self.P.c.size-1))
         )
         i = 1
         for power in range(self.P.c.size-2, -1, -1):
-            P_stree = backprop.BinaryOperatorSyntaxTree('+', P_stree,
-                backprop.BinaryOperatorSyntaxTree('*',
-                    backprop.ConstantSyntaxTree(self.P.c[i]),
-                    backprop.BinaryOperatorSyntaxTree('^', x, backprop.ConstantSyntaxTree(power))
+            P_stree = BinaryOperatorSyntaxTree('+', P_stree,
+                BinaryOperatorSyntaxTree('*',
+                    ConstantSyntaxTree(self.P.c[i]),
+                    BinaryOperatorSyntaxTree('^', x, ConstantSyntaxTree(power))
                 )
             )
             i += 1

@@ -1,19 +1,118 @@
 import numpy as np
-from backprop import gp, backprop
+from symbols.syntax_tree import SyntaxTree
+from symbols.deriv import Derivative
+from gp import gp, evaluation
 
 
-class FastR2Evaluator(gp.Evaluator):
+class Evaluator:
+    def evaluate(self, stree:SyntaxTree): return None
+    def create_stats(self): return GPStats()
+
+
+class R2Evaluator(Evaluator):
+    def __init__(self, dataset, minimize:bool=True):
+        self.dataset = dataset
+        self.minimize = False
+    
+    def evaluate(self, stree:SyntaxTree):
+        return RealEvaluation(max(0., self.dataset.evaluate(stree)['r2']), self.minimize)
+
+
+# different from srgp.KnowledgeEvaluator
+class KnowledgeEvaluator(Evaluator):
+    def __init__(self, knowledge):
+        self.K = knowledge
+    
+    def _compute_stree_derivs(self, stree, derivs):
+        return SyntaxTree.diff_all(stree, derivs, include_zeroth=True)
+    
+    def evaluate(self, stree:SyntaxTree):
+        K_derivs = self.K.get_derivs()
+        stree_derivs = self._compute_stree_derivs(stree, K_derivs)
+        K_eval = self.K.evaluate(stree_derivs)
+        K_eval = (K_eval['mse0'] + K_eval['mse1'] + K_eval['mse2']) / 3  # TODO: separate?! or a weighted mean?
+        if np.isnan(K_eval): K_eval = 1e12
+        return RealEvaluation(K_eval, minimize=True)
+
+
+class NumericalKnowledgeEvaluator(KnowledgeEvaluator):
+    def __init__(self, knowledge):
+        super().__init__(knowledge)
+    
+    def _compute_stree_derivs(self, stree, derivs):
+        return Derivative.create_all(stree, derivs, self.K.nvars, self.K.numlims)
+    
+    def evaluate(self, stree:SyntaxTree):
+        K_derivs = self.K.get_derivs()
+        stree_derivs = self._compute_stree_derivs(stree, K_derivs)
+        K_eval = self.K.evaluate(stree_derivs, eval_deriv=True)
+        K_eval = (K_eval['mse0'] + K_eval['mse1'] + K_eval['mse2']) / 3  # TODO: separate?! or a weighted mean?
+        if np.isnan(K_eval): K_eval = 1e12
+        return RealEvaluation(K_eval, minimize=True)
+
+
+class FUEvaluator(Evaluator):
+    def __init__(self, dataset, knowledge):
+        self.data = dataset
+        self.know = knowledge
+    
+    def _compute_stree_derivs(self, stree, derivs):
+        return SyntaxTree.diff_all(stree, derivs, include_zeroth=True)
+
+    def evaluate(self, stree:SyntaxTree, eval_deriv=False):
+        know_derivs = self.know.get_derivs()
+        stree_derivs = self._compute_stree_derivs(stree, know_derivs)
+        
+        know_eval = self.know.evaluate(stree_derivs, eval_deriv)
+        know_mse  = (know_eval['mse0'] + know_eval['mse1'] + know_eval['mse2']) / 3  # TODO: separate?! or a weighted mean?
+        know_nv   =  know_eval['nv0' ] + know_eval['nv1' ] + know_eval['nv2' ]
+        know_n    =  know_eval['n0'  ] + know_eval['n1'  ] + know_eval['n2'  ]
+        know_ls   =  know_eval['ls0' ] and know_eval['ls1' ] and know_eval['ls2' ]
+        know_sat  = stree.sat
+        if np.isnan(know_mse): know_mse = 1e12
+
+        data_r2 = max(0., self.data.evaluate(stree)['r2']) # TODO: put this into data.evaluate(...).
+
+        """optCollector = backprop.SyntaxTreeOperatorCollector()
+        stree.accept(optCollector)
+        ispoly = True
+        for o in ['/', 'log', 'exp', 'sqrt']:
+            if o in optCollector.opts:
+                ispoly = False
+                break
+        if ispoly:
+            know_nv = 1e10
+            know_mse = 1e10"""
+
+        return FUEvaluation(know_mse, know_nv, know_n, know_ls, know_sat, data_r2, stree.get_nnodes())
+    
+    def create_stats(self): return FUGPStats()
+
+
+class NumericalFUEvaluator(FUEvaluator):
+    def __init__(self, dataset, knowledge):
+        super().__init__(dataset, knowledge)
+    
+    def _compute_stree_derivs(self, stree, derivs):
+        return Derivative.create_all(stree, derivs, self.know.nvars, self.know.numlims)
+
+
+"""
+Fast Evaluator.
+"""
+
+class FastR2Evaluator(Evaluator):
     def __init__(self, dataset):
         self.dataset = dataset
     
-    def evaluate(self, stree:backprop.SyntaxTree):
+    def evaluate(self, stree:SyntaxTree):
         ssr   = np.sum( (stree(self.dataset.X) - self.dataset.y) ** 2 )
         r2    = max( 0., 1 - ((ssr / self.dataset.sst) if self.dataset.sst > 0. else 1.) )
         return r2
         #return RealEvaluation(r2, minimize=False)
 
 
-class FastKnowledgeEvaluator(gp.Evaluator):
+class FastKnowledgeEvaluator(Evaluator):
     def __init__(self, know, npoints:int=100):
         self.know = know
         data = know.dataset
@@ -33,7 +132,7 @@ class FastKnowledgeEvaluator(gp.Evaluator):
         self.meshspace_map = {}
         self.__init_meshspace_map()
     
-    def evaluate(self, stree:backprop.SyntaxTree):
+    def evaluate(self, stree:SyntaxTree):
 
         #from symbols.parsing import parse_syntax_tree
         #stree = parse_syntax_tree('((square(x0) * (sqrt(0.64) / x0)) / square((square(x0) - (-0.18 / 1.94))))')
@@ -94,12 +193,12 @@ class FastKnowledgeEvaluator(gp.Evaluator):
                 self.meshspace_map[(deriv, l, u, sign, th)] = np.array(meshspace_idx)
 
 
-class FastFUEvaluator(gp.Evaluator):
+class FastFUEvaluator(Evaluator):
     def __init__(self, dataset, knowledge):
         self.data_evaluator = FastR2Evaluator(dataset)
         self.know_evaluator = FastKnowledgeEvaluator(knowledge)
 
-    def evaluate(self, stree:backprop.SyntaxTree, eval_deriv=False):
+    def evaluate(self, stree:SyntaxTree, eval_deriv=False):
         
         know_eval = self.know_evaluator.evaluate(stree)
         know_mse  = (know_eval['mse0'] + know_eval['mse1'] + know_eval['mse2']) / 3  # TODO: separate?! or a weighted mean?
@@ -111,7 +210,7 @@ class FastFUEvaluator(gp.Evaluator):
 
         data_r2 = self.data_evaluator.evaluate(stree)
 
-        return gp.FUEvaluation(know_mse, know_nv, know_n, know_ls, know_sat, data_r2, stree.cache.nnodes)
+        return evaluation.FUEvaluation(know_mse, know_nv, know_n, know_ls, know_sat, data_r2, stree.cache.nnodes)
     
     def create_stats(self):
         return gp.FUGPStats()

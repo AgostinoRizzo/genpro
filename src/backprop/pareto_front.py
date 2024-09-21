@@ -3,7 +3,7 @@ import numpy as np
 import random
 import matplotlib.pyplot as plt
 
-from backprop import backprop
+from symbols.visitor import SyntaxTreeIneqOperatorCollector
 
 
 """class SymbolicFrequencies:
@@ -32,7 +32,7 @@ from backprop import backprop
     
     @staticmethod
     def get_symbset(stree):
-        optCollector = backprop.SyntaxTreeIneqOperatorCollector()
+        optCollector = SyntaxTreeIneqOperatorCollector()
         stree.accept(optCollector)
         return frozenset(optCollector.opts)"""
 
@@ -74,7 +74,7 @@ class SymbolicFrequencies:
     
     @staticmethod
     def get_symbset(stree):
-        optCollector = backprop.SyntaxTreeIneqOperatorCollector()
+        optCollector = SyntaxTreeIneqOperatorCollector()
         stree.accept(optCollector)
         return frozenset(optCollector.opts)
 
@@ -140,7 +140,7 @@ class DataLengthFrontTracker:
         symbdist = {}
 
         for stree, _, _ in self.front:
-            optCollector = backprop.SyntaxTreeIneqOperatorCollector()
+            optCollector = SyntaxTreeIneqOperatorCollector()
             stree.accept(optCollector)
             symbset[id(stree)] = optCollector.opts
             symbdist[id(stree)] = 0
@@ -171,7 +171,7 @@ class DataLengthFrontTracker:
         optset_count = {}
 
         for stree, _, _ in self.front[frontidx]:
-            optCollector = backprop.SyntaxTreeIneqOperatorCollector()
+            optCollector = SyntaxTreeIneqOperatorCollector()
             stree.accept(optCollector)
 
             opts = frozenset(optCollector.opts)

@@ -4,28 +4,203 @@ import numpy as np
 from scipy.spatial.distance import pdist as scipy_pdist
 from scipy.spatial.distance import squareform as scipy_squareform
 
-from backprop import backprop, gp, models, library
+from symbols.syntax_tree import SyntaxTree
+from symbols.visitor import SyntaxTreeNodeSelector, SyntaxTreeNodeCollector
+from symbols.binop import BinaryOperatorSyntaxTree
+from symbols.unaop import UnaryOperatorSyntaxTree
+from symbols.const import ConstantSyntaxTree
+from symbols.var   import VariableSyntaxTree
+from symbols.misc  import SemanticSyntaxTree
+from backprop import models, library
+from gp import gp, selector
 
 
-class ConstrBackpropCrossover(gp.Crossover):
+class Crossover:
+    def cross(self, parent1:SyntaxTree, parent2:SyntaxTree) -> SyntaxTree:
+        return None
+
+class SubTreeCrossover:
+    def __init__(self, max_depth:int):
+        self.max_depth = max_depth
+    
+    def cross(self, parent1:SyntaxTree, parent2:SyntaxTree) -> SyntaxTree:
+        child = parent1.clone()
+        child.set_parent()
+
+        cross_point1 = random.choice(child.cache.nodes)
+        cross_point1_depth = cross_point1.get_depth()
+        max_nesting_depth = self.max_depth - cross_point1_depth
+        
+        allowedNodes = []
+        for node in parent2.cache.nodes:
+            if node.get_max_depth() <= max_nesting_depth: allowedNodes.append(node)
+        
+        if len(allowedNodes) == 0: return child
+        cross_point2 = random.choice(allowedNodes).clone()
+        
+        child = gp.replace_subtree(child, cross_point1, cross_point2)
+        child.cache.clear()
+        child.set_parent()
+        if cross_point2.has_parent():
+            cross_point2.parent.invalidate_output()
+        return child
+
+class SubTreeImprovementCrossover:
     def __init__(self, max_depth:int, S_train):
         self.max_depth = max_depth
         self.evaluator = R2Evaluator(S_train)
     
-    def cross(self, parent1:backprop.SyntaxTree, parent2:backprop.SyntaxTree) -> backprop.SyntaxTree:
+    def cross(self, parent1:SyntaxTree, parent2:SyntaxTree) -> SyntaxTree:
         nnodes1 = parent1.get_nnodes()
         nnodes2 = parent2.get_nnodes()
         
         child = parent1.clone()
-        nodeSelector = backprop.SyntaxTreeNodeSelector(random.randrange(nnodes1))
+        nodeSelector = SyntaxTreeNodeSelector(random.randrange(nnodes1))
+        child.accept(nodeSelector)
+        cross_point1 = nodeSelector.node
+        child.set_parent()
+        if cross_point1 is None:
+            parent1.get_nnodes()
+        cross_point1_depth = cross_point1.get_depth()
+        max_nesting_depth = (self.max_depth - cross_point1_depth) - 1
+        if max_nesting_depth < 0: return child
+        
+        nodesCollector = SyntaxTreeNodeCollector()
+        parent2.accept(nodesCollector)
+        allowedNodes = []
+        for node in nodesCollector.nodes:
+            if node.get_max_depth() <= max_nesting_depth: allowedNodes.append(node)
+        
+        if len(allowedNodes) == 0: return child
+        cross_point2 = random.choice(allowedNodes)
+
+        got = replace_subtree(child, cross_point1, cross_point2.clone())
+        got.clear_cache()
+
+        p1_eval = self.evaluator.evaluate(parent1)
+        got_eval = self.evaluator.evaluate(got)
+        if got_eval.better_than(p1_eval):
+            print(f"{cross_point2.simplify()}")
+
+        return got
+
+class ExhaustiveSubTreeCrossover:
+    def __init__(self, max_depth:int, S_train, knowledge):
+        self.max_depth = max_depth
+        self.data_evaluator = R2Evaluator(S_train)
+        self.know_evaluator = KnowledgeEvaluator(knowledge)
+    
+    def cross(self, parent1:SyntaxTree, parent2:SyntaxTree) -> SyntaxTree:
+        nnodes1 = parent1.get_nnodes()
+        nnodes2 = parent2.get_nnodes()
+        
+        child = parent1.clone()
+        nodeSelector = SyntaxTreeNodeSelector(random.randrange(nnodes1))
+        child.accept(nodeSelector)
+        cross_point1 = nodeSelector.node
+        child.set_parent()
+        if cross_point1 is None:
+            return child
+        cross_point1_depth = cross_point1.get_depth()
+        max_nesting_depth = (self.max_depth - cross_point1_depth) - 1
+        if max_nesting_depth < 0: return child
+        
+        nodesCollector = SyntaxTreeNodeCollector()
+        parent2.accept(nodesCollector)
+        allowedNodes = []
+        for node in nodesCollector.nodes:
+            if node.get_max_depth() <= max_nesting_depth: allowedNodes.append(node)
+        
+        if len(allowedNodes) == 0: return child
+        best_offspring = None
+        best_know_eval = None
+        best_data_eval = None
+        for n in allowedNodes:
+            n_clone = n.clone()
+            offspring = replace_subtree(child, cross_point1, n_clone)
+            offspring.clear_cache()
+
+            know_eval = self.know_evaluator.evaluate(offspring)
+            data_eval = self.data_evaluator.evaluate(offspring)
+
+            child = replace_subtree(child, n_clone, cross_point1)
+
+            #if offspring.is_linear(): continue
+            try:
+                if offspring.diff().simplify().is_const(): continue
+            except RuntimeError:
+                continue
+
+            if best_offspring is None or know_eval.better_than(best_know_eval) or data_eval.better_than(best_data_eval):
+                best_offspring = offspring
+                best_know_eval = know_eval
+                best_data_eval = data_eval
+
+        if best_offspring is None:
+            return child
+        return best_offspring
+
+class KnowledgePropagationCrossover(Crossover):
+    def __init__(self, max_depth:int, S_train, knowledge):
+        self.max_depth = max_depth
+        self.data_evaluator = R2Evaluator(S_train)
+        self.know_evaluator = KnowledgeEvaluator(knowledge)
+    
+    def cross(self, parent1:SyntaxTree, parent2:SyntaxTree) -> SyntaxTree:
+        nnodes1 = parent1.get_nnodes()
+        nnodes2 = parent2.get_nnodes()
+        
+        # select subtree from parents.
+        cross_points = [parent1, parent2]
+        cross_points = [None, None]
+        for idx, parent in enumerate([parent1, parent2]):
+            nodesCollector = SyntaxTreeNodeCollector()
+            parent.accept(nodesCollector)
+            allowedNodes = []
+            for node in nodesCollector.nodes:
+                if node.get_max_depth() < self.max_depth: allowedNodes.append(node)
+            if len(allowedNodes) == 0: return parent1
+            cross_points[idx] = random.choice(allowedNodes).clone()
+        
+        # build best trunk.
+        best_child = None
+        best_know_eval = None
+        best_data_eval = None
+        for opt in BinaryOperatorSyntaxTree.OPERATORS:
+            if opt == '^': continue
+            
+            trunk = BinaryOperatorSyntaxTree(opt, *cross_points)
+            know_eval = self.know_evaluator.evaluate(trunk)
+            data_eval = self.data_evaluator.evaluate(trunk)
+
+            if best_child is None or know_eval.better_than(best_know_eval) or data_eval.better_than(best_data_eval):
+                best_child = trunk
+                best_know_eval = know_eval
+                best_data_eval = data_eval
+        
+        if best_child is None: return parent1
+        return best_child
+
+
+class ConstrBackpropCrossover(Crossover):
+    def __init__(self, max_depth:int, S_train):
+        self.max_depth = max_depth
+        self.evaluator = R2Evaluator(S_train)
+    
+    def cross(self, parent1:SyntaxTree, parent2:SyntaxTree) -> SyntaxTree:
+        nnodes1 = parent1.get_nnodes()
+        nnodes2 = parent2.get_nnodes()
+        
+        child = parent1.clone()
+        nodeSelector = SyntaxTreeNodeSelector(random.randrange(nnodes1))
         child.accept(nodeSelector)
         cross_point1 = nodeSelector.node
         child.set_parent()
         cross_point1_depth = cross_point1.get_depth()
         max_nesting_depth = self.max_depth - cross_point1_depth
-        invertible_path = backprop.SyntaxTree.is_invertible_path(cross_point1)
+        invertible_path = SyntaxTree.is_invertible_path(cross_point1)
         
-        nodesCollector = backprop.SyntaxTreeNodeCollector()
+        nodesCollector = SyntaxTreeNodeCollector()
         parent2.accept(nodesCollector)
         allowedNodes = []
         for node in nodesCollector.nodes:
@@ -49,12 +224,12 @@ class SoftmaxSubTreeCrossover:
     def __init__(self, max_depth:int):
         self.max_depth = max_depth
     
-    def cross(self, parent1:backprop.SyntaxTree, parent2:backprop.SyntaxTree) -> backprop.SyntaxTree:
+    def cross(self, parent1:SyntaxTree, parent2:SyntaxTree) -> SyntaxTree:
         nnodes1 = parent1.get_nnodes()
         nnodes2 = parent2.get_nnodes()
         
         child = parent1.clone()
-        nodeSelector = backprop.SyntaxTreeNodeSelector(random.randrange(nnodes1))
+        nodeSelector = SyntaxTreeNodeSelector(random.randrange(nnodes1))
         child.accept(nodeSelector)
         cross_point1 = nodeSelector.node
         child.set_parent()
@@ -63,7 +238,7 @@ class SoftmaxSubTreeCrossover:
         cross_point1_depth = cross_point1.get_depth()
         max_nesting_depth = self.max_depth - cross_point1_depth
         
-        nodesCollector = backprop.SyntaxTreeNodeCollector()
+        nodesCollector = SyntaxTreeNodeCollector()
         parent2.accept(nodesCollector)
         allowedNodes = []
         for node in nodesCollector.nodes:
@@ -94,15 +269,15 @@ class SoftmaxSubTreeCrossover:
     def __init__(self, max_depth:int):
         self.max_depth = max_depth
     
-    def cross(self, parent1:backprop.SyntaxTree, parent2:backprop.SyntaxTree) -> backprop.SyntaxTree:
+    def cross(self, parent1:SyntaxTree, parent2:SyntaxTree) -> SyntaxTree:
         
         child = parent1.clone()
         child.set_parent()
 
-        parent1NodeCollector = backprop.SyntaxTreeNodeCollector()
+        parent1NodeCollector = SyntaxTreeNodeCollector()
         parent1.accept(parent1NodeCollector)
 
-        childNodeCollector = backprop.SyntaxTreeNodeCollector()
+        childNodeCollector = SyntaxTreeNodeCollector()
         child.accept(childNodeCollector)
 
         # apply softmax on child nodes.
@@ -115,9 +290,9 @@ class SoftmaxSubTreeCrossover:
         cross_point1 = np.random.choice(childNodeCollector.nodes, size=1, p=childNodeProbs)[0]
 
         #if childNodeProbs is not None and (childNodeProbs < 0.001).any():
-        can_print = childNodeProbs is not None and type(child) is backprop.BinaryOperatorSyntaxTree and child.operator == '/' and \
-            type(child.left) is backprop.VariableSyntaxTree and \
-            type(child.right) is backprop.UnaryOperatorSyntaxTree and child.right.operator == 'cube'
+        can_print = childNodeProbs is not None and type(child) is BinaryOperatorSyntaxTree and child.operator == '/' and \
+            type(child.left) is VariableSyntaxTree and \
+            type(child.right) is UnaryOperatorSyntaxTree and child.right.operator == 'cube'
         
         if can_print:
             print(f"\nCrossing {child}")
@@ -128,7 +303,7 @@ class SoftmaxSubTreeCrossover:
         cross_point1_depth = cross_point1.get_depth()
         max_nesting_depth = self.max_depth - cross_point1_depth
         
-        nodesCollector = backprop.SyntaxTreeNodeCollector()
+        nodesCollector = SyntaxTreeNodeCollector()
         parent2.accept(nodesCollector)
         allowedNodes = []
         for node in nodesCollector.nodes:
@@ -153,13 +328,13 @@ class MatchSubTreeCrossover:
     def __init__(self, max_depth:int):
         self.max_depth = max_depth
     
-    def cross(self, parent1:backprop.SyntaxTree, parent2:backprop.SyntaxTree) -> backprop.SyntaxTree:
+    def cross(self, parent1:SyntaxTree, parent2:SyntaxTree) -> SyntaxTree:
         nnodes1 = parent1.get_nnodes()
         nnodes2 = parent2.get_nnodes()
         
         child = parent1.clone()
 
-        nodesCollector = backprop.SyntaxTreeNodeCollector()
+        nodesCollector = SyntaxTreeNodeCollector()
         parent1.accept(nodesCollector)
         parent1_nodes = nodesCollector.nodes
         matchableNodesIdx = []
@@ -167,7 +342,7 @@ class MatchSubTreeCrossover:
             if n.y is not None:
                 matchableNodesIdx.append(i)
         
-        nodesCollector = backprop.SyntaxTreeNodeCollector()
+        nodesCollector = SyntaxTreeNodeCollector()
         child.accept(nodesCollector)
         child_nodes = nodesCollector.nodes
 
@@ -183,7 +358,7 @@ class MatchSubTreeCrossover:
             best_mn = None
             best_mse = None
             parent2(matchableNodes[0].X)
-            nodesCollector = backprop.SyntaxTreeNodeCollector()
+            nodesCollector = SyntaxTreeNodeCollector()
             parent2.accept(nodesCollector)
             
             for mn in matchableNodes:
@@ -206,7 +381,7 @@ class MatchSubTreeCrossover:
                 return got
 
 
-        nodeSelector = backprop.SyntaxTreeNodeSelector(random.randrange(nnodes1))
+        nodeSelector = SyntaxTreeNodeSelector(random.randrange(nnodes1))
         child.accept(nodeSelector)
         cross_point1 = nodeSelector.node
         child.set_parent()
@@ -215,7 +390,7 @@ class MatchSubTreeCrossover:
         cross_point1_depth = cross_point1.get_depth()
         max_nesting_depth = self.max_depth - cross_point1_depth
         
-        nodesCollector = backprop.SyntaxTreeNodeCollector()
+        nodesCollector = SyntaxTreeNodeCollector()
         parent2.accept(nodesCollector)
         allowedNodes = []
         for node in nodesCollector.nodes:
@@ -230,20 +405,20 @@ class MatchSubTreeCrossover:
         return got
 
 
-class OptimalGeometricCrossover(gp.Crossover):
+class OptimalGeometricCrossover(Crossover):
     def __init__(self, maxdepth, data, know):
         self.data = data
         self.know = know
         self.sx = gp.SubTreeCrossover(maxdepth)
     
-    def cross(self, parent1:backprop.SyntaxTree, parent2:backprop.SyntaxTree) -> backprop.SyntaxTree:
+    def cross(self, parent1:SyntaxTree, parent2:SyntaxTree) -> SyntaxTree:
         parent1_sem = parent1(self.data.X)
         parent2_sem = parent2(self.data.X)
 
         if np.isnan(parent1_sem).any() or np.isnan(parent2_sem).any() or \
            np.isinf(parent1_sem).any() or np.isinf(parent2_sem).any():
 
-            if type(parent1) is not backprop.SemanticSyntaxTree and type(parent2) is not backprop.SemanticSyntaxTree:
+            if type(parent1) is not SemanticSyntaxTree and type(parent2) is not SemanticSyntaxTree:
                 return self.sx.cross(parent1, parent2)
             return parent1
 
@@ -256,24 +431,24 @@ class OptimalGeometricCrossover(gp.Crossover):
         beta  = x[0][1]
 
         child_sem = parent1_sem * alpha + parent2_sem * beta
-        child = backprop.SemanticSyntaxTree(child_sem)
+        child = SemanticSyntaxTree(child_sem)
 
         return child
 
 
-class EclipseCrossover(gp.Crossover):
+class EclipseCrossover(Crossover):
     def __init__(self, selector, data):
         self.selector = selector
         self.data = data
     
-    def cross(self, parent1:backprop.SyntaxTree, parent2:backprop.SyntaxTree) -> backprop.SyntaxTree:
+    def cross(self, parent1:SyntaxTree, parent2:SyntaxTree) -> SyntaxTree:
         l1, l2 = self.selector.cross_coeffs[(id(parent1), id(parent2))]
 
-        if l1 == 0 and l2 == 0: return backprop.ConstantSyntaxTree(0.0)
+        if l1 == 0 and l2 == 0: return ConstantSyntaxTree(0.0)
         if l1 == 0: return parent2.clone().scale(l2)
         if l2 == 0: return parent1.clone().scale(l1)
         
-        #return backprop.BinaryOperatorSyntaxTree('+', parent1.clone().scale(l1), parent2.clone().scale(l2))
+        #return BinaryOperatorSyntaxTree('+', parent1.clone().scale(l1), parent2.clone().scale(l2))
 
         child = parent1.clone() if abs(l1) >= abs(l2) else parent2.clone()
 
@@ -281,12 +456,12 @@ class EclipseCrossover(gp.Crossover):
         s2 = parent2.clone().scale(l2)(self.data.X)
         sT = s1 + s2
 
-        nodesCollector = backprop.SyntaxTreeNodeCollector()
+        nodesCollector = SyntaxTreeNodeCollector()
         child.accept(nodesCollector)
 
         backprop_nodes = []
         for node in nodesCollector.nodes:
-            if id(node) != id(child) and backprop.SyntaxTree.is_invertible_path(node):
+            if id(node) != id(child) and SyntaxTree.is_invertible_path(node):
                 backprop_nodes.append(node)
         
         if len(backprop_nodes) == 0:
@@ -314,27 +489,27 @@ class EclipseCrossover(gp.Crossover):
         return child
 
 
-class ApproxGeometricCrossover(gp.Crossover):
+class ApproxGeometricCrossover(Crossover):
 
     def __init__(self, lib, max_depth, diversifier=None):
         self.lib = lib
         self.fallback_crossover = gp.SubTreeCrossover(max_depth)
         self.diversifier = diversifier
     
-    def cross(self, parent1:backprop.SyntaxTree, parent2:backprop.SyntaxTree) -> backprop.SyntaxTree:
+    def cross(self, parent1:SyntaxTree, parent2:SyntaxTree) -> SyntaxTree:
         
         child = parent1.clone()  # TODO: avoid cloning...
-        nodesCollector = backprop.SyntaxTreeNodeCollector()
+        nodesCollector = SyntaxTreeNodeCollector()
         child.accept(nodesCollector)
 
         cross_node = random.choice(nodesCollector.nodes)
 
-        if not backprop.SyntaxTree.is_invertible_path(cross_node):
+        if not SyntaxTree.is_invertible_path(cross_node):
             return self.fallback_crossover.cross(parent1, parent2)
 
         """backprop_nodes = []
         for node in nodesCollector.nodes:
-            if backprop.SyntaxTree.is_invertible_path(node):
+            if SyntaxTree.is_invertible_path(node):
                 backprop_nodes.append(node)
         
         if len(backprop_nodes) == 0:
@@ -392,13 +567,13 @@ class ApproxGeometricCrossover(gp.Crossover):
         return offspring
 
 
-class CrossNPushCrossover(gp.Crossover):
+class CrossNPushCrossover(Crossover):
 
     def __init__(self, lib, max_depth):
         self.lib = lib
         self.main_crossover = gp.SubTreeCrossover(max_depth)
     
-    def cross(self, parent1:backprop.SyntaxTree, parent2:backprop.SyntaxTree) -> backprop.SyntaxTree:
+    def cross(self, parent1:SyntaxTree, parent2:SyntaxTree) -> SyntaxTree:
         
         child = self.main_crossover.cross(parent1, parent2)
         
@@ -439,7 +614,7 @@ class ConstrainedCrossNPushCrossover(CrossNPushCrossover):
         super().__init__(lib, max_depth)
         self.know_evaluator = know_evaluator
     
-    def cross(self, parent1:backprop.SyntaxTree, parent2:backprop.SyntaxTree) -> backprop.SyntaxTree:
+    def cross(self, parent1:SyntaxTree, parent2:SyntaxTree) -> SyntaxTree:
         
         child = self.main_crossover.cross(parent1, parent2)
         
@@ -499,14 +674,14 @@ class ConstrainedCrossNPushCrossover(CrossNPushCrossover):
         return know_nv
 
 
-class ConstrainedSubTreeCrossover(gp.Crossover):
-    def __init__(self, population:list, eval_map:dict, selector:gp.Selector, S_data, S_know, X_mesh):
+class ConstrainedSubTreeCrossover(Crossover):
+    def __init__(self, population:list, eval_map:dict, selector:selector.Selector, S_data, S_know, X_mesh):
         self.lib = library.DynamicConstrainedLibrary(population, eval_map, selector, S_data, X_mesh)
         self.max_depth = 5
         self.S_data = S_data
         self.S_know = S_know
     
-    def cross(self, parent1:backprop.SyntaxTree, parent2:backprop.SyntaxTree) -> backprop.SyntaxTree:
+    def cross(self, parent1:SyntaxTree, parent2:SyntaxTree) -> SyntaxTree:
         child = parent1.clone()
         child.set_parent()
 
@@ -517,7 +692,7 @@ class ConstrainedSubTreeCrossover(gp.Crossover):
         
         cross_point2 = None
 
-        if backprop.SyntaxTree.is_invertible_path(cross_point1):
+        if SyntaxTree.is_invertible_path(cross_point1):
             child.clear_output()
             child[(self.S_know.X, ())]  # needed for 'pull_know'.
             k_pulled, noroot_pulled = cross_point1.pull_know(self.S_know.y)

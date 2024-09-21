@@ -6,7 +6,13 @@ from functools import cmp_to_key
 import dataset
 import numlims
 import space
-from backprop import backprop
+from symbols.syntax_tree import SyntaxTree
+from symbols.binop import BinaryOperatorSyntaxTree
+from symbols.unaop import UnaryOperatorSyntaxTree
+from symbols.const import ConstantSyntaxTree
+from symbols.var   import VariableSyntaxTree
+from symbols.misc  import UnknownSyntaxTree
+from symbols.visitor import SyntaxTreeVisitor, UnknownSyntaxTreeCollector, SyntaxTreeNodeCounter
 from backprop import utils
 from backprop import qp
 from backprop import config
@@ -21,13 +27,13 @@ SAMPLE_SIZE = 20
 SYNTH_POLYDEG = 6
 
 
-class ASPSpecBuilder(backprop.SyntaxTreeVisitor): # TODO: avoid multiple facts for unkn nodes (A, A', ...)
+class ASPSpecBuilder(SyntaxTreeVisitor): # TODO: avoid multiple facts for unkn nodes (A, A', ...)
     def __init__(self):
         self.spec = ''
         self.node_id = 1
         self.node_id_map = {}
 
-    def visitUnaryOperator(self, stree:backprop.UnaryOperatorSyntaxTree):
+    def visitUnaryOperator(self, stree:UnaryOperatorSyntaxTree):
         self.__map_node_id(stree)
         self.__map_node_id(stree.inner)
         self.spec += 'un_tree_node(' + \
@@ -35,7 +41,7 @@ class ASPSpecBuilder(backprop.SyntaxTreeVisitor): # TODO: avoid multiple facts f
             f"\"{stree.operator}\"," + \
             f"\"{self.node_id_map[id(stree.inner)]}\").\n"
     
-    def visitBinaryOperator(self, stree:backprop.BinaryOperatorSyntaxTree):
+    def visitBinaryOperator(self, stree:BinaryOperatorSyntaxTree):
         self.__map_node_id(stree)
         self.__map_node_id(stree.left)
         self.__map_node_id(stree.right)
@@ -45,7 +51,7 @@ class ASPSpecBuilder(backprop.SyntaxTreeVisitor): # TODO: avoid multiple facts f
             f"\"{self.node_id_map[id(stree.left)]}\"," + \
             f"\"{self.node_id_map[id(stree.right)]}\").\n"
 
-    def visitConstant(self, stree:backprop.ConstantSyntaxTree):
+    def visitConstant(self, stree:ConstantSyntaxTree):
         self.__map_node_id(stree)
         #const_val = int(stree.val) # TODO: just positivity?
         const_val = 0
@@ -55,11 +61,11 @@ class ASPSpecBuilder(backprop.SyntaxTreeVisitor): # TODO: avoid multiple facts f
             f"\"{self.node_id_map[id(stree)]}\",{const_val}).\n" + \
             f"const({const_val}).\n"
     
-    def visitVariable(self, stree:backprop.VariableSyntaxTree):
+    def visitVariable(self, stree:VariableSyntaxTree):
         self.__map_node_id(stree)
         self.spec += f"var_tree_node(\"{self.node_id_map[id(stree)]}\").\n"
     
-    def visitUnknown(self, stree:backprop.UnknownSyntaxTree):
+    def visitUnknown(self, stree:UnknownSyntaxTree):
         self.__map_node_id(stree)
         self.spec += 'unkn_tree_node(' + \
             f"\"{self.node_id_map[id(stree)]}\").\n"
@@ -67,18 +73,18 @@ class ASPSpecBuilder(backprop.SyntaxTreeVisitor): # TODO: avoid multiple facts f
         #    f"\"{self.node_id_map[id(stree)]}\"," + \
         #    f"\"d0{self.node_id_map[id(stree)]}\").\n"  # TODO: implement in clingo using some built-in function for all nodes.
 
-    def map_root(self, stree:backprop.SyntaxTree, deriv:tuple[int]):
-        if type(stree) is not backprop.UnknownSyntaxTree:
+    def map_root(self, stree:SyntaxTree, deriv:tuple[int]):
+        if type(stree) is not UnknownSyntaxTree:
             self.node_id_map[id(stree)] = f"{utils.deriv_to_string(deriv)}m"
 
     def __map_node_id(self, node):
         if id(node) in self.node_id_map.keys():
             return
-        if type(node) is backprop.ConstantSyntaxTree:
+        if type(node) is ConstantSyntaxTree:
             self.node_id_map[id(node)] = int(node.val)  # TODO: improve int check
-        if type(node) is backprop.VariableSyntaxTree:
+        if type(node) is VariableSyntaxTree:
             self.node_id_map[id(node)] = str(node)
-        elif type(node) is backprop.UnknownSyntaxTree:
+        elif type(node) is UnknownSyntaxTree:
             self.node_id_map[id(node)] = f"{node.label}"
         else:
             self.node_id_map[id(node)] = f"m{self.node_id}"
@@ -252,13 +258,13 @@ def synthesize_unknowns(unknown_labels:list[str], break_points:list, break_point
 
 
 # returns True when the problem is satisfiable + best model cost.
-def lpbackprop(K:dataset.DataKnowledge, stree:backprop.SyntaxTree, onsynth_callback, on_kbackprop_callback=None) -> bool:
+def lpbackprop(K:dataset.DataKnowledge, stree:SyntaxTree, onsynth_callback, on_kbackprop_callback=None) -> bool:
     #
     # build ASP specification of stree and stree' (facts).
     #
     # TODO: take stree_map from outside?!
     all_derivs = K.get_derivs()
-    stree_map = backprop.SyntaxTree.diff_all(stree, all_derivs, include_zeroth=True)
+    stree_map = SyntaxTree.diff_all(stree, all_derivs, include_zeroth=True)
 
     aspSpecBuilder = ASPSpecBuilder()
     for deriv, stree in stree_map.items():
@@ -304,7 +310,7 @@ def lpbackprop(K:dataset.DataKnowledge, stree:backprop.SyntaxTree, onsynth_callb
     # compute asp model(s) and synthesize each unknown node in stree (when onsynth_callback or on_kbackprop_callback is provided).
     unknown_labels = None
     if onsynth_callback is not None or on_kbackprop_callback is not None:
-        unkn_collector = backprop.UnknownSyntaxTreeCollector()
+        unkn_collector = UnknownSyntaxTreeCollector()
         stree_map[()].accept(unkn_collector)
         unknown_labels = unkn_collector.unknown_labels
     
@@ -337,7 +343,7 @@ def lpbackprop(K:dataset.DataKnowledge, stree:backprop.SyntaxTree, onsynth_callb
     solve_result = clingo_ctl.solve(on_model=on_model)
     logging.debug(solve_result)
     
-    nodes_counter = backprop.SyntaxTreeNodeCounter()
+    nodes_counter = SyntaxTreeNodeCounter()
     stree_map[()].accept(nodes_counter)
     if best_model_cost is None:  # when unsat.
         best_model_cost = AspModelCost([1e5+nodes_counter.nnodes])  # TODO: manage 1e5 + ...
@@ -353,9 +359,9 @@ def lpbackprop(K:dataset.DataKnowledge, stree:backprop.SyntaxTree, onsynth_callb
 
 if __name__ == '__main__':
     S = dataset.MagmanDatasetScaled()
-    unknown_stree_a = backprop.UnknownSyntaxTree('A')
-    unknown_stree_b = backprop.UnknownSyntaxTree('B')
-    stree = backprop.BinaryOperatorSyntaxTree('/', unknown_stree_a, unknown_stree_b)
+    unknown_stree_a = UnknownSyntaxTree('A')
+    unknown_stree_b = UnknownSyntaxTree('B')
+    stree = BinaryOperatorSyntaxTree('/', unknown_stree_a, unknown_stree_b)
 
     def onsynth_callback(synth_unkn_models:dict):
         print('--- On Synth ---')

@@ -2,7 +2,9 @@ import numpy as np
 from qpsolvers import solve_ls
 import random
 
-from backprop import backprop, gp
+from symbols.syntax_tree import SyntaxTree
+from symbols.visitor import SyntaxTreeNodeCollector
+from gp import gp
 
 
 def __add_sign_constrs(sign_constrs:dict, data, G, h):
@@ -173,12 +175,12 @@ class Projector:
         proj_sem = project_semantic(y, self.lib.data, self.know)
         print(proj_sem)
 
-        nodesCollector = backprop.SyntaxTreeNodeCollector()
+        nodesCollector = SyntaxTreeNodeCollector()
         stree.accept(nodesCollector)
 
         backprop_nodes = []
         for n in nodesCollector.nodes:
-            if backprop.SyntaxTree.is_invertible_path(n):
+            if SyntaxTree.is_invertible_path(n):
                 backprop_nodes.append(n)
 
         if len(backprop_nodes) == 0:

@@ -4,7 +4,9 @@ import nmslib
 from multiprocessing import Process, Lock, Condition
 import random
 
-from backprop import backprop, gp
+from symbols.syntax_tree import SyntaxTree
+from symbols.visitor import SyntaxTreeIneqOperatorCollector
+from gp import gp, creator, selector
 
 
 def compute_distance(p1:np.array, p2:np.array):
@@ -128,7 +130,7 @@ class Library:
         self.stree_index = []
         self.lib_data = []
 
-        solutionCreator = gp.RandomSolutionCreator(nvars=data.nvars)
+        solutionCreator = creator.RandomSolutionCreator(nvars=data.nvars)
         extra_trees = size
         X_extra = np.array([
             [ 0.0] * data.nvars,
@@ -185,7 +187,7 @@ class Library:
         from backprop.pareto_front import SymbolicFrequencies
         self.symbfreq = SymbolicFrequencies()
     
-    def query(self, sem, max_dist=np.inf) -> backprop.SyntaxTree:
+    def query(self, sem, max_dist=np.inf) -> SyntaxTree:
         #const_fit = sem.mean()
         #const_fit_d = np.linalg.norm(const_fit - sem)
         
@@ -198,7 +200,7 @@ class Library:
         #self.symbfreq.add(stree)
         return stree
     
-    def multiquery(self, sem, k=4, max_dist=np.inf) -> list[tuple[np.array, backprop.SyntaxTree]]:
+    def multiquery(self, sem, k=4, max_dist=np.inf) -> list[tuple[np.array, SyntaxTree]]:
         d, idx = self.sem_index.query(sem, k=k, max_dist=max_dist)
         if d[0] == np.infty: return None  # nearest firts.
         return [ (self.lib_data[__idx], self.stree_provider.get_stree(__idx)) for __idx in idx ]
@@ -217,10 +219,10 @@ class Library:
                 stree_a = self.stree_index[i]
                 stree_b = self.stree_index[idx]
                 
-                optCollectorA = backprop.SyntaxTreeIneqOperatorCollector()
+                optCollectorA = SyntaxTreeIneqOperatorCollector()
                 stree_a.accept(optCollectorA)
                 
-                optCollectorB = backprop.SyntaxTreeIneqOperatorCollector()
+                optCollectorB = SyntaxTreeIneqOperatorCollector()
                 stree_b.accept(optCollectorB)
 
                 if optCollectorA.opts == optCollectorB.opts: continue
@@ -265,7 +267,7 @@ class ConstrainedLibrary(Library):
         for K_t in self.clibs_idxmap.keys():
             self.clibs[K_t] = ExactKnnIndex(self.lib_data[self.clibs_idxmap[K_t]])
 
-    def cquery(self, y, K, max_dist=np.inf) -> backprop.SyntaxTree:
+    def cquery(self, y, K, max_dist=np.inf) -> SyntaxTree:
         
         if K not in self.clibs:
             return None
@@ -276,7 +278,7 @@ class ConstrainedLibrary(Library):
         idx = self.clibs_idxmap[K][idx]
         return self.stree_provider.get_stree(idx)
     
-    def cquery_brute(self, y, K, max_dist=np.inf, w:np.array=None, S_train=None) -> backprop.SyntaxTree:
+    def cquery_brute(self, y, K, max_dist=np.inf, w:np.array=None, S_train=None) -> SyntaxTree:
         
         if K not in self.clibs:
             return None
@@ -297,7 +299,7 @@ class ConstrainedLibrary(Library):
             return self.stree_provider.get_stree(idx).scale(-1.0)
         return self.stree_provider.get_stree(idx)
     
-    def cquery_stoch(self, y, K, max_dist=np.inf) -> backprop.SyntaxTree:
+    def cquery_stoch(self, y, K, max_dist=np.inf) -> SyntaxTree:
         
         if K not in self.clibs:
             return None
@@ -310,7 +312,7 @@ class ConstrainedLibrary(Library):
 
 
 class DynamicConstrainedLibrary:
-    def __init__(self, population:list, eval_map:dict, selector:gp.Selector, data, X_mesh):
+    def __init__(self, population:list, eval_map:dict, selector:selector.Selector, data, X_mesh):
         parents = selector.select(population, eval_map, len(population))
         self.strees = [random.choice(p.cache.nodes) for p in parents]
         self.sem    = [t(data.X) for t in self.strees]

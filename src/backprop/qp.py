@@ -5,16 +5,41 @@ import logging
 
 import dataset
 import numlims
-from backprop import backprop
 from backprop import lpbackprop
 from backprop import utils
 from backprop import models
 from backprop.test import test_qp
 
 
+class Relopt:  # immutable class
+    def __init__(self, opt:str='='):
+        self.opt = opt
+    def neg(self):
+        neg_opt = Relopt(self.opt)
+        if self.opt == '>=': neg_opt.opt = '<='
+        if self.opt == '<=': neg_opt.opt = '>='
+        if self.opt == '>' : neg_opt.opt = '<'
+        if self.opt == '<' : neg_opt.opt = '>'
+        return neg_opt
+    def strict(self):
+        strict_opt = Relopt(self.opt)
+        if self.opt == '>=': strict_opt.opt = '>'
+        if self.opt == '<=': strict_opt.opt = '<'
+        return strict_opt
+    def __eq__(self, other) -> bool:
+        return self.opt == other.opt
+    def check(self, a:float, b:float) -> bool:
+        if self.opt == '=' : return a == b
+        if self.opt == '>=': return a >= b
+        if self.opt == '<=': return a <= b
+        if self.opt == '>' : return a >  b
+        if self.opt == '<' : return a <  b
+        raise RuntimeError(f"Operator {self.opt} not supported.")
+
+
 class Constraints:
     def __init__(self):
-        self.eq_ineq:list[tuple(dataset.DataPoint, backprop.Relopt)] = []
+        self.eq_ineq:list[tuple(dataset.DataPoint, Relopt)] = []
         self.symm:list[tuple] = []  # list[tuple(x1:float, x2:float, iseven:bool)]
         self.noroot = False
     
@@ -32,7 +57,7 @@ def get_constraints(K:dataset.DataKnowledge, break_points:list, deriv:tuple[int]
     # eq constrs.
     if deriv in K.derivs.keys():
         for dp in K.derivs[deriv]:
-            constrs.eq_ineq.append( (dataset.DataPoint(dp.x,dp.y), backprop.Relopt('=')) )
+            constrs.eq_ineq.append( (dataset.DataPoint(dp.x,dp.y), Relopt('=')) )
     
     # ieq constrs.
     if deriv in K.sign.keys():
@@ -42,7 +67,7 @@ def get_constraints(K:dataset.DataKnowledge, break_points:list, deriv:tuple[int]
             if np.all(l < u):  # avoid l==u and l>u
                 X = K.spsampler.meshspace(l, u, sample_size)
                 for x in X:
-                    constrs.eq_ineq.append( (dataset.DataPoint(x,th), backprop.Relopt( '>' if sign == '+' else '<' )) )
+                    constrs.eq_ineq.append( (dataset.DataPoint(x,th), Relopt( '>' if sign == '+' else '<' )) )
     
     # symm constrs.
     if derivdeg == 0 and deriv in K.symm:
@@ -63,7 +88,7 @@ def get_constraints(K:dataset.DataKnowledge, break_points:list, deriv:tuple[int]
         (l, u) = K.zero[deriv]
         X = K.spsampler.meshspace(l, u, sample_size)
         for x in X:
-            constrs.eq_ineq.append( (dataset.DataPoint(x, 0), backprop.Relopt('=')) )"""
+            constrs.eq_ineq.append( (dataset.DataPoint(x, 0), Relopt('=')) )"""
 
     return constrs
 

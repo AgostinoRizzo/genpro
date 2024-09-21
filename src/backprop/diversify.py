@@ -1,5 +1,8 @@
 import random
-from backprop import backprop, gp, pareto_front
+
+from gp import gp
+from symbols.visitor import SyntaxTreeNodeCollector
+from backprop import pareto_front
 
 
 class SymbolicDiversifier:
@@ -9,7 +12,7 @@ class SymbolicDiversifier:
     
     def diversify(self, stree):
         if stree is None: return None
-        nodesCollector = backprop.SyntaxTreeNodeCollector()
+        nodesCollector = SyntaxTreeNodeCollector()
         stree.accept(nodesCollector)
         node = random.choice(nodesCollector.nodes)
 
