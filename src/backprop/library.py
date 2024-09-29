@@ -255,29 +255,81 @@ class ConstrainedLibrary(Library):
             t.clear_output()
 
             noroot = (k_t != 0.0).all() and (t_extra != 0.0).all() and not np.isnan(t_extra).any()
+            noroot = [True, False] if noroot else [False]
 
-            for sign in [1.0, -1.0]:
-                K_t = ((k_t * sign).tobytes(), noroot)
-                if K_t not in self.clibs_idxmap:
-                    self.clibs_idxmap[K_t] = []
-                    self.clibs_negmap[K_t] = []
-                self.clibs_idxmap[K_t].append(i)
-                self.clibs_negmap[K_t].append(sign < 0.0)
+            for sign in [1.0]:  # TODO: [1.0, -1.0]:
+                for nr in noroot:
+                    K_t = ((k_t * sign).tobytes(), nr)
+                    if K_t not in self.clibs_idxmap:
+                        self.clibs_idxmap[K_t] = []
+                        self.clibs_negmap[K_t] = []
+                    self.clibs_idxmap[K_t].append(i)
+                    self.clibs_negmap[K_t].append(sign < 0.0)
         
         for K_t in self.clibs_idxmap.keys():
             self.clibs[K_t] = ExactKnnIndex(self.lib_data[self.clibs_idxmap[K_t]])
 
     def cquery(self, y, K, max_dist=np.inf) -> SyntaxTree:
         
-        if K not in self.clibs:
+        matching_libs = self.__get_matching_libs(K)
+        if len(matching_libs) == 0:
             return None
         
-        d, idx = self.clibs[K].query(y, max_dist=max_dist)
-        if d == np.infty: return None
+        best_d = None
+        best_i_mlib = None
+        best_local_idx = None
+        for i_mlib, (mlib, mlib_idxmap, mlib_negmap) in enumerate(matching_libs):
 
-        idx = self.clibs_idxmap[K][idx]
-        return self.stree_provider.get_stree(idx)
+            d, idx = mlib.query(y, max_dist=max_dist)
+            if d == np.infty: continue
+            if best_d is None or d < best_d:
+                best_d = d
+                best_i_mlib = i_mlib
+                best_local_idx = idx
+
+        if best_d is None:
+            return None
+        
+        mlib, mlib_idxmap, mlib_negmap = matching_libs[best_i_mlib]
+        global_idx = best_local_idx if mlib_idxmap is None else mlib_idxmap[best_local_idx]
+        if mlib_negmap is not None and mlib_negmap[best_local_idx]:
+            return self.stree_provider.get_stree(global_idx).scale(-1.0)
+        return self.stree_provider.get_stree(global_idx)
     
+    def __get_matching_libs(self, K) -> list:
+        k, noroot = K
+        k = np.frombuffer(k)
+        k_nan = np.isnan(k)
+
+        if not k_nan.any():  # totally constrained.
+            if K in self.clibs:
+                return [(self.clibs[K], self.clibs_idxmap[K], self.clibs_negmap[K])]
+            return []
+        
+        if not noroot and k_nan.all():  # not constrained.
+            return [(self.sem_index, None, None)]
+
+        matching_libs = []
+        for K_lib in self.clibs.keys():  # partially constrained.
+            if ConstrainedLibrary.__K_match(K, K_lib):  # second arg (K_b) must not contain NaN values! (see __K_match).
+                matching_libs.append((self.clibs[K_lib], self.clibs_idxmap[K_lib], self.clibs_negmap[K_lib]))
+
+        return matching_libs
+    
+    @staticmethod
+    def __K_match(K_a, K_b) -> bool:
+        k_a, noroot_a = K_a
+        k_b, noroot_b = K_b
+        k_a = np.frombuffer(k_a)
+        k_b = np.frombuffer(k_b)
+        
+        if noroot_a != noroot_b:
+            return False 
+
+        k_mask = ~np.isnan(k_a)  # it is assumed K_b does not contain NaN values!
+        return np.array_equal(k_a[k_mask], k_b[k_mask])
+    
+    """
     def cquery_brute(self, y, K, max_dist=np.inf, w:np.array=None, S_train=None) -> SyntaxTree:
         
         if K not in self.clibs:
@@ -294,10 +346,10 @@ class ConstrainedLibrary(Library):
         else:
             idx = np.argmin( np.sqrt( np.sum(w * (q ** 2), axis=1) ) )
 
-        idx = self.clibs_idxmap[K][idx]
+        global_idx = self.clibs_idxmap[K][idx]
         if self.clibs_negmap[K][idx]:
-            return self.stree_provider.get_stree(idx).scale(-1.0)
-        return self.stree_provider.get_stree(idx)
+            return self.stree_provider.get_stree(global_idx).scale(-1.0)
+        return self.stree_provider.get_stree(global_idx)
     
     def cquery_stoch(self, y, K, max_dist=np.inf) -> SyntaxTree:
         
@@ -305,10 +357,11 @@ class ConstrainedLibrary(Library):
             return None
         
         idx = random.randrange(self.clibs[K].index.data.shape[0])
-        idx = self.clibs_idxmap[K][idx]
+        global_idx = self.clibs_idxmap[K][idx]
         if self.clibs_negmap[K][idx]:
-            return self.stree_provider.get_stree(idx).scale(-1.0)
-        return self.stree_provider.get_stree(idx)
+            return self.stree_provider.get_stree(global_idx).scale(-1.0)
+        return self.stree_provider.get_stree(global_idx)
+    """
 
 
 class DynamicConstrainedLibrary:
