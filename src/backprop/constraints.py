@@ -37,7 +37,7 @@ class BackpropConstraints(Constraints):
         pconstrs_other, noroot_other = K_other
         pconstrs_other = np.frombuffer(pconstrs_other)
         
-        if self.noroot != noroot_other:
+        if self.noroot and not noroot_other:
             return False 
 
         return np.array_equal(self.pconstrs[self.pconstrs_mask], pconstrs_other[self.pconstrs_mask])
