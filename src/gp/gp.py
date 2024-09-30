@@ -232,7 +232,7 @@ class GP:
         #self.fea_front_tracker = DataLengthFrontTracker()
         self.fea_front_tracker = MultiHeadFrontTracker()
 
-        self.corrector = corrector.Corrector(S_train, knowledge.synth_dataset())
+        self.corrector = corrector.Corrector(S_train, knowledge.synth_dataset(), max_depth)
     
     def evolve(self, newgen_callback=None) -> tuple[list[SyntaxTree], dict]:
         """

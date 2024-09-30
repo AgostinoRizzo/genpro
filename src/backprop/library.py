@@ -238,9 +238,17 @@ class Library:
 class ConstrainedLibrary(Library):
     def __init__(self, size:int, max_depth:int, data, X_mesh):
         super().__init__(size, max_depth, data)
-        self.clibs = {}
-        self.clibs_idxmap = {}
-        self.clibs_negmap = {}
+        self.max_depth = max_depth
+        
+        K_none = (None, None)
+
+        self.clibs        = {d: {} for d in range(max_depth+1)}
+        self.clibs_idxmap = {d: {} for d in range(max_depth+1)}
+        self.clibs_negmap = {d: {} for d in range(max_depth+1)}
+        for d in range(max_depth+1):
+            self.clibs       [d][K_none] = []
+            self.clibs_idxmap[d][K_none] = []
+            self.clibs_negmap[d][K_none] = []
 
         X_extra = np.array([
             [ 0.0] * data.nvars,
@@ -249,29 +257,35 @@ class ConstrainedLibrary(Library):
         ])
 
         for i, t in enumerate(self.stree_index):
+            d_t = t.get_max_depth()
             k_t = np.sign(t[(X_mesh, ())])
             t.clear_output()
             t_extra = t(X_extra)
             t.clear_output()
 
             noroot = (k_t != 0.0).all() and (t_extra != 0.0).all() and not np.isnan(t_extra).any()
-            noroot = [True, False] if noroot else [False]
 
             for sign in [1.0]:  # TODO: [1.0, -1.0]:
-                for nr in noroot:
-                    K_t = ((k_t * sign).tobytes(), nr)
-                    if K_t not in self.clibs_idxmap:
-                        self.clibs_idxmap[K_t] = []
-                        self.clibs_negmap[K_t] = []
-                    self.clibs_idxmap[K_t].append(i)
-                    self.clibs_negmap[K_t].append(sign < 0.0)
-        
-        for K_t in self.clibs_idxmap.keys():
-            self.clibs[K_t] = ExactKnnIndex(self.lib_data[self.clibs_idxmap[K_t]])
+                
+                K_t = ((k_t * sign).tobytes(), noroot)
+                if K_t not in self.clibs_idxmap[d_t]:
+                    self.clibs_idxmap[d_t][K_t] = []
+                    self.clibs_negmap[d_t][K_t] = []
+                self.clibs_idxmap[d_t][K_t].append(i)
+                self.clibs_negmap[d_t][K_t].append(sign < 0.0)
 
-    def cquery(self, y, K, max_dist=np.inf) -> SyntaxTree:
+                # default bucket.
+                self.clibs_idxmap[d_t][K_none].append(i)
+                self.clibs_negmap[d_t][K_none].append(sign < 0.0)
         
-        matching_libs = self.__get_matching_libs(K)
+        for d_t in self.clibs_idxmap.keys():
+            for K_t in self.clibs_idxmap[d_t].keys():
+                self.clibs[d_t][K_t] = ExactKnnIndex(self.lib_data[self.clibs_idxmap[d_t][K_t]])
+            self.clibs[d_t][K_none] = ExactKnnIndex(self.lib_data[self.clibs_idxmap[d_t][(None, None)]])  # default library.
+
+    def cquery(self, y, C, max_dist=np.inf) -> SyntaxTree:
+        
+        matching_libs = self.__get_matching_libs(C)
         if len(matching_libs) == 0:
             return None
         
@@ -296,38 +310,31 @@ class ConstrainedLibrary(Library):
             return self.stree_provider.get_stree(global_idx).scale(-1.0)
         return self.stree_provider.get_stree(global_idx)
     
-    def __get_matching_libs(self, K) -> list:
-        k, noroot = K
-        k = np.frombuffer(k)
-        k_nan = np.isnan(k)
-
-        if not k_nan.any():  # totally constrained.
-            if K in self.clibs:
-                return [(self.clibs[K], self.clibs_idxmap[K], self.clibs_negmap[K])]
-            return []
-        
-        if not noroot and k_nan.all():  # not constrained.
-            return [(self.sem_index, None, None)]
-
+    def __get_matching_libs(self, C) -> list:
         matching_libs = []
-        for K_lib in self.clibs.keys():  # partially constrained.
-            if ConstrainedLibrary.__K_match(K, K_lib):  # second arg (K_b) must not contain NaN values! (see __K_match).
-                matching_libs.append((self.clibs[K_lib], self.clibs_idxmap[K_lib], self.clibs_negmap[K_lib]))
 
-        return matching_libs
-    
-    @staticmethod
-    def __K_match(K_a, K_b) -> bool:
-        k_a, noroot_a = K_a
-        k_b, noroot_b = K_b
-        k_a = np.frombuffer(k_a)
-        k_b = np.frombuffer(k_b)
+        for d in range(min(C.get_max_depth(), self.max_depth)+1):
         
-        if noroot_a != noroot_b:
-            return False 
+            # partially constrained.
+            if C.are_none():
+                for K_lib in self.clibs[d].keys():
+                    if K_lib == (None, None): continue
+                    if C.match_key(K_lib):  # arg K_lib must not contain NaN values! (see match_key).
+                        matching_libs.append((self.clibs[d][K_lib], self.clibs_idxmap[d][K_lib], self.clibs_negmap[d][K_lib]))
 
-        k_mask = ~np.isnan(k_a)  # it is assumed K_b does not contain NaN values!
-        return np.array_equal(k_a[k_mask], k_b[k_mask])
+            # not constrained.
+            elif C.are_none():
+                K_none = (None, None)
+                matching_libs.append((self.clibs[d][K_none], self.clibs_idxmap[d][K_none], self.clibs_negmap[d][K_none]))
+
+            # totally constrained.
+            else:
+                K = C.get_key()
+                if K in self.clibs[d]:
+                    matching_libs.append((self.clibs[d][K], self.clibs_idxmap[d][K], self.clibs_negmap[d][K]))
+        
+        return matching_libs
+
     
     """
     def cquery_brute(self, y, K, max_dist=np.inf, w:np.array=None, S_train=None) -> SyntaxTree:
