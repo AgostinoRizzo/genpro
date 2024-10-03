@@ -27,7 +27,8 @@ class Corrector:
             # backprop knowledge...
             stree.clear_output()
             stree[(self.S_know.X, ())]  # needed for 'pull_know'.
-            k_pulled, noroot_pulled = backprop_node.pull_know(self.S_know.y)
+            track = {}
+            k_pulled, noroot_pulled = backprop_node.pull_know(self.S_know.y, track=track)
             if k_pulled is None or noroot_pulled is None:
                 return stree
             C_pulled = constraints.BackpropConstraints(max_nesting_depth, k_pulled, noroot_pulled)

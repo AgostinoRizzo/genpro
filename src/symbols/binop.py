@@ -210,9 +210,9 @@ class BinaryOperatorSyntaxTree(SyntaxTree):
             pulled_output = utils.flatten(pulled_output)
         return pulled_output
     
-    def pull_know(self, k_target:np.array, noroot_target:bool=False, child=None) -> np.array:
+    def pull_know(self, k_target:np.array, noroot_target:bool=False, child=None, track:dict={}) -> tuple[np.array,bool]:
         
-        k_pulled, noroot_pulled = super().pull_know(k_target, noroot_target)
+        k_pulled, noroot_pulled = super().pull_know(k_target, noroot_target, track=track)
         if child is None or k_pulled is None or noroot_pulled is None:
             return k_pulled, noroot_pulled
         
@@ -229,7 +229,7 @@ class BinaryOperatorSyntaxTree(SyntaxTree):
             pull_left = False
         else:
             raise RuntimeError('Invalid child.')
-        k_A = np.sign(A.y_know[()])
+        k_A = np.sign(A.y_know[()])  # TODO: never used!
         k_B = np.sign(B.y_know[()])
         
         k_pulled = np.full(k_target.shape, np.nan)
@@ -261,7 +261,70 @@ class BinaryOperatorSyntaxTree(SyntaxTree):
         else:
             raise RuntimeError('Invalid operator.')
         
+        track[id(A)] = (k_pulled, noroot_pulled)
         return k_pulled, noroot_pulled
+    
+    def pull_know_deriv(self, image_track:dict, derividx:int, k_target:np.array, noroot_target:bool=False, child=None) -> np.array:
+        
+        k_pulled = super().pull_know_deriv(image_track, derividx, k_target, noroot_target)
+        if child is None or k_pulled is None:
+            return k_pulled
+        
+        A = None
+        B = None
+        pull_left = True
+        child_id = id(child)
+        if child_id == id(self.left):
+            A = self.left
+            B = self.right
+        elif child_id == id(self.right):
+            A = self.right
+            B = self.left
+            pull_left = False
+        else:
+            raise RuntimeError('Invalid child.')
+        k_A  = image_track[id(A)][0]
+        k_B  = np.sign(B.y_know[()])
+        k_dB = np.sign(B.y_know[(derividx)])
+        
+        k_pulled = np.full(k_target.shape, np.nan)
+
+        if self.operator == '+':
+            k_pulled[(k_target > 0.0) & (k_dB < 0.0)] = +1.0
+            k_pulled[(k_target < 0.0) & (k_dB > 0.0)] = -1.0
+        
+        elif self.operator == '-':
+            if pull_left:
+                k_pulled[(k_target > 0.0) & (k_dB > 0.0)] = +1.0
+                k_pulled[(k_target < 0.0) & (k_dB < 0.0)] = -1.0
+            else:
+                k_pulled[(k_target > 0.0) & (k_dB < 0.0)] = -1.0
+                k_pulled[(k_target < 0.0) & (k_dB > 0.0)] = +1.0
+        
+        elif self.operator == '*':
+            k_A_isknown = ~np.isnan(k_A)
+            k_pulled[k_A_isknown & (k_target > 0.0) & (k_A != k_dB)] =  k_B
+            k_pulled[k_A_isknown & (k_target < 0.0) & (k_A == k_dB)] = ~k_B
+        
+        elif self.operator == '/':
+            k_A_isknown = ~np.isnan(k_A)
+            if pull_left:
+                mask = k_A_isknown & (k_target > 0.0) & (k_A == k_dB)
+                k_pulled[mask] =  k_B[mask]
+
+                mask = k_A_isknown & (k_target < 0.0) & (k_A != k_dB)
+                k_pulled[mask] = ~k_B[mask]
+            else:
+                mask = k_A_isknown & (k_target > 0.0) & (k_A != k_dB)
+                k_pulled[mask] = ~k_B[mask]
+
+                mask = k_A_isknown & (k_target < 0.0) & (k_A == k_dB)
+                k_pulled[mask] =  k_B[mask]
+        
+        else:
+            raise RuntimeError('Invalid operator.')
+        
+        return k_pulled
 
     def get_coeffs(self, coeffs:list):
         self.left.get_coeffs(coeffs)

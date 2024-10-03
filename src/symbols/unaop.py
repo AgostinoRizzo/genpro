@@ -152,9 +152,9 @@ class UnaryOperatorSyntaxTree(SyntaxTree):
             return pulled_output
         raise RuntimeError('Invalid child.')
     
-    def pull_know(self, k_target:np.array, noroot_target:bool=False, child=None) -> np.array:
+    def pull_know(self, k_target:np.array, noroot_target:bool=False, child=None, track:dict={}) -> tuple[np.array,bool]:
         
-        k_pulled, noroot_pulled = super().pull_know(k_target, noroot_target)
+        k_pulled, noroot_pulled = super().pull_know(k_target, noroot_target, track=track)
         if child is None or k_pulled is None or noroot_pulled is None:
             return k_pulled, noroot_pulled
         
@@ -193,7 +193,46 @@ class UnaryOperatorSyntaxTree(SyntaxTree):
         else:
             raise RuntimeError('Invalid operator.')
         
+        track[self.inner] = (k_pulled, noroot_pulled)
         return k_pulled, noroot_pulled
+    
+    def pull_know_deriv(self, image_track:dict, derividx:int, k_target:np.array, noroot_target:bool=False, child=None) -> np.array:
+
+        k_pulled = super().pull_know_deriv(image_track, derividx, k_target, noroot_target)
+        if child is None or k_pulled is None:
+            return k_pulled
+        
+        if id(child) != id(self.inner):
+            raise RuntimeError('Invalid child.')
+        
+        k_inner = image_track[id(self.inner)][0]
+        k_inner_isknown = ~np.isnan(k_inner)
+        
+        k_pulled = np.full(k_target.shape, np.nan)
+
+        if self.operator == 'square':
+            mask = k_inner_isknown & (k_target > 0.0)
+            k_pulled[mask] = k_inner[mask]
+
+            mask = k_inner_isknown & (k_target < 0.0)
+            k_pulled[mask] = ~k_inner[mask]
+        
+        elif self.operator == 'cube':
+            k_pulled[:] = k_target[:]
+        
+        elif self.operator == 'sqrt':
+            k_pulled[:] = k_target[:]
+        
+        elif self.operator == 'exp':
+            k_pulled[:] = k_target[:]
+        
+        elif self.operator == 'log':
+            k_pulled[:] = k_target[:]
+        
+        else:
+            raise RuntimeError('Invalid operator.')
+        
+        return k_pulled
     
     def get_coeffs(self, coeffs:list):
         self.inner.get_coeffs(coeffs)
