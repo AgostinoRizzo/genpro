@@ -211,9 +211,9 @@ class BinaryOperatorSyntaxTree(SyntaxTree):
         return pulled_output
     
     def pull_know(self, k_target:np.array, noroot_target:bool=False, child=None, track:dict={}) -> tuple[np.array,bool]:
-        
+               
         k_pulled, noroot_pulled = super().pull_know(k_target, noroot_target, track=track)
-        if child is None or k_pulled is None or noroot_pulled is None:
+        if child is None:
             return k_pulled, noroot_pulled
         
         A = None
@@ -267,7 +267,7 @@ class BinaryOperatorSyntaxTree(SyntaxTree):
     def pull_know_deriv(self, image_track:dict, derividx:int, k_target:np.array, noroot_target:bool=False, child=None) -> np.array:
         
         k_pulled = super().pull_know_deriv(image_track, derividx, k_target, noroot_target)
-        if child is None or k_pulled is None:
+        if child is None:
             return k_pulled
         
         A = None
@@ -285,7 +285,7 @@ class BinaryOperatorSyntaxTree(SyntaxTree):
             raise RuntimeError('Invalid child.')
         k_A  = image_track[id(A)][0]
         k_B  = np.sign(B.y_know[()])
-        k_dB = np.sign(B.y_know[(derividx)])
+        k_dB = np.sign(B.y_know[(derividx,)])
         
         k_pulled = np.full(k_target.shape, np.nan)
 
@@ -303,8 +303,12 @@ class BinaryOperatorSyntaxTree(SyntaxTree):
         
         elif self.operator == '*':
             k_A_isknown = ~np.isnan(k_A)
-            k_pulled[k_A_isknown & (k_target > 0.0) & (k_A != k_dB)] =  k_B
-            k_pulled[k_A_isknown & (k_target < 0.0) & (k_A == k_dB)] = ~k_B
+
+            mask = k_A_isknown & (k_target > 0.0) & (k_A != k_dB)
+            k_pulled[mask] =  k_B[mask]
+
+            mask = k_A_isknown & (k_target < 0.0) & (k_A == k_dB)
+            k_pulled[mask] = -k_B[mask]
         
         elif self.operator == '/':
             k_A_isknown = ~np.isnan(k_A)
@@ -313,10 +317,10 @@ class BinaryOperatorSyntaxTree(SyntaxTree):
                 k_pulled[mask] =  k_B[mask]
 
                 mask = k_A_isknown & (k_target < 0.0) & (k_A != k_dB)
-                k_pulled[mask] = ~k_B[mask]
+                k_pulled[mask] = -k_B[mask]
             else:
                 mask = k_A_isknown & (k_target > 0.0) & (k_A != k_dB)
-                k_pulled[mask] = ~k_B[mask]
+                k_pulled[mask] = -k_B[mask]
 
                 mask = k_A_isknown & (k_target < 0.0) & (k_A == k_dB)
                 k_pulled[mask] =  k_B[mask]

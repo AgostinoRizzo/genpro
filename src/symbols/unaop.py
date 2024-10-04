@@ -1,6 +1,7 @@
 import numpy as np
 import sympy
 from symbols.syntax_tree import SyntaxTree
+from backprop.bperrors import KnowBackpropError
 
 
 class UnaryOperatorSyntaxTree(SyntaxTree):
@@ -155,8 +156,8 @@ class UnaryOperatorSyntaxTree(SyntaxTree):
     def pull_know(self, k_target:np.array, noroot_target:bool=False, child=None, track:dict={}) -> tuple[np.array,bool]:
         
         k_pulled, noroot_pulled = super().pull_know(k_target, noroot_target, track=track)
-        if child is None or k_pulled is None or noroot_pulled is None:
-            return k_pulled, noroot_pulled
+        if child is None:
+            return k_pulled, noroot_pulled 
         
         if id(child) != id(self.inner):
             raise RuntimeError('Invalid child.')
@@ -166,7 +167,7 @@ class UnaryOperatorSyntaxTree(SyntaxTree):
 
         if self.operator == 'square':
             if (k_target < 0.0).any():
-                return None, None
+                raise KnowBackpropError()
             if noroot_target:
                 noroot_pulled = True
         
@@ -177,14 +178,14 @@ class UnaryOperatorSyntaxTree(SyntaxTree):
         
         elif self.operator == 'sqrt':
             if (k_target < 0.0).any():
-                return None, None
+                raise KnowBackpropError()
             k_pulled[:] = +1.0
             if noroot_target:
                 noroot_pulled = True
         
         elif self.operator == 'exp':
             if (k_target < 0.0).any():
-                return None, None
+                raise KnowBackpropError()
         
         elif self.operator == 'log':
             k_pulled[:] = +1.0
@@ -193,13 +194,13 @@ class UnaryOperatorSyntaxTree(SyntaxTree):
         else:
             raise RuntimeError('Invalid operator.')
         
-        track[self.inner] = (k_pulled, noroot_pulled)
+        track[id(self.inner)] = (k_pulled, noroot_pulled)
         return k_pulled, noroot_pulled
     
     def pull_know_deriv(self, image_track:dict, derividx:int, k_target:np.array, noroot_target:bool=False, child=None) -> np.array:
-
+        
         k_pulled = super().pull_know_deriv(image_track, derividx, k_target, noroot_target)
-        if child is None or k_pulled is None:
+        if child is None:
             return k_pulled
         
         if id(child) != id(self.inner):

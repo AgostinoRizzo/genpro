@@ -1,0 +1,2 @@
+class KnowBackpropError(RuntimeError):
+    pass

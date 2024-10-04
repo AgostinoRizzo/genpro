@@ -9,8 +9,9 @@ class Constraints:
         return self.max_depth
 
 class BackpropConstraints(Constraints):
-    def __init__(self, max_depth:int, pconstrs:np.array, noroot:bool):
+    def __init__(self, max_depth:int, pconstrs:dict[tuple,np.array], noroot:bool):
         super().__init__(max_depth)
+        pconstrs = pconstrs[()]  # TODO: integrate derivatives.
         self.pconstrs = pconstrs
         self.noroot = noroot
 

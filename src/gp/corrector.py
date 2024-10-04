@@ -1,13 +1,19 @@
 import random
 from backprop import library, constraints
+from backprop.bperrors import KnowBackpropError
 from gp import gp
 
 
 class Corrector:
-    def __init__(self, S_data, S_know, max_depth:int):
+    def __init__(self, S_data, know, max_depth:int):
         self.S_data = S_data
-        self.S_know = S_know
         self.max_depth = max_depth
+        
+        self.S_know = know.synth_dataset()
+        self.S_know_derivs = {}
+        for deriv in know.sign.keys():
+            if len(deriv) == 1:
+                self.S_know_derivs[deriv] = know.synth_dataset(deriv=deriv)
 
         X_mesh = S_data.spsampler.meshspace(S_data.xl, S_data.xu, 100)
         self.lib = library.ConstrainedLibrary(2000, 3, S_data, X_mesh)
@@ -25,13 +31,9 @@ class Corrector:
             max_nesting_depth = self.max_depth - backprop_node.get_depth()
             
             # backprop knowledge...
-            stree.clear_output()
-            stree[(self.S_know.X, ())]  # needed for 'pull_know'.
-            track = {}
-            k_pulled, noroot_pulled = backprop_node.pull_know(self.S_know.y, track=track)
-            if k_pulled is None or noroot_pulled is None:
+            C_pulled = self.backprop_know(stree, backprop_node, max_nesting_depth)
+            if C_pulled is None:
                 return stree
-            C_pulled = constraints.BackpropConstraints(max_nesting_depth, k_pulled, noroot_pulled)
 
             # backprop data...
             y = stree(self.S_data.X)  # needed for 'pull_output'.
@@ -53,4 +55,26 @@ class Corrector:
             stree = new_stree
 
         return new_stree
+    
+    def backprop_know(self, stree, backprop_node, max_nesting_depth) -> constraints.BackpropConstraints:
+        k_pulled = {}
+        stree.clear_output()
+        
+        try:
+            # backprop image knowledge.
+            stree[(self.S_know.X, ())]  # needed for 'pull_know'.
+            image_track = {}
+            k_image_pulled, noroot_pulled = backprop_node.pull_know(self.S_know.y, track=image_track)
+            k_pulled[()] = k_image_pulled
+
+            # backprop derivative knowledge.
+            for deriv, S_know_deriv in self.S_know_derivs.items():
+                stree[(S_know_deriv.X, deriv)]  # needed for 'pull_know_deriv'.
+                k_deriv_pulled = backprop_node.pull_know_deriv(image_track, deriv[0], S_know_deriv.y)
+                k_pulled[deriv] = k_deriv_pulled
+        
+        except KnowBackpropError:
+            return None
+
+        return constraints.BackpropConstraints(max_nesting_depth, k_pulled, noroot_pulled)
         
