@@ -16,18 +16,20 @@ class Corrector:
                 self.S_know_derivs[deriv] = know.synth_dataset(deriv=deriv)
 
         X_mesh = S_data.spsampler.meshspace(S_data.xl, S_data.xu, 100)
-        self.lib = library.ConstrainedLibrary(2000, 3, S_data, X_mesh)
+        derivs = [()] + list(self.S_know_derivs.keys())
+        self.lib = library.ConstrainedLibrary(2000, 3, S_data, X_mesh, derivs)
     
-    def correct(self, stree):
+    def correct(self, stree, backprop_node=None):
         for _ in range(1):
             stree.cache.clear()
             stree.set_parent()
 
-            backprop_nodes = stree.cache.backprop_nodes
-            if len(backprop_nodes) == 0:
-                return stree
-            
-            backprop_node = random.choice(backprop_nodes)
+            if backprop_node is None:
+                backprop_nodes = stree.cache.backprop_nodes
+                if len(backprop_nodes) == 0:
+                    return stree
+                
+                backprop_node = random.choice(backprop_nodes)
             max_nesting_depth = self.max_depth - backprop_node.get_depth()
             
             # backprop knowledge...
@@ -43,7 +45,7 @@ class Corrector:
             max_dist = library.compute_distance(y_backprop_node, y_pulled)
             new_node = self.lib.cquery(y_pulled, C_pulled, max_dist=max_dist)
             if new_node is None:
-                return stree
+                return stree, new_node, C_pulled, y_pulled  # return stree
 
             # correct stree...
             new_stree = gp.replace_subtree(stree, backprop_node, new_node)
@@ -54,7 +56,7 @@ class Corrector:
             
             stree = new_stree
 
-        return new_stree
+        return new_stree, new_node, C_pulled, y_pulled  # return new_stree
     
     def backprop_know(self, stree, backprop_node, max_nesting_depth) -> constraints.BackpropConstraints:
         k_pulled = {}

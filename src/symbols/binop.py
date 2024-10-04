@@ -26,7 +26,12 @@ class BinaryOperatorSyntaxTree(SyntaxTree):
     def __getitem__(self, x_d):
         x, d = x_d
         if d not in self.y_know:
-            self.y_know[d] = self.__operate(self.left[x_d], self.right[x_d])
+            if d == ():
+                self.y_know[d] = self.__operate(self.left[x_d], self.right[x_d])
+            elif len(d) == 1:
+                self.y_know[d] = self.__operate_deriv(self.left[(x,())], self.left[x_d], self.right[(x,())], self.right[x_d])
+            else:
+                raise RuntimeError(f"Derivative {d} not supported.")
         return self.y_know[d]
     
     def clear_output(self):
@@ -136,6 +141,13 @@ class BinaryOperatorSyntaxTree(SyntaxTree):
                 np.log(output, self.left.output)            
         
         raise RuntimeError(f"Inverse operation not defined for operator {self.operator}.")
+    
+    def __operate_deriv(self, left:np.array, left_deriv:np.array, right:np.array, right_deriv:np.array) -> np.array:
+        if   self.operator == '/': return ((right*left_deriv) - (left*right_deriv)) / (left**2)
+        elif self.operator == '*': return (right*left_deriv) + (left*right_deriv)
+        elif self.operator == '+': return left_deriv + right_deriv
+        elif self.operator == '-': return left_deriv - right_deriv
+        raise RuntimeError(f"Derivative not defined for operator {self.operator}.")
     
     def __str__(self) -> str:
         return f"({str(self.left)} {self.operator} {str(self.right)})"

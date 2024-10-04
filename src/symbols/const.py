@@ -21,7 +21,10 @@ class ConstantSyntaxTree(SyntaxTree):
     def __getitem__(self, x_d):
         x, d = x_d
         if d not in self.y_know:
-            self.y_know[d] = np.full(x.shape[0], self.val)
+            if d == ():
+                self.y_know[d] = np.full(x.shape[0], self.val)
+            else:
+                self.y_know[d] = np.zeros(x.shape[0])
         return self.y_know[d]
     
     def get_coeffs(self, coeffs:list):

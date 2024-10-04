@@ -236,7 +236,7 @@ class Library:
 
 
 class ConstrainedLibrary(Library):
-    def __init__(self, size:int, max_depth:int, data, X_mesh):
+    def __init__(self, size:int, max_depth:int, data, X_mesh, derivs:list[tuple[int]]):
         super().__init__(size, max_depth, data)
         self.max_depth = max_depth
         
@@ -258,7 +258,7 @@ class ConstrainedLibrary(Library):
 
         for i, t in enumerate(self.stree_index):
             d_t = t.get_max_depth()
-            k_t = np.sign(t[(X_mesh, ())])
+            k_t = np.concatenate( [np.sign(t[(X_mesh, d)]) for d in sorted(derivs)] )  # important to sort them!
             t.clear_output()
             t_extra = t(X_extra)
             t.clear_output()
@@ -267,7 +267,7 @@ class ConstrainedLibrary(Library):
 
             for sign in [1.0]:  # TODO: [1.0, -1.0]:
                 
-                K_t = ((k_t * sign).tobytes(), noroot)
+                K_t = ((k_t * sign).tobytes(), noroot)  # TODO: better to unify with constraints.BackpropConstraints.
                 if K_t not in self.clibs_idxmap[d_t]:
                     self.clibs_idxmap[d_t][K_t] = []
                     self.clibs_negmap[d_t][K_t] = []
@@ -316,7 +316,7 @@ class ConstrainedLibrary(Library):
         for d in range(min(C.get_max_depth(), self.max_depth)+1):
         
             # partially constrained.
-            if C.are_none():
+            if C.are_partial():
                 for K_lib in self.clibs[d].keys():
                     if K_lib == (None, None): continue
                     if C.match_key(K_lib):  # arg K_lib must not contain NaN values! (see match_key).

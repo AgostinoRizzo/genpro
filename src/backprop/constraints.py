@@ -8,19 +8,20 @@ class Constraints:
     def get_max_depth(self) -> int:
         return self.max_depth
 
+
 class BackpropConstraints(Constraints):
     def __init__(self, max_depth:int, pconstrs:dict[tuple,np.array], noroot:bool):
         super().__init__(max_depth)
-        pconstrs = pconstrs[()]  # TODO: integrate derivatives.
-        self.pconstrs = pconstrs
+        self.origin_pconstrs = pconstrs
+        self.pconstrs = np.concatenate( [pconstrs[deriv] for deriv in sorted(pconstrs.keys())] )  # important order with sorted!
         self.noroot = noroot
 
         # precompute meta-info.
-        self.key = (pconstrs.tobytes(), noroot)
-        pconstrs_nan = np.isnan(pconstrs)
+        self.key = (self.pconstrs.tobytes(), noroot)
+        pconstrs_nan = np.isnan(self.pconstrs)
         self.partial = not noroot or pconstrs_nan.any()
         self.none = not noroot and pconstrs_nan.all()
-        self.pconstrs_mask = ~np.isnan(pconstrs)
+        self.pconstrs_mask = ~pconstrs_nan
     
     def get_key(self) -> tuple:
         return self.key
@@ -42,3 +43,13 @@ class BackpropConstraints(Constraints):
             return False 
 
         return np.array_equal(self.pconstrs[self.pconstrs_mask], pconstrs_other[self.pconstrs_mask])
+    
+    def __str__(self) -> str:
+        out = ''
+        if self.noroot:
+            out += "noroot\n"
+        for deriv in sorted(self.origin_pconstrs.keys()):
+            if len(deriv) > 0:
+                out += f"{str(deriv)}: "
+            out += f"{self.origin_pconstrs[deriv]}\n"
+        return out

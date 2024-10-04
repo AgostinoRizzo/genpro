@@ -1,4 +1,5 @@
 import sympy
+import numpy as np
 from symbols.syntax_tree import SyntaxTree
 
 
@@ -20,7 +21,12 @@ class VariableSyntaxTree(SyntaxTree):
     def __getitem__(self, x_d):
         x, d = x_d
         if d not in self.y_know:
-            self.y_know[d] = x[:,self.idx] if x.ndim == 2 else x
+            if d == ():
+                self.y_know[d] = x[:,self.idx] if x.ndim == 2 else x
+            elif len(d) == 1 and d[0] == self.idx:
+                self.y_know[d] = np.ones(x.shape[0])
+            else:
+                self.y_know[d] = np.zeros(x.shape[0])
         return self.y_know[d]
     
     def __str__(self) -> str:

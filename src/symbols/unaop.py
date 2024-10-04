@@ -26,7 +26,12 @@ class UnaryOperatorSyntaxTree(SyntaxTree):
     def __getitem__(self, x_d):
         x, d = x_d
         if d not in self.y_know:
-            self.y_know[d] = self.__operate(self.inner[x_d])
+            if d == ():
+                self.y_know[d] = self.__operate(self.inner[x_d])
+            elif len(d) == 1:
+                self.y_know[d] = self.__operate_deriv(self.inner[(x,())], self.inner[x_d])
+            else:
+                raise RuntimeError(f"Derivative {d} not supported.")
         return self.y_know[d]
     
     def clear_output(self):
@@ -81,6 +86,14 @@ class UnaryOperatorSyntaxTree(SyntaxTree):
         if self.operator == 'cube'  : return np.cbrt(output)
         
         raise RuntimeError(f"Inverse operation not defined for operator {self.operator}.")
+    
+    def __operate_deriv(self, inner:np.array, inner_deriv:np.array) -> np.array:
+        if self.operator == 'exp'   : return np.exp(inner) * inner_deriv
+        if self.operator == 'log'   : return inner_deriv / inner
+        if self.operator == 'sqrt'  : return inner_deriv / (2.0 * np.sqrt(inner))
+        if self.operator == 'square': return 2.0 * inner * inner_deriv
+        if self.operator == 'cube'  : return 3.0 * (inner**2) * inner_deriv
+        raise RuntimeError(f"Derivative not defined for operator {self.operator}.")
     
     def __str__(self) -> str:
         return f"{self.operator}({str(self.inner)})"
