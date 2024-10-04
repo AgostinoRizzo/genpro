@@ -284,7 +284,7 @@ class GP:
                 if child.validate(): #TODO: and child not in children:
                     
                     child = child.simplify()
-                    child = self.corrector.correct(child)
+                    child, _, _, _ = self.corrector.correct(child)
 
                     child_eval = self.evaluator.evaluate(child)
 

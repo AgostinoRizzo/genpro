@@ -175,6 +175,8 @@ class UnaryOperatorSyntaxTree(SyntaxTree):
         if id(child) != id(self.inner):
             raise RuntimeError('Invalid child.')
         
+        k_target = k_pulled
+        noroot_target = noroot_pulled
         k_pulled = np.full(k_target.shape, np.nan)
         noroot_pulled = False
 
@@ -210,9 +212,9 @@ class UnaryOperatorSyntaxTree(SyntaxTree):
         track[id(self.inner)] = (k_pulled, noroot_pulled)
         return k_pulled, noroot_pulled
     
-    def pull_know_deriv(self, image_track:dict, derividx:int, k_target:np.array, noroot_target:bool=False, child=None) -> np.array:
+    def pull_know_deriv(self, image_track:dict, derividx:int, k_target:np.array, child=None) -> np.array:
         
-        k_pulled = super().pull_know_deriv(image_track, derividx, k_target, noroot_target)
+        k_pulled = super().pull_know_deriv(image_track, derividx, k_target)
         if child is None:
             return k_pulled
         
@@ -222,6 +224,7 @@ class UnaryOperatorSyntaxTree(SyntaxTree):
         k_inner = image_track[id(self.inner)][0]
         k_inner_isknown = ~np.isnan(k_inner)
         
+        k_target = k_pulled
         k_pulled = np.full(k_target.shape, np.nan)
 
         if self.operator == 'square':
@@ -229,7 +232,7 @@ class UnaryOperatorSyntaxTree(SyntaxTree):
             k_pulled[mask] = k_inner[mask]
 
             mask = k_inner_isknown & (k_target < 0.0)
-            k_pulled[mask] = ~k_inner[mask]
+            k_pulled[mask] = -k_inner[mask]
         
         elif self.operator == 'cube':
             k_pulled[:] = k_target[:]

@@ -134,10 +134,10 @@ class SyntaxTree:
             return k_target, noroot_target
         return self.parent.pull_know(k_target, noroot_target, self, track)
     
-    def pull_know_deriv(self, image_track:dict, derividx:int, k_target:np.array, noroot_target:bool=False, child=None) -> np.array:
+    def pull_know_deriv(self, image_track:dict, derividx:int, k_target:np.array, child=None) -> np.array:
         if self.parent is None:
             return k_target
-        return self.parent.pull_know_deriv(image_track, derividx, k_target, noroot_target, self)
+        return self.parent.pull_know_deriv(image_track, derividx, k_target, self)
     
     def get_coeffs(self, coeffs:list):
         pass

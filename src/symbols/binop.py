@@ -244,6 +244,8 @@ class BinaryOperatorSyntaxTree(SyntaxTree):
         k_A = np.sign(A.y_know[()])  # TODO: never used!
         k_B = np.sign(B.y_know[()])
         
+        k_target = k_pulled
+        noroot_target = noroot_pulled
         k_pulled = np.full(k_target.shape, np.nan)
         noroot_pulled = False
 
@@ -276,9 +278,9 @@ class BinaryOperatorSyntaxTree(SyntaxTree):
         track[id(A)] = (k_pulled, noroot_pulled)
         return k_pulled, noroot_pulled
     
-    def pull_know_deriv(self, image_track:dict, derividx:int, k_target:np.array, noroot_target:bool=False, child=None) -> np.array:
+    def pull_know_deriv(self, image_track:dict, derividx:int, k_target:np.array, child=None) -> np.array:
         
-        k_pulled = super().pull_know_deriv(image_track, derividx, k_target, noroot_target)
+        k_pulled = super().pull_know_deriv(image_track, derividx, k_target)
         if child is None:
             return k_pulled
         
@@ -299,6 +301,7 @@ class BinaryOperatorSyntaxTree(SyntaxTree):
         k_B  = np.sign(B.y_know[()])
         k_dB = np.sign(B.y_know[(derividx,)])
         
+        k_target = k_pulled
         k_pulled = np.full(k_target.shape, np.nan)
 
         if self.operator == '+':
