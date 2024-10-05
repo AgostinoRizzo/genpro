@@ -1,4 +1,5 @@
 from symbols.syntax_tree import SyntaxTree
+from backprop import utils
 
 
 class FunctionSyntaxTree(SyntaxTree):
