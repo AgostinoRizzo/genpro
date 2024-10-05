@@ -137,7 +137,7 @@ class DataKnowledge:
                 model_y = model_map[deriv](X)
 
                 sr = ( np.minimum(0, model_y - th) if sign == '+' else np.maximum(0, model_y - th) ) ** 2
-                nv [derivdeg] += (( model_y < th ) if sign == '+' else ( model_y > th )).sum()  #np.count_nonzero(sr)
+                nv [derivdeg] += np.sum(( model_y < th ) if sign == '+' else ( model_y > th ))  #np.count_nonzero(sr)
                 nv [derivdeg] += np.sum(np.isnan(sr))
                 ssr[derivdeg] += np.sum(sr)
         
@@ -634,7 +634,7 @@ class NumpyDataset:
         y_mean = self.y.mean()
         self.sst = np.sum( (self.y - y_mean) ** 2 )
     
-    def evaluate(self, model:callable) -> Evaluation:
+    def evaluate(self, model) -> Evaluation:
         n     = self.get_size()
         ssr   = np.sum( (model(self.X) - self.y) ** 2 )
         mse   = 0. if n == 0 else ssr / n

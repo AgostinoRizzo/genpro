@@ -89,8 +89,8 @@ class DataLengthFrontTracker:
     def track(self, stree, evaluation, frontidx:int=0):
         if frontidx >= self.nfronts: return
 
-        stree_data = evaluation.data_r2
-        stree_length = evaluation.nnodes
+        stree_data = evaluation.r2
+        stree_length = stree.cache.nnodes
 
         if stree_data < 0.01: return
 
