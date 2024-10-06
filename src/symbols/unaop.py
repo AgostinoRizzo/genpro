@@ -243,6 +243,8 @@ class UnaryOperatorSyntaxTree(SyntaxTree):
             k_pulled[:] = k_target[:]
         
         elif self.operator == 'sqrt':
+            if (k_inner == 0.0).any():
+                raise KnowBackpropError()
             k_pulled[:] = k_target[:]
         
         elif self.operator == 'exp':

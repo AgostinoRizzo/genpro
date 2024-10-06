@@ -33,35 +33,39 @@ def test_1d_space_sampler(xl, xu, size, expected_size):
                        (points[i] >= points[i+1] and xl >= xu)
 
 
-@pytest.mark.parametrize("xl,xu,size,expected_meshsize", [
-    ([1, 1], [5, 5], 5, 5**2),
-    ([1, 2, -3], [2, 3, 4], 2, 2**3),
+@pytest.mark.parametrize("xl,xu,npoints,expected_npoints", [
+    ([1, 1], [5, 5], 25, 25),
+    ([1, 2, -3], [2, 3, 4], 9, 8),
     ([-1], [1], 3, 3),
-    ([1, 2, 3], [2, 3, 4], 5, 5**3),
-    ([1, 2, 3], [1, 2, 3], 5, 1),
-    ([1, 2, 3], [1, 2, 4], 5, 5),
+    ([1, 2, 3], [2, 3, 4], 128, 125),
+    ([1, 2, 3], [1, 2, 3], 25, 1),
+    ([1, 2, 3], [1, 2, 4], 5, 1),
     ([1, 2, 3], [2, 3, 4], 0, 0),
     ([1, 2, 3], [1, 2, 3], 0, 0),
     ([1, 2, 3], [1, 2, 4], 0, 0),
-    ([5, 5], [1, 1], 5, 5**2),
+    ([5, 5], [1, 1], 25, 25),
 ])
-def test_nd_space_sampler(xl, xu, size, expected_meshsize):
-    xl = np.array(xl)
-    xu = np.array(xu)
+def test_nd_space_sampler(xl, xu, npoints, expected_npoints):
+    xl = np.array(xl, dtype=float)
+    xu = np.array(xu, dtype=float)
     xsize = xl.size
     assert xsize == xu.size
     spsampler = space.MultidimSpaceSampler()
     
-    for points, israndom, expected_size in [
-            (spsampler.meshspace(xl, xu, size), False, expected_meshsize),
-            (spsampler.randspace(xl, xu, size**xsize), True, size**xsize),
+    for points, israndom in [
+            (spsampler.meshspace(xl, xu, npoints), False),
+            (spsampler.randspace(xl, xu, npoints), True),
         ]:
-        assert points.shape == (expected_size, xsize)
+        assert points.shape == (expected_npoints, xsize)
         for i in range(xsize):
             assert ((points[:,i] >= xl[i]).all() and (points[:,i] <= xu[i]).all() and (xl <= xu).all()) or \
                    ((points[:,i] <= xl[i]).all() and (points[:,i] >= xu[i]).all() and (xl >= xu).all())
         if not israndom:
-            assert size == 0 or ((xl == points[0,:]).all() and (xu == points[-1,:]).all())
+            if expected_npoints == 1:
+                for ix in range(xsize):
+                    assert xl[ix] == points[0][ix] or xu[ix] == points[0][ix]
+            elif expected_npoints > 1:
+                assert ((xl == points[0,:]).all() and (xu == points[-1,:]).all())
 
 
 @pytest.mark.parametrize("nvars,max_derivdeg,expected", [
@@ -70,7 +74,7 @@ def test_nd_space_sampler(xl, xu, size, expected_meshsize):
     (3, 0, [()]), (3, 1, [(),(0,),(1,),(2,)]), (3, 2, [(),(0,),(1,),(2,),(0,0),(0,1),(0,2),(1,0),(1,1),(1,2),(2,0),(2,1),(2,2)])
 ])
 def test_get_all_derivs(nvars, max_derivdeg, expected):
-    expected = expected
+    space.DERIV_IDENTIFIERS.clear()
     actual = space.get_all_derivs(nvars, max_derivdeg)
     assert set(actual) == set(expected)
 

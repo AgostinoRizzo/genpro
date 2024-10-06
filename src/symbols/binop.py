@@ -1,6 +1,7 @@
 import numpy as np
 from symbols.syntax_tree import SyntaxTree
 from symbols.const import ConstantSyntaxTree
+from backprop.bperrors import KnowBackpropError
 
 
 class BinaryOperatorSyntaxTree(SyntaxTree):
@@ -253,22 +254,25 @@ class BinaryOperatorSyntaxTree(SyntaxTree):
         noroot_pulled = False
 
         if self.operator == '+':
-            k_pulled[(k_target > 0.0) & (k_B < 0.0)] = +1.0
-            k_pulled[(k_target < 0.0) & (k_B > 0.0)] = -1.0
+            k_pulled[(k_target > 0.0) & (k_B <= 0.0)] = +1.0
+            k_pulled[(k_target < 0.0) & (k_B >= 0.0)] = -1.0
         
         elif self.operator == '-':
             if pull_left:
-                k_pulled[(k_target > 0.0) & (k_B > 0.0)] = +1.0
-                k_pulled[(k_target < 0.0) & (k_B < 0.0)] = -1.0
+                k_pulled[(k_target > 0.0) & (k_B >= 0.0)] = +1.0
+                k_pulled[(k_target < 0.0) & (k_B <= 0.0)] = -1.0
             else:
-                k_pulled[(k_target > 0.0) & (k_B < 0.0)] = -1.0
-                k_pulled[(k_target < 0.0) & (k_B > 0.0)] = +1.0
+                k_pulled[(k_target > 0.0) & (k_B <= 0.0)] = -1.0
+                k_pulled[(k_target < 0.0) & (k_B >= 0.0)] = +1.0
         
         elif self.operator == '*' or self.operator == '/':
-            pos_mask = k_target > 0.0
-            neg_mask = k_target < 0.0
+            pos_mask = (k_target > 0.0) & (k_B != 0.0)
+            neg_mask = (k_target < 0.0) & (k_B != 0.0)
             k_pulled[pos_mask] =  k_B[pos_mask]
             k_pulled[neg_mask] = -k_B[neg_mask]
+
+            if self.operator == '/' and pull_left and (k_B == 0.0).any():
+                raise KnowBackpropError()
 
             if noroot_target:
                 noroot_pulled = True
@@ -308,39 +312,39 @@ class BinaryOperatorSyntaxTree(SyntaxTree):
         k_pulled = np.full(k_target.shape, np.nan)
 
         if self.operator == '+':
-            k_pulled[(k_target > 0.0) & (k_dB < 0.0)] = +1.0
-            k_pulled[(k_target < 0.0) & (k_dB > 0.0)] = -1.0
+            k_pulled[(k_target > 0.0) & (k_dB <= 0.0)] = +1.0
+            k_pulled[(k_target < 0.0) & (k_dB >= 0.0)] = -1.0
         
         elif self.operator == '-':
             if pull_left:
-                k_pulled[(k_target > 0.0) & (k_dB > 0.0)] = +1.0
-                k_pulled[(k_target < 0.0) & (k_dB < 0.0)] = -1.0
+                k_pulled[(k_target > 0.0) & (k_dB >= 0.0)] = +1.0
+                k_pulled[(k_target < 0.0) & (k_dB <= 0.0)] = -1.0
             else:
-                k_pulled[(k_target > 0.0) & (k_dB < 0.0)] = -1.0
-                k_pulled[(k_target < 0.0) & (k_dB > 0.0)] = +1.0
+                k_pulled[(k_target > 0.0) & (k_dB <= 0.0)] = -1.0
+                k_pulled[(k_target < 0.0) & (k_dB >= 0.0)] = +1.0
         
         elif self.operator == '*':
             k_A_isknown = ~np.isnan(k_A)
 
-            mask = k_A_isknown & (k_target > 0.0) & (k_A != k_dB)
+            mask = k_A_isknown & (k_target > 0.0) & ((k_A != k_dB) | (k_A == 0.0) | (k_dB == 0.0))
             k_pulled[mask] =  k_B[mask]
 
-            mask = k_A_isknown & (k_target < 0.0) & (k_A == k_dB)
+            mask = k_A_isknown & (k_target < 0.0) & ((k_A == k_dB) | (k_A == 0.0) | (k_dB == 0.0))
             k_pulled[mask] = -k_B[mask]
         
         elif self.operator == '/':
             k_A_isknown = ~np.isnan(k_A)
             if pull_left:
-                mask = k_A_isknown & (k_target > 0.0) & (k_A == k_dB)
+                mask = k_A_isknown & (k_target > 0.0) & ((k_A == k_dB) | (k_A == 0.0) | (k_dB == 0.0))
                 k_pulled[mask] =  k_B[mask]
 
-                mask = k_A_isknown & (k_target < 0.0) & (k_A != k_dB)
+                mask = k_A_isknown & (k_target < 0.0) & ((k_A != k_dB) | (k_A == 0.0) | (k_dB == 0.0))
                 k_pulled[mask] = -k_B[mask]
             else:
-                mask = k_A_isknown & (k_target > 0.0) & (k_A != k_dB)
+                mask = k_A_isknown & (k_target > 0.0) & ((k_A != k_dB) | (k_A == 0.0) | (k_dB == 0.0))
                 k_pulled[mask] = -k_B[mask]
 
-                mask = k_A_isknown & (k_target < 0.0) & (k_A == k_dB)
+                mask = k_A_isknown & (k_target < 0.0) & ((k_A == k_dB) | (k_A == 0.0) | (k_dB == 0.0))
                 k_pulled[mask] =  k_B[mask]
         
         else:

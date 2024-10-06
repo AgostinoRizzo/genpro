@@ -1,6 +1,7 @@
 import numpy as np
 import itertools
 from scipy.spatial import KDTree
+import math
 
 
 DERIV_IDENTIFIERS:dict[tuple,list] = {}
@@ -9,7 +10,7 @@ DERIV_IDENTIFIERS:dict[tuple,list] = {}
 class SpaceSampler:
     def __init__(self, randstate:int=None):
         self.randgen = np.random.RandomState() if randstate is None else np.random.RandomState(randstate)
-    def meshspace(self, xl, xu, size:int): pass
+    def meshspace(self, xl, xu, npoints:int): pass
     def randspace(self, xl, xu, npoints:int): pass
     def get_meshsize(self, xl, xu, npoints:int) -> int: pass
 
@@ -18,8 +19,8 @@ class UnidimSpaceSampler(SpaceSampler):
     def __init__(self, randstate:int=None):
         super().__init__(randstate)
     
-    def meshspace(self, xl, xu, size:int):
-        return np.linspace(xl, xu, min(1,size) if xl == xu else size)
+    def meshspace(self, xl, xu, npoints:int):
+        return np.linspace(xl, xu, min(1,npoints) if xl == xu else npoints)
     
     def randspace(self, xl, xu, npoints:int):
         return self.randgen.uniform(xl, xu, min(1,npoints) if xl == xu else npoints)
@@ -33,18 +34,20 @@ class MultidimSpaceSampler(SpaceSampler):
     def __init__(self, randstate:int=None):
         super().__init__(randstate)
     
-    def meshspace(self, xl, xu, size:int):
+    def meshspace(self, xl, xu, npoints:int):
         xsize = xl.size
-        assert xsize == xu.size and size >= 0
+        assert xsize == xu.size and xsize > 0 and npoints >= 0
         
-        if size == 0:
+        if npoints == 0:
             return np.empty((0, xsize))
         
+        npoints_side = self.get_meshsize(xl, xu, npoints)
+        
         npoints = 1
-        sidesize = np.full(xsize, size, dtype=int)
+        sidesize = np.full(xsize, npoints_side, dtype=int)
         for i in range(xsize):
             if xl[i] == xu[i]: sidesize[i] = 1
-            else: npoints *= size
+            else: npoints *= npoints_side
         
         grid = np.mgrid[*[slice(xl[i],xu[i],sidesize[i]+0j) for i in range(xsize)]]
         X = np.empty((npoints, xsize))
@@ -57,6 +60,15 @@ class MultidimSpaceSampler(SpaceSampler):
         xsize = xl.size
         assert xsize == xu.size and npoints >= 0
 
+        if npoints == 0:
+            return np.empty((0, xsize))
+        
+        npoints_side = self.get_meshsize(xl, xu, npoints)
+        
+        npoints = 1
+        for i in range(xsize):
+            if xl[i] != xu[i]: npoints *= npoints_side
+
         X = np.empty((npoints, xsize))
         for i in range(xsize):
             X[:,i] = self.randgen.uniform(xl[i], xu[i], npoints) 
@@ -65,8 +77,8 @@ class MultidimSpaceSampler(SpaceSampler):
     
     def get_meshsize(self, xl, xu, npoints:int) -> int:
         xsize = xl.size
-        assert xsize == xu.size and xsize > 0 and npoints > 0
-        return int(npoints ** (1/xsize))
+        assert xsize == xu.size and xsize > 0 and npoints >= 0
+        return int(npoints**(1/xsize))
 
 
 class MeshSpace:

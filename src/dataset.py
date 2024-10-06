@@ -253,13 +253,16 @@ class DataKnowledge:
         S = Dataset(self.dataset.nvars, self.dataset.xl, self.dataset.xu, self.spsampler)
 
         X = self.spsampler.meshspace(S.xl, S.xu, npoints)
-        y = np.full(npoints, np.nan)
+        y = np.full(X.shape[0], np.nan)
         
         # positivity constraints.
         for (l, u,sign,th) in self.sign[deriv]:
             assert th == 0.0
 
-            y[(X >= l) & (X <= u)] = 1.0 if sign == '+' else -1.0
+            if X.ndim == 1:
+                y[(X >= l) & (X <= u)] = 1.0 if sign == '+' else -1.0
+            else:
+                y[(X >= l).all(axis=1) & (X <= u).all(axis=1)] = 1.0 if sign == '+' else -1.0
             
             for i, y_i in enumerate(y):
                 S.data.append( DataPoint(X[i], y_i) )
