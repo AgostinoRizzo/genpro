@@ -1,3 +1,4 @@
+import sympy
 from symbols.syntax_tree import SyntaxTree
 from backprop import utils
 
@@ -22,6 +23,9 @@ class FunctionSyntaxTree(SyntaxTree):
         if d not in self.y_know:
             self.y_know[d] = self.f(x)
         return self.y_know[d]
+    
+    def at(self, x):
+        return self.f(x)
     
     def __str__(self) -> str:
         return 'f(X)'
@@ -75,6 +79,9 @@ class SemanticSyntaxTree(SyntaxTree):
         if type(other) is not SemanticSyntaxTree: return False
         return (self.sem == other.sem).all()
     
+    def at(self, x):
+        return self.sem
+    
     def diff(self, varidx:int=0) -> SyntaxTree:
         raise NotImplementedError()
     
@@ -124,7 +131,7 @@ class UnknownSyntaxTree(SyntaxTree):
         if d not in self.y_know:
             if self.model is None:
                 raise RuntimeError('None unknown model.')
-            self.y_know[d] = self.model(x)
+            self.y_know[d] = self.model.get_deriv(d)(x)
         return self.y_know[d]
     
     def __str__(self) -> str:
@@ -135,6 +142,11 @@ class UnknownSyntaxTree(SyntaxTree):
     def __eq__(self, other) -> bool:
         if type(other) is not UnknownSyntaxTree: return False
         return self.name == other.name and self.deriv == other.deriv
+    
+    def at(self, x):
+        if self.model is None:
+            raise RuntimeError('None unknown model.')
+        return self.model(x) 
     
     def diff(self, varidx:int=0) -> SyntaxTree:
         assert varidx < self.nvars

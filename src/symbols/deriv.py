@@ -1,3 +1,4 @@
+import numpy as np
 from symbols.syntax_tree import SyntaxTree
 import numlims
 
@@ -31,7 +32,7 @@ class FirstDerivative(Derivative):
         self.h[dx] = self.h_scal
     
     def __call__(self, x):
-        return (self.f(x + self.h) - self.f(x)) / self.h_scal
+        return (self.f.at(x + self.h) - self.f.at(x)) / self.h_scal
 
 class UnidimSecondDerivative(Derivative):
     def __init__(self, f:SyntaxTree, nvars:int, numlims:numlims.NumericLimits):
@@ -40,7 +41,7 @@ class UnidimSecondDerivative(Derivative):
         self.h = numlims.STEPSIZE
     
     def __call__(self, x):
-        return (self.f(x + self.h) - 2*self.f(x) + self.f(x - self.h)) / self.h_scal_2
+        return (self.f.at(x + self.h) - 2*self.f.at(x) + self.f.at(x - self.h)) / self.h_scal_2
 
 class MultidimSingleVarSecondDerivative(Derivative):
     def __init__(self, f:SyntaxTree, dx:int, nvars:int, numlims:numlims.NumericLimits):
@@ -50,7 +51,7 @@ class MultidimSingleVarSecondDerivative(Derivative):
         self.h[dx] = numlims.STEPSIZE
     
     def __call__(self, x):
-        return (self.f(x + self.h) - 2*self.f(x) + self.f(x - self.h)) / self.h_scal_2
+        return (self.f.at(x + self.h) - 2*self.f.at(x) + self.f.at(x - self.h)) / self.h_scal_2
 
 class MultidimSecondDerivative(Derivative):
     def __init__(self, f:SyntaxTree, dx1:int, dx2:int, nvars:int, numlims:numlims.NumericLimits):
@@ -67,4 +68,4 @@ class MultidimSecondDerivative(Derivative):
         self.h_dx1_dx2 [dx2] = -numlims.STEPSIZE
     
     def __call__(self, x):
-        return (self.f(x + self.h_dx1dx2) - self.f(x + self.h_dx1_dx2) - self.f(x - self.h_dx1_dx2) + self.f(x - self.h_dx1dx2)) / self.h_scal_2_4
+        return (self.f.at(x + self.h_dx1dx2) - self.f.at(x + self.h_dx1_dx2) - self.f.at(x - self.h_dx1_dx2) + self.f.at(x - self.h_dx1dx2)) / self.h_scal_2_4

@@ -83,6 +83,8 @@ class SyntaxTree:
     def __call__(self, x): pass
     def __getitem__(self, x_d): pass
 
+    def at(self, x): pass
+
     def invalidate_output(self):
         self.output = None
         self.y_know = {}  # important: create new.

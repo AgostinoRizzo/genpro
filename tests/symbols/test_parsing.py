@@ -1,27 +1,30 @@
 import pytest
 from symbols.parsing import parse_syntax_tree
-from backprop import backprop
+from symbols.binop import BinaryOperatorSyntaxTree
+from symbols.unaop import UnaryOperatorSyntaxTree
+from symbols.const import ConstantSyntaxTree
+from symbols.var import VariableSyntaxTree
 
 
 @pytest.mark.parametrize("expr,expected_stree",
 [
     (
     '((-1.79 / x0) * exp((log(x0) - square((x0 + x0)))))',
-    backprop.BinaryOperatorSyntaxTree('*',
-        backprop.BinaryOperatorSyntaxTree('/',
-            backprop.ConstantSyntaxTree(-1.79),
-            backprop.VariableSyntaxTree()
+    BinaryOperatorSyntaxTree('*',
+        BinaryOperatorSyntaxTree('/',
+            ConstantSyntaxTree(-1.79),
+            VariableSyntaxTree()
         ),
 
-        backprop.UnaryOperatorSyntaxTree('exp',
-            backprop.BinaryOperatorSyntaxTree('-',
-                backprop.UnaryOperatorSyntaxTree('log',
-                    backprop.VariableSyntaxTree()
+        UnaryOperatorSyntaxTree('exp',
+            BinaryOperatorSyntaxTree('-',
+                UnaryOperatorSyntaxTree('log',
+                    VariableSyntaxTree()
                 ),
-                backprop.UnaryOperatorSyntaxTree('square',
-                    backprop.BinaryOperatorSyntaxTree('+',
-                        backprop.VariableSyntaxTree(),
-                        backprop.VariableSyntaxTree()
+                UnaryOperatorSyntaxTree('square',
+                    BinaryOperatorSyntaxTree('+',
+                        VariableSyntaxTree(),
+                        VariableSyntaxTree()
                     )
                 )
             )
@@ -29,14 +32,14 @@ from backprop import backprop
     )
     ),
 
-    ('log(x0)', backprop.UnaryOperatorSyntaxTree('log', backprop.VariableSyntaxTree())),
+    ('log(x0)', UnaryOperatorSyntaxTree('log', VariableSyntaxTree())),
 
     ('(-1.2 / 4.1)',
-        backprop.BinaryOperatorSyntaxTree('/',
-            backprop.ConstantSyntaxTree(-1.2), backprop.ConstantSyntaxTree(4.1))),
+        BinaryOperatorSyntaxTree('/',
+            ConstantSyntaxTree(-1.2), ConstantSyntaxTree(4.1))),
 
-    ('x2', backprop.VariableSyntaxTree(2)),
-    ('-1.2', backprop.ConstantSyntaxTree(-1.2)),
+    ('x2', VariableSyntaxTree(2)),
+    ('-1.2', ConstantSyntaxTree(-1.2)),
     ('unaopt(x0)', None),
     ('1.2 @ x0', None),
     ('@!  2', None),

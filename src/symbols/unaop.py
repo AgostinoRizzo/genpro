@@ -1,6 +1,8 @@
 import numpy as np
 import sympy
 from symbols.syntax_tree import SyntaxTree
+from symbols.binop import BinaryOperatorSyntaxTree
+from symbols.const import ConstantSyntaxTree
 from backprop.bperrors import KnowBackpropError
 
 
@@ -33,6 +35,9 @@ class UnaryOperatorSyntaxTree(SyntaxTree):
             else:
                 raise RuntimeError(f"Derivative {d} not supported.")
         return self.y_know[d]
+    
+    def at(self, x):
+        return self.__operate(self.inner.at(x))
     
     def clear_output(self):
         super().clear_output()

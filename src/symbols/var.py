@@ -36,6 +36,9 @@ class VariableSyntaxTree(SyntaxTree):
         if type(other) is not VariableSyntaxTree: return False
         return self.idx == other.idx
     
+    def at(self, x):
+        return x[:,self.idx] if x.ndim == 2 else x
+    
     def diff(self, varidx:int=0) -> SyntaxTree:
         return ConstantSyntaxTree(0.0 if self.is_const_wrt(varidx) else 1.0)
     

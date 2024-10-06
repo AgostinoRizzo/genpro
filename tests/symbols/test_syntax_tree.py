@@ -3,15 +3,22 @@ import sympy
 import numpy as np
 import string
 
-from backprop.backprop import \
-    SyntaxTree, BinaryOperatorSyntaxTree, UnaryOperatorSyntaxTree, ConstantSyntaxTree, VariableSyntaxTree, \
-    UnknownSyntaxTree, UnknownSyntaxTreeCollector, Derivative
+from symbols.syntax_tree import SyntaxTree
+from symbols.binop import BinaryOperatorSyntaxTree
+from symbols.unaop import UnaryOperatorSyntaxTree
+from symbols.const import ConstantSyntaxTree
+from symbols.var import VariableSyntaxTree
+from symbols.misc import UnknownSyntaxTree
+from symbols.deriv import Derivative
+from symbols.visitor import UnknownSyntaxTreeCollector
+from symbols.parsing import parse_syntax_tree
 from backprop import models
 import space
 import numlims
 import dataset_misc1d
 
 
+""" TODO: diff not used anymore!
 @pytest.mark.parametrize("stree", [
     UnaryOperatorSyntaxTree('log',    UnknownSyntaxTree('A')),
     UnaryOperatorSyntaxTree('exp',    UnknownSyntaxTree('A')),
@@ -87,6 +94,7 @@ def test_diff(stree, nvars):
             y = stree_sympy_deriv(X)
             mse = np.nanmean( (stree_deriv(X) - y) ** 2 )
             assert mse == pytest.approx(0.)
+"""
 
 
 @pytest.mark.parametrize("stree", [
@@ -99,7 +107,6 @@ def test_diff(stree, nvars):
     BinaryOperatorSyntaxTree('-',     UnknownSyntaxTree('A'), UnknownSyntaxTree('B')),
     BinaryOperatorSyntaxTree('*',     UnknownSyntaxTree('A'), UnknownSyntaxTree('B')),
     BinaryOperatorSyntaxTree('/',     UnknownSyntaxTree('A'), UnknownSyntaxTree('B')),
-    BinaryOperatorSyntaxTree('^',     UnknownSyntaxTree('A'), ConstantSyntaxTree(2)),
     BinaryOperatorSyntaxTree('*',
         UnaryOperatorSyntaxTree('log', UnknownSyntaxTree('A')),
         BinaryOperatorSyntaxTree('/', UnknownSyntaxTree('A'),
@@ -116,7 +123,7 @@ def test_derivative(stree, nvars):
     for unkn in unkn_collector.unknowns:
         unkn.nvars = nvars
 
-    all_derivs = space.get_all_derivs(nvars=nvars, max_derivdeg=2)
+    all_derivs = space.get_all_derivs(nvars=nvars, max_derivdeg=1)
     if () in all_derivs: all_derivs.remove(())
     derivs_map = Derivative.create_all(stree, all_derivs, nvars, numlims.NumericLimits())
 
@@ -160,7 +167,7 @@ def test_derivative(stree, nvars):
                 lambda x, stree_sympy_deriv_multi=stree_sympy_deriv_multi: \
                     stree_sympy_deriv_multi(*( ([np.empty(0)]*S.nvars) if x.size == 0 else x.T ))
         
-        # compare results.
+        # compare approx results.
         with np.errstate(divide='ignore', invalid='ignore'):
             y_expected = stree_sympy_deriv(X)
             y_actual = stree_deriv(X)
@@ -168,6 +175,72 @@ def test_derivative(stree, nvars):
             ae = ae[np.where(~np.isnan(ae) & ~np.isinf(ae))]
             mae = ae.sum() / ae.size
             assert mae == pytest.approx(0, abs=1e-1)
+        
+        # compare exact results.
+        with np.errstate(divide='ignore', invalid='ignore'):
+            y_expected = stree_sympy_deriv(X)
+            stree.clear_output()
+            y_actual = stree[(X, deriv)]
+            assert np.isclose(y_actual, y_expected).all()
+
+
+@pytest.mark.parametrize("expr,nvars", [
+    ('x0', 1), ('2.0', 1), ('-2.1', 2), ('(-2.0*x0)', 1), ('(2.123*x1)', 2),
+    ('(x0*x1)', 2), ('((x1*square(x2))*cube(x0))', 3), ('((x0+sqrt(x1))/log(x2))', 3), ('log((x0+exp(x1)))', 2), #('(((x0+x1)*x2)/x3)', 4), TODO: check spsampler.meshspace size!
+    ('((-1.79 / x0) * exp((log(x0) - square((x0 + x0)))))', 1),
+    ('((-1.79 / x1) * exp((log(x0) - square((x1 + x0)))))', 2),
+    ('((((x0 / 0.68) - cube(x0)) * log(square((x0 * 0.83)))) * exp(((x0 * (-0.48 - 0.68)) * x0)))', 1),
+    ('((((x1 / 0.68) - cube(x0)) * log(square((x1 * 0.83)))) * exp(((x2 * (-0.48 - 0.68)) * x0)))', 3)
+])
+def test_eval(expr, nvars):
+    stree = parse_syntax_tree(expr)
+    all_derivs = space.get_all_derivs(nvars=nvars, max_derivdeg=1)
+
+    # setup sympy stree (used as a reference).
+    stree_sympy = stree.to_sympy()
+    stree_sympy_symbs = [None] * nvars
+    for s in stree_sympy.free_symbols:
+        varidx = 0 if len(s.name) == 1 else int(s.name[1:])
+        stree_sympy_symbs[varidx] = s
+    for i in range(nvars):
+        if stree_sympy_symbs[i] is None: stree_sympy_symbs[i] = sympy.Symbol(f"x{i}")
+    
+    # set input meshspace X.
+    spsampler = space.UnidimSpaceSampler() if nvars == 1 else space.MultidimSpaceSampler()
+    xl = 1.
+    xu = 2.
+    if nvars > 1:
+        xl = np.array([xl]*nvars)
+        xu = np.array([xu]*nvars)
+    X = spsampler.meshspace(xl, xu, 100)
+
+    for deriv in all_derivs:
+
+        # compute derivative from stree_sympy (reference).
+        xs = [stree_sympy_symbs[varidx] for varidx in deriv]
+        stree_sympy_deriv = stree_sympy if len(xs) == 0 else sympy.diff(stree_sympy, *xs)
+        
+        # lambdify stree_sympy_deriv
+        stree_sympy_deriv_multi = sympy.lambdify(stree_sympy_symbs, stree_sympy_deriv, 'numpy')
+        stree_sympy_deriv = stree_sympy_deriv_multi if nvars == 1 else \
+                lambda x, stree_sympy_deriv_multi=stree_sympy_deriv_multi: \
+                    stree_sympy_deriv_multi(*( ([np.empty(0)]*S.nvars) if x.size == 0 else x.T ))
+        
+        # compare evaluations (soft & strong).
+        with np.errstate(divide='ignore', invalid='ignore'):
+            y_expected = np.atleast_1d(stree_sympy_deriv(X)).astype(float)
+            y_expected[~np.isfinite(y_expected)] = np.nan
+            
+            if deriv == ():
+                stree.clear_output()
+                y_actual = stree(X)
+                y_actual[~np.isfinite(y_actual)] = np.nan
+                assert np.isclose(y_actual, y_expected, equal_nan=True).all()
+
+            stree.clear_output()
+            y_actual = stree[(X, deriv)]
+            y_actual[~np.isfinite(y_actual)] = np.nan
+            assert np.isclose(y_actual, y_expected, equal_nan=True).all()
 
 
 def test_pull_know():

@@ -34,6 +34,9 @@ class BinaryOperatorSyntaxTree(SyntaxTree):
                 raise RuntimeError(f"Derivative {d} not supported.")
         return self.y_know[d]
     
+    def at(self, x):
+        return self.__operate(self.left.at(x), self.right.at(x))
+    
     def clear_output(self):
         super().clear_output()
         self.left.clear_output()
@@ -143,7 +146,7 @@ class BinaryOperatorSyntaxTree(SyntaxTree):
         raise RuntimeError(f"Inverse operation not defined for operator {self.operator}.")
     
     def __operate_deriv(self, left:np.array, left_deriv:np.array, right:np.array, right_deriv:np.array) -> np.array:
-        if   self.operator == '/': return ((right*left_deriv) - (left*right_deriv)) / (left**2)
+        if   self.operator == '/': return ((right*left_deriv) - (left*right_deriv)) / (right**2)
         elif self.operator == '*': return (right*left_deriv) + (left*right_deriv)
         elif self.operator == '+': return left_deriv + right_deriv
         elif self.operator == '-': return left_deriv - right_deriv

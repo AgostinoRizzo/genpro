@@ -27,6 +27,9 @@ class ConstantSyntaxTree(SyntaxTree):
                 self.y_know[d] = np.zeros(x.shape[0])
         return self.y_know[d]
     
+    def at(self, x):
+        return np.full(x.shape[0], self.val)
+    
     def get_coeffs(self, coeffs:list):
         coeffs.append(self.val)
     

@@ -14,7 +14,7 @@ def data():
 def test_uniqueness(data):
     lib = Library(2000, 3, data)
     
-    all_semantics = lib.sem_index.data
+    all_semantics = lib.sem_index.index.data
     n_semantics = all_semantics.shape[0]
 
     for i in range(n_semantics - 1):

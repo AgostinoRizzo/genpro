@@ -1,7 +1,11 @@
 import lrparsing
 from lrparsing import Ref, Token
 
-from backprop import backprop
+from symbols.syntax_tree import SyntaxTree
+from symbols.binop import BinaryOperatorSyntaxTree
+from symbols.unaop import UnaryOperatorSyntaxTree
+from symbols.const import ConstantSyntaxTree
+from symbols.var import VariableSyntaxTree
 
 
 class SyntaxTreeParser(lrparsing.Grammar):
@@ -10,8 +14,8 @@ class SyntaxTreeParser(lrparsing.Grammar):
     # tokens
     #
     class T(lrparsing.TokenRegistry):
-        binopt_re = '\\' + '|\\'.join(backprop.BinaryOperatorSyntaxTree.OPERATORS)
-        unaopt_re = '|'.join(backprop.UnaryOperatorSyntaxTree.OPERATORS)
+        binopt_re = '\\' + '|\\'.join(BinaryOperatorSyntaxTree.OPERATORS)
+        unaopt_re = '|'.join(UnaryOperatorSyntaxTree.OPERATORS)
 
         constant = Token(re="[\+\-]?[0-9]+\.[0-9]+")
         variable = Token(re="x[0-9]+")
@@ -28,7 +32,7 @@ class SyntaxTreeParser(lrparsing.Grammar):
     START = expr
 
 
-def build_expr(parse_tree) -> backprop.SyntaxTree:
+def build_expr(parse_tree) -> SyntaxTree:
     rule = parse_tree[0]
     symbols = parse_tree[1:]
 
@@ -39,25 +43,25 @@ def build_expr(parse_tree) -> backprop.SyntaxTree:
         opt   = symbols[2][1]
         left  = symbols[1]
         right = symbols[3]
-        return backprop.BinaryOperatorSyntaxTree(opt, build_expr(left), build_expr(right))
+        return BinaryOperatorSyntaxTree(opt, build_expr(left), build_expr(right))
     
     if rule.name == 'unaopt':
         opt = symbols[0][1]
         inner = symbols[2]
-        return backprop.UnaryOperatorSyntaxTree(opt, build_expr(inner))
+        return UnaryOperatorSyntaxTree(opt, build_expr(inner))
 
     if rule.name == 'T.variable':
         varidx = int(symbols[0][1:])
-        return backprop.VariableSyntaxTree(varidx)
+        return VariableSyntaxTree(varidx)
     
     if rule.name == 'T.constant':
         val = float(symbols[0])
-        return backprop.ConstantSyntaxTree(val)
+        return ConstantSyntaxTree(val)
     
     raise RuntimeError('Invalid rule.')
 
 
-def parse_syntax_tree(expr:str) -> backprop.SyntaxTree:
+def parse_syntax_tree(expr:str) -> SyntaxTree:
     parse_tree = SyntaxTreeParser.parse(expr)
     stree = build_expr(parse_tree[1])
     return build_expr(parse_tree[1])
