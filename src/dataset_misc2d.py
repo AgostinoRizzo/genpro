@@ -14,6 +14,9 @@ class Resistance2(Datasetnd):
         # self.knowledge.add_deriv(0, DataPoint( [0.,0.], 0. ))  TODO: add undef (0,0)
         self.knowledge.add_deriv(0, DataPoint( [self.xl[0],self.xu[1]], 0. ))
         self.knowledge.add_deriv(0, DataPoint( [self.xu[0],self.xl[1]], 0. ))
+
+        # undef points.
+        self.knowledge.add_undef(np.zeros(2))
         
         INFTY = self.numlims.INFTY
         

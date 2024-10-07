@@ -117,7 +117,7 @@ class Library:
     DIST_EPSILON = 1e-1 #1e-8
     UNIQUENESS_MAX_DECIMALS = 1 #8
 
-    def __init__(self, size:int, max_depth:int, data):
+    def __init__(self, size:int, max_depth:int, data, know):
         """
         A total of 'size' random trees are generated:
             * algebraic simplification of trees
@@ -138,6 +138,13 @@ class Library:
             [-1.0] * data.nvars,
         ])
 
+        def_st_idx = np.full(data.X.shape[0], True, dtype=bool)
+        def_st_extra_idx = np.full(X_extra.shape[0], True, dtype=bool)
+        for i in range(def_st_idx.size):
+            if know.is_undef_at(data.X[i]): def_st_idx[i] = False
+        for i in range(def_st_extra_idx.size):
+            if know.is_undef_at(X_extra[i]): def_st_extra_idx[i] = False
+
         all_semantics = {}
 
         while extra_trees > 0:
@@ -147,7 +154,7 @@ class Library:
             for t in strees:
                 t = t.simplify()  # TODO: ensure executed once.
                 st = t(data.X)
-                st_extra = t(X_extra)
+                st_extra = t.at(X_extra)
                 st_key = tuple(st.round(Library.UNIQUENESS_MAX_DECIMALS).tolist())
 
                 """if (st <= 0.).any():
@@ -157,8 +164,8 @@ class Library:
                     extra_trees += 1
                     continue
                 
-                if np.isnan(st_extra).any() or np.isnan(st_extra).any() or \
-                   np.isnan(st).any() or np.isinf(st).any() or (st == st[0]).all():
+                if (~np.isfinite(st_extra))[def_st_extra_idx].any() or \
+                   (~np.isfinite(st))[def_st_idx].any() or (st == st[0]).all():
                     extra_trees += 1
                     continue
                 
@@ -236,8 +243,8 @@ class Library:
 
 
 class ConstrainedLibrary(Library):
-    def __init__(self, size:int, max_depth:int, data, X_mesh, derivs:list[tuple[int]]):
-        super().__init__(size, max_depth, data)
+    def __init__(self, size:int, max_depth:int, data, know, X_mesh, derivs:list[tuple[int]]):
+        super().__init__(size, max_depth, data, know)
         self.max_depth = max_depth
         
         K_none = (None, None)
@@ -256,14 +263,23 @@ class ConstrainedLibrary(Library):
             [-1.0] * data.nvars,
         ])
 
+        def_k_t_image_idx = np.full(X_mesh.shape[0], True, dtype=bool)
+        def_k_t_extra_idx = np.full(X_extra.shape[0], True, dtype=bool)
+        for i in range(def_k_t_image_idx.size):
+            if know.is_undef_at(X_mesh[i]): def_k_t_image_idx[i] = False
+        for i in range(def_k_t_extra_idx.size):
+            if know.is_undef_at(X_extra[i]): def_k_t_extra_idx[i] = False
+
         for i, t in enumerate(self.stree_index):
             d_t = t.get_max_depth()
+            k_t_image = np.sign(t[(X_mesh, ())])
             k_t = np.concatenate( [np.sign(t[(X_mesh, d)]) for d in sorted(derivs)] )  # important to sort them!
-            t.clear_output()
-            t_extra = t(X_extra)
+            t_extra = t.at(X_extra)
             t.clear_output()
 
-            noroot = (k_t != 0.0).all() and (t_extra != 0.0).all() and not np.isnan(t_extra).any()
+            noroot = (k_t_image[def_k_t_image_idx] != 0.0).all() and \
+                     (t_extra[def_k_t_extra_idx] != 0.0).all() and \
+                     not np.isnan(t_extra)[def_k_t_extra_idx].any()
 
             for sign in [1.0]:  # TODO: [1.0, -1.0]:
                 

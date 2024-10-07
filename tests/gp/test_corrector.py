@@ -93,6 +93,53 @@ backprop_node = ConstantSyntaxTree(2.0)
         True,
         False
     ),
+
+    (
+        'data_resistance2',
+        BinaryOperatorSyntaxTree('/',
+            BinaryOperatorSyntaxTree('*',
+                VariableSyntaxTree(0),
+                VariableSyntaxTree(1),
+            ),
+            BinaryOperatorSyntaxTree('+',
+                backprop_node,
+                BinaryOperatorSyntaxTree('+',
+                    VariableSyntaxTree(0),
+                    VariableSyntaxTree(1),
+                )
+            )
+        ),
+        True,
+        [np.nan] * 100,
+        {(0,): [np.nan] * 100, (1,): [np.nan] * 100},
+        True,
+        False
+    ),
+
+    (
+        'data_resistance2',
+        BinaryOperatorSyntaxTree('/',
+            BinaryOperatorSyntaxTree('*',
+                VariableSyntaxTree(0),
+                VariableSyntaxTree(1),
+            ),
+            BinaryOperatorSyntaxTree('+',
+                backprop_node,
+                BinaryOperatorSyntaxTree('*',
+                    ConstantSyntaxTree(-1.0),
+                    BinaryOperatorSyntaxTree('+',
+                        VariableSyntaxTree(0),
+                        VariableSyntaxTree(1),
+                    )
+                )
+            )
+        ),
+        True,
+        [np.nan] * 10 + ([np.nan] + [1.] * 9) * 9,
+        {(0,): [np.nan] * 100, (1,): [np.nan] * 100},
+        True,
+        False
+    ),
 ])
 def test_corrector(data, stree, noroot, k_image, k_deriv, partial, none, request):
     S, S_train = request.getfixturevalue(data)

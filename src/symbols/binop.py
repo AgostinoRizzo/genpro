@@ -256,6 +256,8 @@ class BinaryOperatorSyntaxTree(SyntaxTree):
         if self.operator == '+':
             k_pulled[(k_target > 0.0) & (k_B <= 0.0)] = +1.0
             k_pulled[(k_target < 0.0) & (k_B >= 0.0)] = -1.0
+            if noroot_target and (k_B == 0.0).any():
+                noroot_pulled = True
         
         elif self.operator == '-':
             if pull_left:
@@ -264,6 +266,8 @@ class BinaryOperatorSyntaxTree(SyntaxTree):
             else:
                 k_pulled[(k_target > 0.0) & (k_B <= 0.0)] = -1.0
                 k_pulled[(k_target < 0.0) & (k_B >= 0.0)] = +1.0
+            if noroot_target and (k_B == 0.0).any():
+                noroot_pulled = True
         
         elif self.operator == '*' or self.operator == '/':
             pos_mask = (k_target > 0.0) & (k_B != 0.0)

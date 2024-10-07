@@ -59,6 +59,7 @@ class DataKnowledge:
         self.symm = {}
         self.noroot = set()
         self.zero = {}
+        self.undef = []
         self.numlims = limits if dataset is None else dataset.numlims
         self.spsampler = spsampler if dataset is None else dataset.spsampler
     
@@ -93,6 +94,15 @@ class DataKnowledge:
         if type(d) is int: d = (0,)*d
         assert type(d) is tuple
         self.zero[d] = (l,u)
+    
+    def add_undef(self, x):
+        self.undef.append(x)
+    
+    def is_undef_at(self, x):
+        for undef_x in self.undef:
+            if np.array_equal(x, undef_x):
+                return True
+        return False
     
     """
     def get_mesh(self, sample_size:int=20) -> np.array:

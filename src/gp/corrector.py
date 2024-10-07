@@ -17,7 +17,7 @@ class Corrector:
 
         X_mesh = S_data.spsampler.meshspace(S_data.xl, S_data.xu, 100)
         derivs = [()] + list(self.S_know_derivs.keys())
-        self.lib = library.ConstrainedLibrary(2000, 3, S_data, X_mesh, derivs)
+        self.lib = library.ConstrainedLibrary(2000, 3, S_data, know, X_mesh, derivs)
     
     def correct(self, stree, backprop_node=None):
         for _ in range(1):
