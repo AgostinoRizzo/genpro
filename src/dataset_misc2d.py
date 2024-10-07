@@ -28,8 +28,8 @@ class Resistance2(Datasetnd):
         self.knowledge.add_sign((1,), self.xl, [INFTY, INFTY], '+')
 
         # concavity
-        self.knowledge.add_sign((0,0), self.xl, [INFTY, INFTY], '-')
-        self.knowledge.add_sign((1,1), self.xl, [INFTY, INFTY], '-')
+        #self.knowledge.add_sign((0,0), self.xl, [INFTY, INFTY], '-')
+        #self.knowledge.add_sign((1,1), self.xl, [INFTY, INFTY], '-')
         
     def func(self, X) -> float:
         x0 = X[:,0]

@@ -37,7 +37,9 @@ class KnowledgeEvaluator(Evaluator):
                 raise RuntimeError(f"Evaluation of {derivdeg}th derivative not supported.")
 
             for (l,u,sign,th) in constrs:
-                meshspace_idx = self.meshspace_map[(deriv, l, u, sign, th)]
+                meshspace_idx = \
+                    self.meshspace_map[(deriv, l, u, sign, th)] if self.know.nvars == 1 else \
+                    self.meshspace_map[(deriv, tuple(l), tuple(u), sign, th)]
                 n += meshspace_idx.size
 
                 y = stree[(self.X_mesh, deriv)][meshspace_idx]
@@ -58,7 +60,10 @@ class KnowledgeEvaluator(Evaluator):
                     if (pt >= l).all() and (pt <= u).all():
                         meshspace_idx.append(i)
 
-                self.meshspace_map[(deriv, l, u, sign, th)] = np.array(meshspace_idx)
+                if self.know.nvars == 1:
+                    self.meshspace_map[(deriv, l, u, sign, th)] = np.array(meshspace_idx)
+                else:
+                    self.meshspace_map[(deriv, tuple(l), tuple(u), sign, th)] = np.array(meshspace_idx)
 
 
 class LayeredEvaluator(Evaluator):

@@ -8,22 +8,17 @@ DERIV_IDENTIFIERS:dict[tuple,list] = {}
 
 
 class SpaceSampler:
-    def __init__(self, randstate:int=None):
-        self.randgen = np.random.RandomState() if randstate is None else np.random.RandomState(randstate)
     def meshspace(self, xl, xu, npoints:int): pass
     def randspace(self, xl, xu, npoints:int): pass
     def get_meshsize(self, xl, xu, npoints:int) -> int: pass
 
 
 class UnidimSpaceSampler(SpaceSampler):
-    def __init__(self, randstate:int=None):
-        super().__init__(randstate)
-    
     def meshspace(self, xl, xu, npoints:int):
         return np.linspace(xl, xu, min(1,npoints) if xl == xu else npoints)
     
     def randspace(self, xl, xu, npoints:int):
-        return self.randgen.uniform(xl, xu, min(1,npoints) if xl == xu else npoints)
+        return np.random.uniform(xl, xu, min(1,npoints) if xl == xu else npoints)
     
     def get_meshsize(self, xl, xu, npoints:int) -> int:
         assert npoints >= 0
@@ -31,9 +26,6 @@ class UnidimSpaceSampler(SpaceSampler):
 
 
 class MultidimSpaceSampler(SpaceSampler):
-    def __init__(self, randstate:int=None):
-        super().__init__(randstate)
-    
     def meshspace(self, xl, xu, npoints:int):
         xsize = xl.size
         assert xsize == xu.size and xsize > 0 and npoints >= 0
@@ -71,7 +63,7 @@ class MultidimSpaceSampler(SpaceSampler):
 
         X = np.empty((npoints, xsize))
         for i in range(xsize):
-            X[:,i] = self.randgen.uniform(xl[i], xu[i], npoints) 
+            X[:,i] = np.random.uniform(xl[i], xu[i], npoints) 
         
         return X
     

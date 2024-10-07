@@ -147,8 +147,7 @@ class GP:
                  mutator:mutator.Mutator,
                  mutrate:float,
                  elitism:int=0,
-                 knowledge=None,
-                 rseed=None):
+                 knowledge=None):
         
         self.population = creator.create_population(popsize, max_depth)
         self.eval_map = {}
@@ -163,8 +162,6 @@ class GP:
         self.mutrate = mutrate
         self.elitism = elitism
         self.knowledge = knowledge
-        if rseed is not None:
-            random.seed(rseed)
         self.stats = evaluator.create_stats()
         self.genidx = 0
         
@@ -224,9 +221,14 @@ class GP:
                 if child.validate(): #TODO: and child not in children:
                     
                     child = child.simplify()
+                    #before_child_eval = self.evaluator.evaluate(child)
+                    #before_child = child.clone()
                     child, _, _, _ = self.corrector.correct(child)
 
                     child_eval = self.evaluator.evaluate(child)
+                    #if not child_eval.better_than(before_child_eval):
+                    #    child = before_child
+                    #    child_eval = self.evaluator.evaluate(child)
 
                     children.append(child)
                     self.eval_map[id(child)] = child_eval
