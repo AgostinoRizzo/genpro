@@ -22,6 +22,7 @@ def data_magman():
 @pytest.fixture
 def data_resistance2():
     S = dataset_misc2d.Resistance2()
+    S.xl = np.zeros(2)
     S.sample(size=100, noise=0.0, mesh=False)
     S_train = dataset.NumpyDataset(S)
     return S, S_train

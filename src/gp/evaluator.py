@@ -43,7 +43,7 @@ class KnowledgeEvaluator(Evaluator):
                 n += meshspace_idx.size
 
                 y = stree[(self.X_mesh, deriv)][meshspace_idx]
-                nv += np.sum( (( y < th ) if sign == '+' else ( y > th )) | np.isnan(y) )
+                nv += np.sum( (( y < th ) if sign == '+' else ( y > th )) | (~np.isfinite(y)) )
         
         return n, nv
     
@@ -57,7 +57,7 @@ class KnowledgeEvaluator(Evaluator):
                 for i in range(self.X_mesh.shape[0]):
                     pt = self.X_mesh[i]
 
-                    if (pt >= l).all() and (pt <= u).all():
+                    if (pt >= l).all() and (pt <= u).all() and not self.know.is_undef_at(pt):
                         meshspace_idx.append(i)
 
                 if self.know.nvars == 1:

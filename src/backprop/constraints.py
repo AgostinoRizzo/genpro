@@ -34,7 +34,7 @@ class BackpropConstraints(Constraints):
     
     def match_key(self, K_other) -> bool:
         """
-        it is assumed K_other does not contain NaN values!
+        it is assumed K_other does not contain NaN values apart from undef points (given in input).
         """
         pconstrs_other, noroot_other = K_other
         pconstrs_other = np.frombuffer(pconstrs_other)
@@ -42,7 +42,7 @@ class BackpropConstraints(Constraints):
         if self.noroot and not noroot_other:
             return False 
 
-        return np.array_equal(self.pconstrs[self.pconstrs_mask], pconstrs_other[self.pconstrs_mask])
+        return np.array_equal(self.pconstrs[self.pconstrs_mask], pconstrs_other[self.pconstrs_mask], equal_nan=True)
     
     def __str__(self) -> str:
         out = ''

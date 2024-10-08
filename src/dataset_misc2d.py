@@ -6,7 +6,7 @@ from dataset import Datasetnd, DataPoint
 
 class Resistance2(Datasetnd):
     def __init__(self) -> None:
-        super().__init__(xl=[0.,0.], xu=[20.,20.])
+        super().__init__(xl=[0.0001,0.0001], xu=[20.,20.])
         self.yl =  0.
         self.yu = 10.
     

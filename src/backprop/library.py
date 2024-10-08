@@ -160,7 +160,7 @@ class Library:
                 """if (st <= 0.).any():
                     extra_trees += 1
                     continue"""
-                if not np.isfinite(st**2).all():
+                if not np.isfinite(st**2)[def_st_idx].all():
                     extra_trees += 1
                     continue
                 
