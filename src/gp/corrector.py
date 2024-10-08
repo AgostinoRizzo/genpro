@@ -5,7 +5,7 @@ from gp import gp
 
 
 class Corrector:
-    def __init__(self, S_data, know, max_depth:int):
+    def __init__(self, S_data, know, max_depth:int, X_mesh, libsize:int, lib_maxdepth:int):
         self.S_data = S_data
         self.max_depth = max_depth
         
@@ -15,9 +15,8 @@ class Corrector:
             if len(deriv) == 1:
                 self.S_know_derivs[deriv] = know.synth_dataset(deriv=deriv)
 
-        X_mesh = S_data.spsampler.meshspace(S_data.xl, S_data.xu, 100)
         derivs = [()] + list(self.S_know_derivs.keys())
-        self.lib = library.ConstrainedLibrary(2000, 3, S_data, know, X_mesh, derivs)
+        self.lib = library.ConstrainedLibrary(libsize, lib_maxdepth, S_data, know, X_mesh, derivs)
     
     def correct(self, stree, backprop_node=None):
         for _ in range(1):

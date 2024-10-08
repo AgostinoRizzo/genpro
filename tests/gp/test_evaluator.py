@@ -16,6 +16,7 @@ def data_resistance2():
 
 @pytest.mark.parametrize("data,expr", [
     ('data_resistance2', '((x0*x1)/(x0+x1))'),
+    ('data_resistance2','((x1 / (x1 + x0)) * x0)')
     #('data_resistance2', 'sqrt(square(((x0 * x1) / (x1 + x0))))')
 ])
 def test_evaluator(data, expr, request):

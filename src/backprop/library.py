@@ -301,16 +301,16 @@ class ConstrainedLibrary(Library):
 
     def cquery(self, y, C, max_dist=np.inf) -> SyntaxTree:
         
-        matching_libs = self.__get_matching_libs(C)
+        matching_libs = self.__get_matching_libs(C)  # 10s
         if len(matching_libs) == 0:
             return None
         
         best_d = None
         best_i_mlib = None
         best_local_idx = None
-        for i_mlib, (mlib, mlib_idxmap, mlib_negmap) in enumerate(matching_libs):
+        for i_mlib, (mlib, mlib_idxmap, mlib_negmap) in enumerate(matching_libs):  # 6s
 
-            d, idx = mlib.query(y, max_dist=max_dist)
+            d, idx = mlib.query(y, max_dist=max_dist)  # 5s
             if d == np.infty: continue
             if best_d is None or d < best_d:
                 best_d = d
@@ -335,7 +335,7 @@ class ConstrainedLibrary(Library):
             if C.are_partial():
                 for K_lib in self.clibs[d].keys():
                     if K_lib == (None, None): continue
-                    if C.match_key(K_lib):  # arg K_lib must not contain NaN values! (see match_key).
+                    if C.match_key(K_lib):  # arg K_lib must not contain NaN values apart from undef points (given in input)! (see match_key).  # 10s
                         matching_libs.append((self.clibs[d][K_lib], self.clibs_idxmap[d][K_lib], self.clibs_negmap[d][K_lib]))
 
             # not constrained.

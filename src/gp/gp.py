@@ -145,6 +145,7 @@ class GP:
                  selector:selector.Selector,
                  crossover:crossover.Crossover,
                  mutator:mutator.Mutator,
+                 corrector:corrector.Corrector,
                  mutrate:float,
                  elitism:int=0,
                  knowledge=None):
@@ -159,6 +160,7 @@ class GP:
         self.selector = selector
         self.crossover = crossover
         self.mutator = mutator
+        self.corrector = corrector
         self.mutrate = mutrate
         self.elitism = elitism
         self.knowledge = knowledge
@@ -168,8 +170,6 @@ class GP:
         from backprop.pareto_front import DataLengthFrontTracker, MultiHeadFrontTracker
         #self.fea_front_tracker = DataLengthFrontTracker()
         self.fea_front_tracker = MultiHeadFrontTracker()
-
-        self.corrector = corrector.Corrector(S_train, knowledge, max_depth)
     
     def evolve(self, newgen_callback=None) -> tuple[list[SyntaxTree], dict]:
         """
@@ -211,9 +211,7 @@ class GP:
 
                 parents = self.selector.select(self.population, self.eval_map, 2)
 
-                profiling.enable()
                 child = self.crossover.cross(parents[0], parents[1])  # 100% crossover rate (child must be a new object!)
-                profiling.disable()
                 
                 if random.random() < self.mutrate:
                     child = self.mutator.mutate(child)
@@ -223,7 +221,10 @@ class GP:
                     child = child.simplify()
                     #before_child_eval = self.evaluator.evaluate(child)
                     #before_child = child.clone()
-                    child, _, _, _ = self.corrector.correct(child)
+                    if self.corrector is not None:
+                        profiling.enable()
+                        child, _, _, _ = self.corrector.correct(child)
+                        profiling.disable()
 
                     child_eval = self.evaluator.evaluate(child)
                     #if not child_eval.better_than(before_child_eval):
