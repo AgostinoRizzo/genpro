@@ -6,7 +6,7 @@ import random
 
 from symbols.syntax_tree import SyntaxTree
 from symbols.visitor import SyntaxTreeIneqOperatorCollector
-from gp import gp, creator, selector
+from gp import creator, selector
 
 
 def compute_distance(p1:np.array, p2:np.array):
@@ -351,7 +351,6 @@ class ConstrainedLibrary(Library):
         
         return matching_libs
 
-    
     """
     def cquery_brute(self, y, K, max_dist=np.inf, w:np.array=None, S_train=None) -> SyntaxTree:
         
@@ -386,6 +385,65 @@ class ConstrainedLibrary(Library):
         return self.stree_provider.get_stree(global_idx)
     """
 
+
+class IterativeConstrainedLibrary(Library):
+    def __init__(self, size:int, max_depth:int, data, know, X_mesh, derivs:list[tuple[int]]):
+        super().__init__(size, max_depth, data, know)
+        self.C_map = [None] * len(self.stree_index)
+        self.nqueries = 0
+        self.nfaults = 0
+
+        X_extra = np.array([
+            [ 0.0] * data.nvars,
+            [ 1.0] * data.nvars,
+            [-1.0] * data.nvars,
+        ])
+
+        def_k_t_image_idx = np.full(X_mesh.shape[0], True, dtype=bool)
+        def_k_t_extra_idx = np.full(X_extra.shape[0], True, dtype=bool)
+        for i in range(def_k_t_image_idx.size):
+            if know.is_undef_at(X_mesh[i]): def_k_t_image_idx[i] = False
+        for i in range(def_k_t_extra_idx.size):
+            if know.is_undef_at(X_extra[i]): def_k_t_extra_idx[i] = False
+
+        for i, t in enumerate(self.stree_index):
+            d_t = t.get_max_depth()
+            k_t_image = np.sign(t[(X_mesh, ())])
+            k_t = np.concatenate( [np.sign(t[(X_mesh, d)]) for d in sorted(derivs)] )  # important to sort them!
+            t_extra = t.at(X_extra)
+            t.clear_output()
+
+            noroot = (k_t_image[def_k_t_image_idx] != 0.0).all() and \
+                     (t_extra[def_k_t_extra_idx] != 0.0).all() and \
+                     not np.isnan(t_extra)[def_k_t_extra_idx].any()
+                
+            C_t = (d_t, k_t.tobytes(), noroot)
+            self.C_map[i] = C_t
+
+    def cquery(self, y, C, max_dist=np.inf) -> SyntaxTree:
+        self.nqueries += 1
+        lib = self.sem_index
+        offset_i = 0
+
+        for k in [2, 8, 32, 128]:
+            d, idx = lib.query(y, k=k, max_dist=max_dist)
+            
+            for i in range(offset_i, k):
+                if d[i] == np.inf: return None
+                idx_i = idx[i]
+                d_i, k_i, noroot_i = self.C_map[idx_i]
+
+                if d_i <= C.get_max_depth() and C.match_key((k_i, noroot_i)):
+                    return self.stree_provider.get_stree(idx_i)
+            
+            offset_i = k
+        
+        # radius fault.
+        self.nfaults += 1
+        return None
+    
+    def get_radius_faults(self):
+        return self.nfaults / self.nqueries
 
 class DynamicConstrainedLibrary:
     def __init__(self, population:list, eval_map:dict, selector:selector.Selector, data, X_mesh):

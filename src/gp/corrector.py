@@ -1,7 +1,7 @@
 import random
 from backprop import library, constraints
 from backprop.bperrors import KnowBackpropError
-from gp import gp
+from gp import utils
 
 
 class Corrector:
@@ -16,7 +16,7 @@ class Corrector:
                 self.S_know_derivs[deriv] = know.synth_dataset(deriv=deriv)
 
         derivs = [()] + list(self.S_know_derivs.keys())
-        self.lib = library.ConstrainedLibrary(libsize, lib_maxdepth, S_data, know, X_mesh, derivs)
+        self.lib = library.IterativeConstrainedLibrary(libsize, lib_maxdepth, S_data, know, X_mesh, derivs)
     
     def correct(self, stree, backprop_node=None):
         for _ in range(1):
@@ -47,7 +47,7 @@ class Corrector:
                 return stree, new_node, C_pulled, y_pulled
 
             # correct stree...
-            new_stree = gp.replace_subtree(stree, backprop_node, new_node)
+            new_stree = utils.replace_subtree(stree, backprop_node, new_node)
             new_stree.cache.clear()
             new_stree.set_parent()
             if new_node.has_parent():

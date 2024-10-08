@@ -1,6 +1,6 @@
 import random
 from symbols.syntax_tree import SyntaxTree
-from gp import gp
+from gp import utils
 
 class Selector:
     def select(self, population:list[SyntaxTree], eval_map:dict, nparents:int=2) -> list[SyntaxTree]:
@@ -15,7 +15,7 @@ class TournamentSelector(Selector):
         parents = []
         for _ in range(nparents):
             group = random.choices(population, k=self.group_size)
-            sorted_group = gp.sort_population(group, eval_map)
+            sorted_group = utils.sort_population(group, eval_map)
             parents.append(sorted_group[0])
         return parents
 

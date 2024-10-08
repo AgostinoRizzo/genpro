@@ -3,7 +3,8 @@ from symbols.syntax_tree import SyntaxTree
 from symbols.binop import BinaryOperatorSyntaxTree
 from symbols.unaop import UnaryOperatorSyntaxTree
 from symbols.visitor import SyntaxTreeNodeCounter, SyntaxTreeNodeSelector, ConstantSyntaxTreeCollector
-from gp import gp
+from gp import utils, gp
+
 
 class Mutator:
     def mutate(self, stree:SyntaxTree) -> SyntaxTree:
@@ -38,7 +39,7 @@ class SubtreeReplacerMutator(Mutator):
         new_sub_stree_depth = self.max_depth - sub_stree_depth
         if new_sub_stree_depth >= 0:
             new_sub_stree = self.solutionCreator.create_population(1, new_sub_stree_depth)[0]
-            stree = gp.replace_subtree(stree, sub_stree, new_sub_stree)
+            stree = utils.replace_subtree(stree, sub_stree, new_sub_stree)
 
             stree.set_parent()
             if new_sub_stree.has_parent():

@@ -1,4 +1,3 @@
-from functools import cmp_to_key
 import random
 import logging
 import numpy as np
@@ -13,37 +12,10 @@ from symbols.misc  import UnknownSyntaxTree
 from backprop import lpbackprop, jump_backprop
 from backprop import bpropagator
 from backprop import project
-from gp import creator, evaluator, selector, crossover, mutator, corrector
+from gp import utils, creator, evaluator, selector, crossover, mutator, corrector
 
 from symbols import syntax_tree
 import profiling
-
-
-def sort_population(population:list[SyntaxTree], eval_map:dict) -> list[SyntaxTree]:
-    def strees_cmp(stree1, stree2) -> int:
-        nonlocal eval_map
-        stree1_eval = eval_map[id(stree1)]
-        stree2_eval = eval_map[id(stree2)]
-        if stree1_eval.better_than(stree2_eval): return -1
-        if stree2_eval.better_than(stree1_eval): return  1
-        return 0
-    return sorted(population, key=cmp_to_key(strees_cmp))
-
-
-def replace_subtree(stree:SyntaxTree,
-                    sub_stree:SyntaxTree,
-                    new_sub_stree:SyntaxTree) -> SyntaxTree:
-    stree.set_parent()
-
-    if sub_stree.parent is None:
-        return new_sub_stree
-    if type(sub_stree.parent) is BinaryOperatorSyntaxTree:
-        if   id(sub_stree) == id(sub_stree.parent.left) : sub_stree.parent.left  = new_sub_stree
-        elif id(sub_stree) == id(sub_stree.parent.right): sub_stree.parent.right = new_sub_stree
-    elif type(sub_stree.parent) is UnaryOperatorSyntaxTree:
-        if id(sub_stree) == id(sub_stree.parent.inner): sub_stree.parent.inner = new_sub_stree
-    
-    return stree
 
 
 class Diversifier:
@@ -98,41 +70,6 @@ class SemanticCrowdingDiversifier(Diversifier):
                 eval_map[id(p)].crowdist = 0
 
 
-def generate_trunks(max_depth:int, nvars:int, knowledge):
-    from backprop import lpbackprop
-    from backprop import xgp
-    solutionCreator = xgp.RandomTemplateSolutionCreator(nvars=nvars)
-    all_trunks = []
-    satunsat_trunks = {'sat': [], 'unsat': []}
-
-    for _ in range(100):
-        trunk = solutionCreator.create_population(1, max_depth=max_depth)[0]
-        if type(trunk) is UnknownSyntaxTree or \
-           trunk in all_trunks or \
-           check_unsat_trunk(satunsat_trunks, trunk): continue
-        all_trunks.append(trunk)
-        #print(f"Checking trunk: {trunk}")
-        sat, _ = lpbackprop.lpbackprop(knowledge, trunk, None)
-        if sat:
-            satunsat_trunks['sat'].append(trunk)
-            #print(f"SAT  : {trunk}")
-        else:
-            satunsat_trunks['unsat'].append(trunk)
-            #print(f"UNSAT: {trunk}")
-    return satunsat_trunks
-
-def check_unsat_trunk(trunks:map, stree) -> bool:
-    for unsat_trunk in trunks['unsat']:
-        """if type(stree) is BinaryOperatorSyntaxTree and stree.operator == '*' and \
-            type(stree.left) is backprop.VariableSyntaxTree and type(stree.right) is backprop.ConstantSyntaxTree and \
-                type(unsat_trunk) is BinaryOperatorSyntaxTree and \
-                type(unsat_trunk.left) is UnknownSyntaxTree and type(unsat_trunk.right) is UnknownSyntaxTree:
-                    print()"""
-        if stree.match(unsat_trunk):
-            return True
-    return False
-
-
 class GP:
     def __init__(self,
                  popsize:int,
@@ -177,7 +114,7 @@ class GP:
         """
         
         self._evaluate_all()
-        self.population = sort_population(self.population, self.eval_map)
+        self.population = utils.sort_population(self.population, self.eval_map)
         self.stats.update(self.population, self.eval_map)
         
         for self.genidx in range(1, self.ngen):
@@ -241,12 +178,12 @@ class GP:
     
     def _replace(self, children:list[SyntaxTree]):
         if self.elitism > 0:
-            children = sort_population(children, self.eval_map)
+            children = utils.sort_population(children, self.eval_map)
             for i in range(self.elitism):
                 children[-1-i] = self.population[i]
         self.population = children  # generational replacement.
 
-        self.population = sort_population(self.population, self.eval_map)
+        self.population = utils.sort_population(self.population, self.eval_map)
         #self.population = (self.fea_front_tracker.get_population() + self.population)[:self.popsize]
         
         # update evaluation map based on new population.

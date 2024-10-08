@@ -12,7 +12,7 @@ from symbols.const import ConstantSyntaxTree
 from symbols.var   import VariableSyntaxTree
 from symbols.misc  import SemanticSyntaxTree
 from backprop import models, library
-from gp import gp, selector
+from gp import utils, gp, selector
 
 
 class Crossover:
@@ -38,7 +38,7 @@ class SubTreeCrossover:
         if len(allowedNodes) == 0: return child
         cross_point2 = random.choice(allowedNodes).clone()
         
-        child = gp.replace_subtree(child, cross_point1, cross_point2)
+        child = utils.replace_subtree(child, cross_point1, cross_point2)
         child.cache.clear()
         child.set_parent()
         if cross_point2.has_parent():
@@ -259,7 +259,7 @@ class SoftmaxSubTreeCrossover:
             allowerNodesProb = scipy_softmax(-allowerNodesProb)
             cross_point2 = np.random.choice(allowedNodes, size=1, p=allowerNodesProb)[0]
         
-        got = gp.replace_subtree(child, cross_point1, cross_point2.clone())
+        got = utils.replace_subtree(child, cross_point1, cross_point2.clone())
         got.clear_cache()
 
         return got
@@ -312,7 +312,7 @@ class SoftmaxSubTreeCrossover:
         if len(allowedNodes) == 0: return child
         cross_point2 = random.choice(allowedNodes)
         
-        got = gp.replace_subtree(child, cross_point1, cross_point2.clone())
+        got = utils.replace_subtree(child, cross_point1, cross_point2.clone())
         got.clear_cache()
 
         if can_print:
@@ -376,7 +376,7 @@ class MatchSubTreeCrossover:
             if best_n is not None:
                 cross_point1 = best_mn
                 cross_point2 = best_n
-                got = gp.replace_subtree(child, cross_point1, cross_point2.clone())
+                got = utils.replace_subtree(child, cross_point1, cross_point2.clone())
                 got.clear_cache()
                 return got
 
@@ -399,7 +399,7 @@ class MatchSubTreeCrossover:
         if len(allowedNodes) == 0: return child
         cross_point2 = random.choice(allowedNodes)
 
-        got = gp.replace_subtree(child, cross_point1, cross_point2.clone())
+        got = utils.replace_subtree(child, cross_point1, cross_point2.clone())
         got.clear_cache()
         
         return got
@@ -484,7 +484,7 @@ class EclipseCrossover(Crossover):
 
             if residual < 1e-10:
                 print(f"Best found!")
-                return gp.replace_subtree(child, bp_node, P.to_stree().simplify())
+                return utils.replace_subtree(child, bp_node, P.to_stree().simplify())
 
         return child
 
@@ -560,7 +560,7 @@ class ApproxGeometricCrossover(Crossover):
         new_sub_stree = self.lib.query(pulled_y)
         if new_sub_stree is None: return self.fallback_crossover.cross(parent1, parent2)
 
-        offspring = gp.replace_subtree(child, cross_node, new_sub_stree)
+        offspring = utils.replace_subtree(child, cross_node, new_sub_stree)
         if offspring.get_max_depth() > 5:  # TODO: lookup based on max admissible depth.
             return self.fallback_crossover.cross(parent1, parent2)
         
@@ -598,7 +598,7 @@ class CrossNPushCrossover(Crossover):
         if new_sub_stree is None: return child
         
         origin_child = child.clone()
-        offspring = gp.replace_subtree(child, cross_node, new_sub_stree)
+        offspring = utils.replace_subtree(child, cross_node, new_sub_stree)
         if offspring.get_max_depth() > 5:  # TODO: lookup based on max admissible depth.
             return origin_child
         
@@ -641,10 +641,10 @@ class ConstrainedCrossNPushCrossover(CrossNPushCrossover):
 
         for new_sub_sem, new_sub_stree in new_sub_strees:
 
-            child = gp.replace_subtree(child, cross_node, new_sub_stree)
+            child = utils.replace_subtree(child, cross_node, new_sub_stree)
 
             if child.get_max_depth() > 5:  # TODO: lookup based on max admissible depth.
-                gp.replace_subtree(child, new_sub_stree, cross_node)
+                utils.replace_subtree(child, new_sub_stree, cross_node)
                 continue
             
             child.set_parent()
@@ -660,7 +660,7 @@ class ConstrainedCrossNPushCrossover(CrossNPushCrossover):
             if new_sub_stree.has_parent():
                 new_sub_stree.parent.backup_output()
             
-            gp.replace_subtree(child, new_sub_stree, cross_node)
+            utils.replace_subtree(child, new_sub_stree, cross_node)
             child.set_parent()
         
         if best_offspring is None:
@@ -709,7 +709,7 @@ class ConstrainedSubTreeCrossover(Crossover):
         else:
             cross_point2 = self.lib.query(max_nesting_depth)
             
-        child = gp.replace_subtree(child, cross_point1, cross_point2)
+        child = utils.replace_subtree(child, cross_point1, cross_point2)
         child.cache.clear()
         child.set_parent()
         if cross_point2.has_parent():
