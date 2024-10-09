@@ -259,10 +259,9 @@ class DataKnowledge:
         
         return out_str
     
-    def synth_dataset(self, npoints:int=100, deriv:tuple[int]=()):
+    def synth_dataset(self, X, deriv:tuple[int]=()):
         S = Dataset(self.dataset.nvars, self.dataset.xl, self.dataset.xu, self.spsampler)
-
-        X = self.spsampler.meshspace(S.xl, S.xu, npoints)
+        
         y = np.full(X.shape[0], np.nan)
         
         # positivity constraints.

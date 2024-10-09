@@ -9,11 +9,11 @@ class Corrector:
         self.S_data = S_data
         self.max_depth = max_depth
         
-        self.S_know = know.synth_dataset()
+        self.S_know = know.synth_dataset(X_mesh)
         self.S_know_derivs = {}
         for deriv in know.sign.keys():
             if len(deriv) == 1:
-                self.S_know_derivs[deriv] = know.synth_dataset(deriv=deriv)
+                self.S_know_derivs[deriv] = know.synth_dataset(X_mesh, deriv=deriv)
 
         derivs = [()] + list(self.S_know_derivs.keys())
         self.lib = library.HierarchicalConstrainedLibrary(libsize, lib_maxdepth, S_data, know, X_mesh, derivs)

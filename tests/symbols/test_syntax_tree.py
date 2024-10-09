@@ -245,7 +245,8 @@ def test_eval(expr, nvars):
 
 def test_pull_know():
     S = dataset_misc1d.MagmanDatasetScaled()
-    S_know  = S.knowledge.synth_dataset()
+    X_mesh = S.spsampler.meshspace(S.xl, S.xu, 100)
+    S_know  = S.knowledge.synth_dataset(X_mesh)
 
     backprop_node = ConstantSyntaxTree(2.0)
     stree = BinaryOperatorSyntaxTree('/',
