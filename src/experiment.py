@@ -2,41 +2,73 @@ from configs import SYMBREG_BENCHMARKS, GPConfig
 from time import time
 import numpy as np
 import csv
+import sys
 
 
-APPEND_MODE = False
+APPEND_MODE = True
 
 perftable_header = [
     'Problem',
+    'Data-Config',
+    'Constrained',
     'Train-R2',
     'Test-R2',
     'Fea-Ratio',
-    #'Extra-R2',
-    'Time'
+    'Extra-R2',
+    'BestAvg-Train-R2',
+    'BestAvg-Fea-Ratio',
+    'Size',
+    'Time',
+    'Model'
 ]
 perftable = []
 
 
 np.seterr(all='ignore')
 
+if not APPEND_MODE:
+    ans = input('Append mode disabled. Are you sure to continue? [yes/no] ')
+    if ans != 'yes': sys.exit()
+
+
 # run experiments on benchmarks...
 for S, datafile in SYMBREG_BENCHMARKS:
-    symbreg_config = GPConfig(S, datafile)
-    symb_regressor = symbreg_config.create_symbreg()
+    
+    data_configs = ['nonoise', 'noisy'] if datafile is None else ['dataset']
+    for data_conf in data_configs:
 
-    start_time = time()
-    best_stree, best_eval = symb_regressor.evolve()
-    end_time = time()
+        for constrained in [True, False]:
 
-    best_stree.clear_output()
+            constrained_str = 'constrained' if constrained else 'unconstrained'
+            print(f"Testing {S.get_name()}-{data_conf}-{constrained_str}...")
 
-    perftable.append([
-        S.get_name(),
-        best_eval.r2,
-        symbreg_config.test_evaluator.evaluate(best_stree).r2,
-        best_eval.fea_ratio,
-        end_time - start_time
-    ])
+            symbreg_config = GPConfig(S, datafile=datafile, noisy=data_conf=='noisy', constrained=constrained)
+            symb_regressor = symbreg_config.create_symbreg()
+
+            start_time = time()
+            best_stree, best_eval = symb_regressor.evolve()
+            end_time = time()
+
+            best_stree.clear_output()
+            extra_eval = S.evaluate_extra(best_stree)
+            best_stree.clear_output()
+
+            best_test_eval = symbreg_config.test_evaluator.evaluate(best_stree)
+
+            perftable.append([
+                S.get_name(),  # Problem
+                data_conf,  # Config
+                constrained,  # Constrained
+                best_eval.r2,  # Train-R2
+                best_test_eval.r2,  # Test-R2
+                best_eval.fea_ratio,  # Fea-Ratio
+                extra_eval['r2'],  # Extra-R2
+                max(symb_regressor.stats.qualities['currAvg']),  # BestAvg-Train-R2
+                max(symb_regressor.stats.fea_ratio['currAvg']),  # BestAvg-Fea-Ratio
+                best_stree.cache.nnodes,  # Size
+                end_time - start_time,  # Time
+                str(best_stree.simplify())  # Model
+            ])
 
 
 # save performance table as csv file.

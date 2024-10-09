@@ -28,7 +28,7 @@ def test_evaluator(data, expr, request):
     layered_evaluator = LayeredEvaluator(know_evaluator, r2_evaluator)
     
     stree = parse_syntax_tree(expr)
-    r2    = r2_evaluator.evaluate(stree)
+    r2    = r2_evaluator.evaluate(stree).value
     n, nv = know_evaluator.evaluate(stree)
     leval = layered_evaluator.evaluate(stree)
 

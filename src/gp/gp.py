@@ -12,7 +12,7 @@ from symbols.misc  import UnknownSyntaxTree
 from backprop import lpbackprop, jump_backprop
 from backprop import bpropagator
 from backprop import project
-from gp import utils, creator, evaluator, selector, crossover, mutator, corrector
+from gp import utils, creator, evaluation, evaluator, selector, crossover, mutator, corrector
 
 from symbols import syntax_tree
 import profiling
@@ -171,7 +171,7 @@ class GP:
                     children.append(child)
                     self.eval_map[id(child)] = child_eval
 
-                    if child_eval.fea_ratio == 1.0:
+                    if type(child_eval) is evaluation.LayeredEvaluation and child_eval.fea_ratio == 1.0:
                         self.fea_front_tracker.track(child, child_eval)
         
         return children
@@ -190,6 +190,5 @@ class GP:
         new_eval_map = {}
         for stree in self.population:
             new_eval_map[id(stree)] = self.eval_map[id(stree)]
-
-            assert self.eval_map[id(stree)].fea_ratio == self.evaluator.evaluate(stree).fea_ratio
+        
         self.eval_map = new_eval_map

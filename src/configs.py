@@ -31,11 +31,11 @@ class GPConfig(SymbregConfig):
 
     RANDSTATE = 124
 
-    def __init__(self, S:dataset.Dataset, datafile:str=None):
+    def __init__(self, S:dataset.Dataset, datafile:str=None, noisy:bool=False, constrained:bool=True):
         randstate.setstate(GPConfig.RANDSTATE)
 
         if datafile is None:
-            S.sample(size=GPConfig.SAMPLE_SIZE, noise=GPConfig.NOISE, mesh=False)
+            S.sample(size=GPConfig.SAMPLE_SIZE, noise=GPConfig.NOISE if noisy else 0.0, mesh=False)
         else:
             S.load(datafile)
 
@@ -60,13 +60,16 @@ class GPConfig(SymbregConfig):
         know_evaluator      = gp_evaluator.KnowledgeEvaluator(S.knowledge, X_mesh)
         r2_evaluator        = gp_evaluator.R2Evaluator(self.S_train)
         r2_test_evaluator   = gp_evaluator.R2Evaluator(self.S_test)
-        self.evaluator      = gp_evaluator.LayeredEvaluator(know_evaluator, r2_evaluator)
-        self.test_evaluator = gp_evaluator.LayeredEvaluator(know_evaluator, r2_test_evaluator)
+        self.evaluator      = gp_evaluator.LayeredEvaluator(know_evaluator, r2_evaluator) if constrained else \
+                              gp_evaluator.UnconstrainedLayeredEvaluator(know_evaluator, r2_evaluator)
+        self.test_evaluator = gp_evaluator.LayeredEvaluator(know_evaluator, r2_test_evaluator) if constrained else \
+                              gp_evaluator.UnconstrainedLayeredEvaluator(know_evaluator, r2_test_evaluator)
 
         self.selector  = gp_selector.TournamentSelector(GPConfig.GROUP_SIZE)
         self.crossover = gp_crossover.SubTreeCrossover(GPConfig.MAX_STREE_DEPTH)
         self.corrector = gp_corrector.Corrector(
-            self.S_train, S.knowledge, GPConfig.MAX_STREE_DEPTH, X_mesh, GPConfig.LIBSIZE, GPConfig.LIB_MAXDEPTH)
+            self.S_train, S.knowledge, GPConfig.MAX_STREE_DEPTH, X_mesh, GPConfig.LIBSIZE, GPConfig.LIB_MAXDEPTH) \
+            if constrained else None
 
     def create_symbreg(self):
         return gp.GP \
@@ -94,6 +97,7 @@ import dataset_misc2d
 
 SYMBREG_BENCHMARKS = \
 [
+    # problem, dataset filename (sampled data if None)
     (dataset_misc1d.MagmanDatasetScaled(), None),
     (dataset_misc1d.MagmanDatasetScaled(), 'data/magman.csv'),
     (dataset_misc2d.Resistance2(), None)

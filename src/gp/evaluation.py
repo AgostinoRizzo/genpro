@@ -1,3 +1,6 @@
+import numpy as np
+
+
 class Evaluation:
     def __init__(self, minimize:bool=True):
         self.minimize = minimize
@@ -39,3 +42,11 @@ class LayeredEvaluation(Evaluation):
     def __str__(self) -> str:
         return f"fea: {self.fea_ratio}\n" + \
                f"r2:  {self.r2}"
+
+
+class UnconstrainedLayeredEvaluation(LayeredEvaluation):
+    def __init__(self, n, nv, r2):
+        super().__init__(n, nv, r2)
+    
+    def better_than(self, other) -> bool:
+        return self.r2 > other.r2

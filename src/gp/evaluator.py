@@ -1,7 +1,7 @@
 import numpy as np
 from symbols.syntax_tree import SyntaxTree
 from gp.stats import GPStats, LayeredGPStats
-from gp.evaluation import LayeredEvaluation
+from gp.evaluation import RealEvaluation, LayeredEvaluation, UnconstrainedLayeredEvaluation
 
 
 class Evaluator:
@@ -16,7 +16,7 @@ class R2Evaluator(Evaluator):
     def evaluate(self, stree:SyntaxTree):
         ssr = np.sum( (stree(self.data.X) - self.data.y) ** 2 )
         r2  = max( 0., 1 - ((ssr / self.data.sst) if self.data.sst > 0. else 1.) )
-        return r2
+        return RealEvaluation(r2, minimize=False)
 
 
 class KnowledgeEvaluator(Evaluator):
@@ -73,8 +73,18 @@ class LayeredEvaluator(Evaluator):
 
     def evaluate(self, stree:SyntaxTree):
         n, nv = self.know_evaluator.evaluate(stree)
-        r2 = self.r2_evaluator.evaluate(stree)
+        r2 = self.r2_evaluator.evaluate(stree).value
         return LayeredEvaluation(n, nv, r2)
     
     def create_stats(self):
         return LayeredGPStats()
+
+
+class UnconstrainedLayeredEvaluator(LayeredEvaluator):
+    def __init__(self, know_evaluator, r2_evaluator):
+        super().__init__(know_evaluator, r2_evaluator)
+
+    def evaluate(self, stree:SyntaxTree):
+        n, nv = self.know_evaluator.evaluate(stree)
+        r2 = self.r2_evaluator.evaluate(stree).value
+        return UnconstrainedLayeredEvaluation(n, nv, r2)
