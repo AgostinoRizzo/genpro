@@ -425,7 +425,7 @@ class IterativeConstrainedLibrary(Library):
         lib = self.sem_index
         offset_i = 0
 
-        for k in [2, 8, 32, 128]:
+        for k in [32, 128, 512]:
             d, idx = lib.query(y, k=k, max_dist=max_dist)
             
             for i in range(offset_i, k):
@@ -445,6 +445,99 @@ class IterativeConstrainedLibrary(Library):
     def get_radius_faults(self):
         return self.nfaults / self.nqueries
 
+
+class HierarchicalConstrainedLibrary(Library):
+    def __init__(self, size:int, max_depth:int, data, know, X_mesh, derivs:list[tuple[int]]):
+        super().__init__(size, max_depth, data, know)
+        self.max_depth = max_depth
+        
+        K_none = (None, None)
+
+        self.clib = {}
+        self.clib_idxmap = {}
+        self.C_map = [None] * len(self.stree_index)
+
+        X_extra = np.array([
+            [ 0.0] * data.nvars,
+            [ 1.0] * data.nvars,
+            [-1.0] * data.nvars,
+        ])
+
+        def_k_t_image_idx = np.full(X_mesh.shape[0], True, dtype=bool)
+        def_k_t_extra_idx = np.full(X_extra.shape[0], True, dtype=bool)
+        for i in range(def_k_t_image_idx.size):
+            if know.is_undef_at(X_mesh[i]): def_k_t_image_idx[i] = False
+        for i in range(def_k_t_extra_idx.size):
+            if know.is_undef_at(X_extra[i]): def_k_t_extra_idx[i] = False
+
+        for i, t in enumerate(self.stree_index):
+            d_t = t.get_max_depth()
+            k_t_image = np.sign(t[(X_mesh, ())])
+            k_t = np.concatenate( [np.sign(t[(X_mesh, d)]) for d in sorted(derivs)] )
+            t_extra = t.at(X_extra)
+            t.clear_output()
+
+            noroot = (k_t_image[def_k_t_image_idx] != 0.0).all() and \
+                     (t_extra[def_k_t_extra_idx] != 0.0).all() and \
+                     not np.isnan(t_extra)[def_k_t_extra_idx].any()
+
+            noroot_options = [True] if noroot else [False, True]
+            for depth in range(d_t, self.max_depth + 1):
+                for noroot_t in noroot_options:
+                    for K_t in [(depth,), (depth, noroot_t), (depth, noroot_t, k_t_image.tobytes())]:
+                        if K_t not in self.clib_idxmap: self.clib_idxmap[K_t] = []
+                        self.clib_idxmap[K_t].append(i)
+            
+            C_t = (d_t, noroot, k_t.tobytes())
+            self.C_map[i] = C_t
+        
+        for K in self.clib_idxmap.keys():
+            self.clib[K] = ExactKnnIndex(self.lib_data[self.clib_idxmap[K]])
+
+    def cquery(self, y, C, max_dist=np.inf) -> SyntaxTree:
+        max_depth = min(C.get_max_depth(), self.max_depth)
+
+        if C.are_none():
+            K = (max_depth,)
+            return self.__local_query(self.clib[K], self.clib_idxmap[K], y, max_dist)
+
+        k_bytes, noroot = C.get_key_image()
+
+        for K in [(max_depth, noroot, k_bytes), (max_depth, noroot), (max_depth,)]:
+        
+            if K not in self.clib: continue
+            
+            check_image = len(K) < 3
+            return self.__local_cquery(self.clib[K], self.clib_idxmap[K], y, C, max_dist, check_image)
+        
+        return None  # never here.
+    
+    def __local_query(self, lib, clib_idxmap, y, max_dist) -> SyntaxTree:
+        dist, local_idx = lib.query(y, max_dist=max_dist)
+        if dist == np.infty: return None
+        global_idx = clib_idxmap[local_idx]
+        return self.stree_provider.get_stree(global_idx)
+    
+    def __local_cquery(self, lib, clib_idxmap, y, C, max_dist, check_image:bool, k:int=128) -> SyntaxTree:
+        offset_i = 0
+
+        while True:
+            dist, local_idx = lib.query(y, k=k, max_dist=max_dist)
+            
+            for i in range(offset_i, k):
+                dist_i = dist[i]
+                if dist_i == np.inf: return None
+                
+                global_idx_i = clib_idxmap[local_idx[i]]
+                depth_i, noroot_i, k_i = self.C_map[global_idx_i]
+
+                if C.match_key((k_i, noroot_i), check_image):
+                    return self.stree_provider.get_stree(global_idx_i)
+            
+            offset_i = k
+            k += k
+
+        
 class DynamicConstrainedLibrary:
     def __init__(self, population:list, eval_map:dict, selector:selector.Selector, data, X_mesh):
         parents = selector.select(population, eval_map, len(population))

@@ -16,7 +16,7 @@ class Corrector:
                 self.S_know_derivs[deriv] = know.synth_dataset(deriv=deriv)
 
         derivs = [()] + list(self.S_know_derivs.keys())
-        self.lib = library.IterativeConstrainedLibrary(libsize, lib_maxdepth, S_data, know, X_mesh, derivs)
+        self.lib = library.HierarchicalConstrainedLibrary(libsize, lib_maxdepth, S_data, know, X_mesh, derivs)
     
     def correct(self, stree, backprop_node=None):
         for _ in range(1):
