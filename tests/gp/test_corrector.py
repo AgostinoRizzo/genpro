@@ -9,7 +9,7 @@ from symbols.var import VariableSyntaxTree
 from symbols.binop import BinaryOperatorSyntaxTree
 from symbols.unaop import UnaryOperatorSyntaxTree
 from symbols.misc import UnknownSyntaxTree
-from gp import corrector
+from gp import corrector, creator
 
 
 @pytest.fixture
@@ -149,7 +149,10 @@ def test_corrector(data, stree, noroot, k_image, k_deriv, partial, none, request
     libsize      = 2000
     lib_maxdepth = 3
     
-    corr = corrector.Corrector(S_train, S.knowledge, max_depth, X_mesh, libsize, lib_maxdepth)
+    y_iqr = S_train.get_y_iqr()
+    solutionCreator = creator.RandomSolutionCreator(nvars=S.nvars, y_iqr=y_iqr)
+
+    corr = corrector.Corrector(S_train, S.knowledge, max_depth, X_mesh, libsize, lib_maxdepth, solutionCreator)
     new_stree, new_node, C_pulled, y_pulled = corr.correct(stree, backprop_node)
 
     assert new_stree.get_max_depth() <= max_depth

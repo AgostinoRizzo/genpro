@@ -78,8 +78,9 @@ class FunctionSymbolMutator(Mutator):
         return stree
 
 class NumericParameterMutator(Mutator):
-    def __init__(self, all:bool=True):
+    def __init__(self, all:bool=True, y_iqr:float=1.0):
         self.all = all
+        self.y_iqr = y_iqr
     
     def mutate(self, stree:SyntaxTree) -> SyntaxTree:
         constsCollector = ConstantSyntaxTreeCollector()
@@ -90,7 +91,7 @@ class NumericParameterMutator(Mutator):
         if len(constsCollector.constants) == 0: return stree
         constsToMutate = constsCollector.constants if self.all else [random.choice(constsCollector.constants)]
         for c in constsToMutate:
-            c.val += random.gauss(mu=0.0, sigma=1.0)
+            c.val += random.gauss(mu=0.0, sigma=self.y_iqr)
             c.invalidate_output()
 
         return stree

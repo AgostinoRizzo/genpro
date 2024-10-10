@@ -56,7 +56,7 @@ def test_nd_space_sampler(xl, xu, npoints, expected_npoints):
             (spsampler.meshspace(xl, xu, npoints), False),
             (spsampler.randspace(xl, xu, npoints), True),
         ]:
-        assert points.shape == (expected_npoints, xsize)
+        assert points.shape == (npoints if israndom else expected_npoints, xsize)
         for i in range(xsize):
             assert ((points[:,i] >= xl[i]).all() and (points[:,i] <= xu[i]).all() and (xl <= xu).all()) or \
                    ((points[:,i] <= xl[i]).all() and (points[:,i] >= xu[i]).all() and (xl >= xu).all())

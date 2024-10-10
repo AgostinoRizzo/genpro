@@ -31,9 +31,9 @@ class FeynmanICh6Eq20a(dataset.Dataset1d):
         self.knowledge.add_sign(1, 0, INFTY, '-')
 
         # concavity/convexity
-        self.knowledge.add_sign(2, -INFTY, -1, '+')
-        self.knowledge.add_sign(2, -1, 1, '-')
-        self.knowledge.add_sign(2, 1, INFTY, '+')
+        #self.knowledge.add_sign(2, -INFTY, -1, '+')
+        #self.knowledge.add_sign(2, -1, 1, '-')
+        #self.knowledge.add_sign(2, 1, INFTY, '+')
 
         # symmetry
         self.knowledge.add_symm(0, 0, iseven=True )
@@ -177,7 +177,7 @@ class FeynmanIICh8Eq31(dataset.Dataset1d):
         self.knowledge.add_sign(1, 0, INFTY, '+')
 
         # concavity/convexity
-        self.knowledge.add_sign(2, -INFTY, INFTY, '+')
+        #self.knowledge.add_sign(2, -INFTY, INFTY, '+')
 
         # symmetry
         self.knowledge.add_symm(0, 0, iseven=True )
@@ -229,7 +229,7 @@ class FeynmanIICh27Eq16(dataset.Dataset1d):
         self.knowledge.add_sign(1, 0, INFTY, '+')
 
         # concavity/convexity
-        self.knowledge.add_sign(2, -INFTY, INFTY, '+')
+        #self.knowledge.add_sign(2, -INFTY, INFTY, '+')
 
         # symmetry
         self.knowledge.add_symm(0, 0, iseven=True )

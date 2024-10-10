@@ -13,9 +13,10 @@ from symbols.misc  import UnknownSyntaxTree
 class SyntaxTreeGenerator:
     OPERATORS = BinaryOperatorSyntaxTree.OPERATORS + UnaryOperatorSyntaxTree.OPERATORS
 
-    def __init__(self, nvars:int=1):
+    def __init__(self, nvars:int=1, y_iqr:float=1.0):
         self.unkn_counter = 0
         self.nvars = nvars
+        self.y_iqr = y_iqr
     
     def create_random(self, max_depth:int, n:int=1,
                       check_duplicates:bool=True, noconsts:bool=False, leaf_types:list[str]=['const', 'var']) -> list[SyntaxTree]:
@@ -35,7 +36,7 @@ class SyntaxTreeGenerator:
         if depth <= 0:
             leaf_t = random.choice(leaf_types)
             if leaf_t == 'const':
-                stree = ConstantSyntaxTree(val=random.uniform(-1., 1.))
+                stree = ConstantSyntaxTree(val=random.uniform(-self.y_iqr, self.y_iqr))
                 if np.isnan(stree.val): raise RuntimeError('NaN in random tree generation.')
             elif leaf_t == 'var':
                 stree = VariableSyntaxTree(idx=random.randrange(self.nvars))

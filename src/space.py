@@ -54,12 +54,6 @@ class MultidimSpaceSampler(SpaceSampler):
 
         if npoints == 0:
             return np.empty((0, xsize))
-        
-        npoints_side = self.get_meshsize(xl, xu, npoints)
-        
-        npoints = 1
-        for i in range(xsize):
-            if xl[i] != xu[i]: npoints *= npoints_side
 
         X = np.empty((npoints, xsize))
         for i in range(xsize):

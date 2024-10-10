@@ -29,7 +29,7 @@ class GPConfig(SymbregConfig):
     LIBSIZE      = 2000
     LIB_MAXDEPTH = 3
 
-    RANDSTATE = 124
+    RANDSTATE = None #124
 
     def __init__(self, S:dataset.Dataset, datafile:str=None, noisy:bool=False, constrained:bool=True):
         randstate.setstate(GPConfig.RANDSTATE)
@@ -45,15 +45,17 @@ class GPConfig(SymbregConfig):
         self.S_train = dataset.NumpyDataset(S)
         self.S_test  = dataset.NumpyDataset(S, test=True)
 
+        y_iqr = S_train.get_y_iqr()
+
         syntax_tree.SyntaxTreeInfo.set_problem(self.S_train)
 
-        self.solutionCreator = gp_creator.RandomSolutionCreator(nvars=S.nvars)
+        self.solutionCreator = gp_creator.RandomSolutionCreator(nvars=S.nvars, y_iqr=y_iqr)
 
         self.multiMutator = gp_mutator.MultiMutator(
             gp_mutator.SubtreeReplacerMutator(GPConfig.MAX_STREE_DEPTH, self.solutionCreator),
             gp_mutator.FunctionSymbolMutator(),
-            gp_mutator.NumericParameterMutator(all=True),
-            #gp.NumericParameterMutator(all=False)
+            gp_mutator.NumericParameterMutator(all=True, y_iqr=y_iqr),
+            #gp.NumericParameterMutator(all=False, y_iqr=y_iqr)
             )
 
         X_mesh              = self.S_train.spsampler.meshspace(self.S_train.xl, self.S_train.xu, GPConfig.MESH_SIZE)
@@ -92,13 +94,34 @@ class GPConfig(SymbregConfig):
 
 
 
+import dataset_feynman1d
+import dataset_feynman2d
 import dataset_misc1d
 import dataset_misc2d
+import dataset_misc3d
 
 SYMBREG_BENCHMARKS = \
 [
     # problem, dataset filename (sampled data if None)
+
+    # feynman 1d.
+    (dataset_feynman1d.FeynmanICh6Eq20a (), None),
+    (dataset_feynman1d.FeynmanICh29Eq4  (), None),
+    (dataset_feynman1d.FeynmanICh34Eq27 (), None),
+    (dataset_feynman1d.FeynmanIICh8Eq31 (), None),
+    (dataset_feynman1d.FeynmanIICh27Eq16(), None),
+    
+    # misc 1d.
     (dataset_misc1d.MagmanDatasetScaled(), None),
     (dataset_misc1d.MagmanDatasetScaled(), 'data/magman.csv'),
+
+    # feynman 2d.
+    (dataset_feynman2d.FeynmanICh6Eq20(), None)
+
+    # misc 2d.
     (dataset_misc2d.Resistance2(), None)
+
+    # misc 3d.
+    (dataset_misc3d.Gravity    (), None)
+    (dataset_misc3d.Resistance3(), None)
 ]

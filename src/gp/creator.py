@@ -7,9 +7,9 @@ class SolutionCreator:
         pass
 
 class RandomSolutionCreator(SolutionCreator):
-    def __init__(self, nvars:int, trunks=None):
+    def __init__(self, nvars:int, trunks=None, y_iqr:float=1.0):
         assert nvars > 0
-        self.stree_generator = SyntaxTreeGenerator(nvars)
+        self.stree_generator = SyntaxTreeGenerator(nvars, y_iqr)
         self.trunks = trunks
     
     def create_population(self, popsize:int, max_depth:int, noconsts:bool=False) -> list[SyntaxTree]:

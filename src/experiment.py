@@ -1,4 +1,5 @@
 from configs import SYMBREG_BENCHMARKS, GPConfig
+import randstate
 from time import time
 import numpy as np
 import csv
@@ -16,7 +17,9 @@ perftable_header = [
     'Fea-Ratio',
     'Extra-R2',
     'BestAvg-Train-R2',
+    'BestWorst-Train-R2',
     'BestAvg-Fea-Ratio',
+    'BestWorst-Fea-Ratio',
     'Size',
     'Time',
     'Model'
@@ -38,16 +41,25 @@ for S, datafile in SYMBREG_BENCHMARKS:
     for data_conf in data_configs:
 
         for constrained in [True, False]:
-
+            
             constrained_str = 'constrained' if constrained else 'unconstrained'
             print(f"Testing {S.get_name()}-{data_conf}-{constrained_str}...")
 
             symbreg_config = GPConfig(S, datafile=datafile, noisy=data_conf=='noisy', constrained=constrained)
             symb_regressor = symbreg_config.create_symbreg()
 
-            start_time = time()
-            best_stree, best_eval = symb_regressor.evolve()
-            end_time = time()
+            try:
+                start_time = time()
+                best_stree, best_eval = symb_regressor.evolve()
+                end_time = time()
+            except Exception as e:
+                error_header = f"Exception on {S.get_name()}-{data_conf}-{constrained_str} [RState={randstate.getstate()}]"
+                print(f"  └─── {error_header}. See results/perf.log for details.")
+                logfile = open('results/perf.log', 'a')
+                logfile.write(f"{error_header}\n")
+                logfile.write(f"{str(e)}\n\n")
+                logfile.close()
+                continue
 
             best_stree.clear_output()
             extra_eval = S.evaluate_extra(best_stree)
@@ -63,8 +75,10 @@ for S, datafile in SYMBREG_BENCHMARKS:
                 best_test_eval.r2,  # Test-R2
                 best_eval.fea_ratio,  # Fea-Ratio
                 extra_eval['r2'],  # Extra-R2
-                max(symb_regressor.stats.qualities['currAvg']),  # BestAvg-Train-R2
-                max(symb_regressor.stats.fea_ratio['currAvg']),  # BestAvg-Fea-Ratio
+                max(symb_regressor.stats.qualities['currAvg']),    # BestAvg-Train-R2
+                max(symb_regressor.stats.qualities['currWorst']),  # BestWorst-Train-R2
+                max(symb_regressor.stats.fea_ratio['currAvg']),    # BestAvg-Fea-Ratio
+                max(symb_regressor.stats.fea_ratio['currWorst']),  # BestWorst-Fea-Ratio
                 best_stree.cache.nnodes,  # Size
                 end_time - start_time,  # Time
                 str(best_stree.simplify())  # Model

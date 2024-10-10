@@ -117,7 +117,7 @@ class Library:
     DIST_EPSILON = 1e-1 #1e-8
     UNIQUENESS_MAX_DECIMALS = 1 #8
 
-    def __init__(self, size:int, max_depth:int, data, know):
+    def __init__(self, size:int, max_depth:int, data, know, solutionCreator):
         """
         A total of 'size' random trees are generated:
             * algebraic simplification of trees
@@ -130,7 +130,6 @@ class Library:
         self.stree_index = []
         self.lib_data = []
 
-        solutionCreator = creator.RandomSolutionCreator(nvars=data.nvars)
         extra_trees = size
         X_extra = np.array([
             [ 0.0] * data.nvars,
@@ -243,8 +242,8 @@ class Library:
 
 
 class ConstrainedLibrary(Library):
-    def __init__(self, size:int, max_depth:int, data, know, X_mesh, derivs:list[tuple[int]]):
-        super().__init__(size, max_depth, data, know)
+    def __init__(self, size:int, max_depth:int, data, know, X_mesh, derivs:list[tuple[int]], solutionCreator):
+        super().__init__(size, max_depth, data, know, solutionCreator)
         self.max_depth = max_depth
         
         K_none = (None, None)
@@ -387,8 +386,8 @@ class ConstrainedLibrary(Library):
 
 
 class IterativeConstrainedLibrary(Library):
-    def __init__(self, size:int, max_depth:int, data, know, X_mesh, derivs:list[tuple[int]]):
-        super().__init__(size, max_depth, data, know)
+    def __init__(self, size:int, max_depth:int, data, know, X_mesh, derivs:list[tuple[int]], solutionCreator):
+        super().__init__(size, max_depth, data, know, solutionCreator)
         self.C_map = [None] * len(self.stree_index)
         self.nqueries = 0
         self.nfaults = 0
@@ -447,8 +446,8 @@ class IterativeConstrainedLibrary(Library):
 
 
 class HierarchicalConstrainedLibrary(Library):
-    def __init__(self, size:int, max_depth:int, data, know, X_mesh, derivs:list[tuple[int]]):
-        super().__init__(size, max_depth, data, know)
+    def __init__(self, size:int, max_depth:int, data, know, X_mesh, derivs:list[tuple[int]], solutionCreator):
+        super().__init__(size, max_depth, data, know, solutionCreator)
         self.max_depth = max_depth
         
         K_none = (None, None)

@@ -638,6 +638,10 @@ class NumpyDataset:
         if y.size <= 1: return self.numlims.EPSILON  # TODO: manage this situation (otherwise in qp.qp_solve we have a division by zero).
         return np.var(y)
     
+    def get_y_iqr(self) -> float:
+        y25, y75 = np.percentile(self.y, [75 ,25])
+        return abs(y75 - y25)
+    
     def on_y_changed(self):
         # update sst.
         if self.is_empty():
