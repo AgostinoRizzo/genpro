@@ -144,15 +144,17 @@ backprop_node = ConstantSyntaxTree(2.0)
 ])
 def test_corrector(data, stree, noroot, k_image, k_deriv, partial, none, request):
     S, S_train = request.getfixturevalue(data)
-    max_depth    = 5
-    X_mesh       = S_train.spsampler.meshspace(S_train.xl, S_train.xu, 100)
-    libsize      = 2000
-    lib_maxdepth = 3
+    max_depth     = 5
+    max_length    = 20
+    X_mesh        = S_train.spsampler.meshspace(S_train.xl, S_train.xu, 100)
+    libsize       = 2000
+    lib_maxdepth  = 3
+    lib_maxlength = 10
     
     y_iqr = S_train.get_y_iqr()
     solutionCreator = creator.RandomSolutionCreator(nvars=S.nvars, y_iqr=y_iqr)
 
-    corr = corrector.Corrector(S_train, S.knowledge, max_depth, X_mesh, libsize, lib_maxdepth, solutionCreator)
+    corr = corrector.Corrector(S_train, S.knowledge, max_depth, max_length, X_mesh, libsize, lib_maxdepth, lib_maxlength, solutionCreator)
     new_stree, new_node, C_pulled, y_pulled = corr.correct(stree, backprop_node)
 
     assert new_stree.get_max_depth() <= max_depth

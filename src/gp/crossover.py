@@ -20,8 +20,9 @@ class Crossover:
         return None
 
 class SubTreeCrossover:
-    def __init__(self, max_depth:int):
+    def __init__(self, max_depth:int, max_length:int):
         self.max_depth = max_depth
+        self.max_length = max_length
     
     def cross(self, parent1:SyntaxTree, parent2:SyntaxTree) -> SyntaxTree:
         child = parent1.clone()
@@ -30,10 +31,12 @@ class SubTreeCrossover:
         cross_point1 = random.choice(child.cache.nodes)
         cross_point1_depth = cross_point1.get_depth()
         max_nesting_depth = self.max_depth - cross_point1_depth
+        max_nesting_length = self.max_length - (child.get_nnodes() - cross_point1.get_nnodes())
         
         allowedNodes = []
         for node in parent2.cache.nodes:
-            if node.get_max_depth() <= max_nesting_depth: allowedNodes.append(node)
+            if node.get_max_depth() <= max_nesting_depth and node.get_nnodes() <= max_nesting_length:
+                allowedNodes.append(node)
         
         if len(allowedNodes) == 0: return child
         cross_point2 = random.choice(allowedNodes).clone()

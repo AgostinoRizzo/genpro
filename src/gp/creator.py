@@ -92,7 +92,7 @@ def ptc2(target_len:int, max_depth:int, cl:float, cu:float, nvars:int):
 
 
 class SolutionCreator:
-    def create_population(self, popsize:int, max_depth:int, noconsts:bool=False) -> list[SyntaxTree]:
+    def create_population(self, popsize:int, max_depth:int, max_length:int) -> list[SyntaxTree]:
         pass
 
 
@@ -102,13 +102,13 @@ class RandomSolutionCreator(SolutionCreator):
         self.stree_generator = SyntaxTreeGenerator(nvars, y_iqr)
         self.trunks = trunks
     
-    def create_population(self, popsize:int, max_depth:int, noconsts:bool=False) -> list[SyntaxTree]:
+    def create_population(self, popsize:int, max_depth:int, max_length:int) -> list[SyntaxTree]:
         assert popsize > 0 and max_depth >= 0
-        population = self.stree_generator.create_random(max_depth, popsize, check_duplicates=True, noconsts=noconsts)
+        population = self.stree_generator.create_random(max_depth, popsize, check_duplicates=True)
         if self.trunks is not None:
             population = [p for p in population if not utils.check_unsat_trunk(self.trunks, p)]
             left = popsize - len(population)
-            if left > 0: population += self.create_population(left, max_depth, noconsts)
+            if left > 0: population += self.create_population(left, max_depth, max_length)
         return population
 
 
@@ -117,13 +117,12 @@ class PTC2RandomSolutionCreator(SolutionCreator):
         assert nvars > 0
         self.nvars = nvars
         self.cl, self.cu = -y_iqr, y_iqr
-        self.max_length = 20  # TODO: generalize it.
     
-    def create_population(self, popsize:int, max_depth:int) -> list[SyntaxTree]:
-        assert popsize > 0 and max_depth >= 0
+    def create_population(self, popsize:int, max_depth:int, max_length:int) -> list[SyntaxTree]:
+        assert popsize > 0 and max_depth >= 0 and max_length > 0
         population = []
         for _ in range(popsize):
-            target_len = random.randint(1, self.max_length)
+            target_len = random.randint(1, max_length)
             stree = ptc2(target_len, max_depth, self.cl, self.cu, self.nvars)
             population.append(stree.simplify())
         return population

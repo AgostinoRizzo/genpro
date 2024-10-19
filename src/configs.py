@@ -14,20 +14,23 @@ class SymbregConfig:
 
 
 class GPConfig(SymbregConfig):
-    SAMPLE_SIZE = 100
-    TRAIN_SIZE  = 0.7
-    NOISE       = 0.0
-    MESH_SIZE   = 100
+    SAMPLE_SIZE        = 20
+    SAMPLE_TRAIN_SIZE  = 0.5
+    DATASET_TRAIN_SIZE = 0.7
+    NOISE              = 0.05
+    MESH_SIZE          = 100
 
-    POPSIZE         = 200
-    MAX_STREE_DEPTH = 5
-    GENERATIONS     = 25
-    GROUP_SIZE      = 5  # tournament selector.
-    MUTATION_RATE   = 0.15
-    ELITISM         = 1
+    POPSIZE          = 200
+    MAX_STREE_DEPTH  = 5
+    MAX_STREE_LENGTH = 20
+    GENERATIONS      = 25
+    GROUP_SIZE       = 4  # tournament selector.
+    MUTATION_RATE    = 0.15
+    ELITISM          = 1
 
-    LIBSIZE      = 2000
-    LIB_MAXDEPTH = 3
+    LIBSIZE       = 2000
+    LIB_MAXDEPTH  = 3
+    LIB_MAXLENGTH = 10
 
     RANDSTATE = None #124
 
@@ -35,24 +38,24 @@ class GPConfig(SymbregConfig):
         randstate.setstate(GPConfig.RANDSTATE)
 
         if datafile is None:
-            S.sample(size=GPConfig.SAMPLE_SIZE, noise=GPConfig.NOISE if noisy else 0.0, mesh=False)
+            S.sample(size=GPConfig.SAMPLE_SIZE, noise=(GPConfig.NOISE if noisy else 0.0), mesh=False)
+            S.split(train_size=GPConfig.SAMPLE_TRAIN_SIZE)
         else:
             S.load(datafile)
-
-        S.split(train_size=GPConfig.TRAIN_SIZE)
+            S.split(train_size=GPConfig.DATASET_TRAIN_SIZE)
 
         self.S = S
         self.S_train = dataset.NumpyDataset(S)
         self.S_test  = dataset.NumpyDataset(S, test=True)
 
-        y_iqr = S_train.get_y_iqr()
+        y_iqr = self.S_train.get_y_iqr()
 
         syntax_tree.SyntaxTreeInfo.set_problem(self.S_train)
 
         self.solutionCreator = gp_creator.RandomSolutionCreator(nvars=S.nvars, y_iqr=y_iqr)
 
         self.multiMutator = gp_mutator.MultiMutator(
-            gp_mutator.SubtreeReplacerMutator(GPConfig.MAX_STREE_DEPTH, self.solutionCreator),
+            gp_mutator.SubtreeReplacerMutator(GPConfig.MAX_STREE_DEPTH, GPConfig.MAX_STREE_LENGTH, self.solutionCreator),
             gp_mutator.FunctionSymbolMutator(),
             gp_mutator.NumericParameterMutator(all=True, y_iqr=y_iqr),
             #gp.NumericParameterMutator(all=False, y_iqr=y_iqr)
@@ -68,9 +71,9 @@ class GPConfig(SymbregConfig):
                               gp_evaluator.UnconstrainedLayeredEvaluator(know_evaluator, r2_test_evaluator)
 
         self.selector  = gp_selector.TournamentSelector(GPConfig.GROUP_SIZE)
-        self.crossover = gp_crossover.SubTreeCrossover(GPConfig.MAX_STREE_DEPTH)
+        self.crossover = gp_crossover.SubTreeCrossover(GPConfig.MAX_STREE_DEPTH, GPConfig.MAX_STREE_LENGTH)
         self.corrector = gp_corrector.Corrector(
-            self.S_train, S.knowledge, GPConfig.MAX_STREE_DEPTH, X_mesh, GPConfig.LIBSIZE, GPConfig.LIB_MAXDEPTH) \
+            self.S_train, S.knowledge, GPConfig.MAX_STREE_DEPTH, GPConfig.MAX_STREE_LENGTH, X_mesh, GPConfig.LIBSIZE, GPConfig.LIB_MAXDEPTH, GPConfig.LIB_MAXLENGTH, self.solutionCreator) \
             if constrained else None
 
     def create_symbreg(self):
@@ -79,6 +82,7 @@ class GPConfig(SymbregConfig):
                 self.POPSIZE,
                 self.GENERATIONS,
                 self.MAX_STREE_DEPTH,
+                self.MAX_STREE_LENGTH,
                 self.S_train,
                 self.S_test,
                 creator=self.solutionCreator,
@@ -116,12 +120,12 @@ SYMBREG_BENCHMARKS = \
     (dataset_misc1d.MagmanDatasetScaled(), 'data/magman.csv'),
 
     # feynman 2d.
-    (dataset_feynman2d.FeynmanICh6Eq20(), None)
+    #(dataset_feynman2d.FeynmanICh6Eq20(), None),
 
     # misc 2d.
-    (dataset_misc2d.Resistance2(), None)
+    (dataset_misc2d.Resistance2(), None),
 
     # misc 3d.
-    (dataset_misc3d.Gravity    (), None)
-    (dataset_misc3d.Resistance3(), None)
+    (dataset_misc3d.Gravity    (), None),
+    (dataset_misc3d.Resistance3(), None),
 ]

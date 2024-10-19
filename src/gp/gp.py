@@ -75,6 +75,7 @@ class GP:
                  popsize:int,
                  ngen:int,
                  max_depth:int,
+                 max_length:int,
                  S_train:dataset.NumpyDataset,
                  S_test:dataset.NumpyDataset,
                  creator:creator.SolutionCreator,
@@ -87,7 +88,7 @@ class GP:
                  elitism:int=0,
                  knowledge=None):
         
-        self.population = creator.create_population(popsize, max_depth)
+        self.population = creator.create_population(popsize, max_depth, max_length)
         self.eval_map = {}
         self.popsize = popsize
         self.ngen = ngen

@@ -18,8 +18,9 @@ class MultiMutator(Mutator):
         return random.choice(self.mutators).mutate(stree)
 
 class SubtreeReplacerMutator(Mutator):
-    def __init__(self, max_depth, solutionCreator):
+    def __init__(self, max_depth, max_length, solutionCreator):
         self.max_depth = max_depth
+        self.max_length = max_length
         self.solutionCreator = solutionCreator
     
     def mutate(self, stree:SyntaxTree) -> SyntaxTree:
@@ -36,14 +37,16 @@ class SubtreeReplacerMutator(Mutator):
         stree.set_parent()
         sub_stree_depth = sub_stree.get_depth()
         
-        new_sub_stree_depth = self.max_depth - sub_stree_depth
-        if new_sub_stree_depth >= 0:
-            new_sub_stree = self.solutionCreator.create_population(1, new_sub_stree_depth)[0]
-            stree = utils.replace_subtree(stree, sub_stree, new_sub_stree)
+        new_substree_max_depth = self.max_depth - sub_stree_depth
+        new_substree_max_length = self.max_length - (stree.get_nnodes() - sub_stree.get_nnodes())
+        assert new_substree_max_depth >= 0 and new_substree_max_length > 0
 
-            stree.set_parent()
-            if new_sub_stree.has_parent():
-                new_sub_stree.parent.invalidate_output()
+        new_sub_stree = self.solutionCreator.create_population(1, new_substree_max_depth, new_substree_max_length)[0]
+        stree = utils.replace_subtree(stree, sub_stree, new_sub_stree)
+
+        stree.set_parent()
+        if new_sub_stree.has_parent():
+            new_sub_stree.parent.invalidate_output()
         
         return stree.simplify()
     

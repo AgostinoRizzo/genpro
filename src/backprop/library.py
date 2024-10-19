@@ -117,7 +117,7 @@ class Library:
     DIST_EPSILON = 1e-1 #1e-8
     UNIQUENESS_MAX_DECIMALS = 1 #8
 
-    def __init__(self, size:int, max_depth:int, data, know, solutionCreator):
+    def __init__(self, size:int, max_depth:int, max_length:int, data, know, solutionCreator):
         """
         A total of 'size' random trees are generated:
             * algebraic simplification of trees
@@ -147,7 +147,7 @@ class Library:
         all_semantics = {}
 
         while extra_trees > 0:
-            strees = solutionCreator.create_population(extra_trees, max_depth, noconsts=True)
+            strees = solutionCreator.create_population(extra_trees, max_depth, max_length)
             extra_trees = 0
             
             for t in strees:
@@ -242,8 +242,8 @@ class Library:
 
 
 class ConstrainedLibrary(Library):
-    def __init__(self, size:int, max_depth:int, data, know, X_mesh, derivs:list[tuple[int]], solutionCreator):
-        super().__init__(size, max_depth, data, know, solutionCreator)
+    def __init__(self, size:int, max_depth:int, max_length:int, data, know, X_mesh, derivs:list[tuple[int]], solutionCreator):
+        super().__init__(size, max_depth, max_length, data, know, solutionCreator)
         self.max_depth = max_depth
         
         K_none = (None, None)
@@ -386,8 +386,8 @@ class ConstrainedLibrary(Library):
 
 
 class IterativeConstrainedLibrary(Library):
-    def __init__(self, size:int, max_depth:int, data, know, X_mesh, derivs:list[tuple[int]], solutionCreator):
-        super().__init__(size, max_depth, data, know, solutionCreator)
+    def __init__(self, size:int, max_depth:int, max_length:int, data, know, X_mesh, derivs:list[tuple[int]], solutionCreator):
+        super().__init__(size, max_depth, max_length, data, know, solutionCreator)
         self.C_map = [None] * len(self.stree_index)
         self.nqueries = 0
         self.nfaults = 0
@@ -446,8 +446,8 @@ class IterativeConstrainedLibrary(Library):
 
 
 class HierarchicalConstrainedLibrary(Library):
-    def __init__(self, size:int, max_depth:int, data, know, X_mesh, derivs:list[tuple[int]], solutionCreator):
-        super().__init__(size, max_depth, data, know, solutionCreator)
+    def __init__(self, size:int, max_depth:int, max_length:int, data, know, X_mesh, derivs:list[tuple[int]], solutionCreator):
+        super().__init__(size, max_depth, max_length, data, know, solutionCreator)
         self.max_depth = max_depth
         
         K_none = (None, None)
