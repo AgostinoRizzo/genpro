@@ -42,7 +42,7 @@ class ConstantSyntaxTree(SyntaxTree):
     
     def __eq__(self, other) -> bool:
         if type(other) is not ConstantSyntaxTree: return False
-        return self.val == other.val
+        return self.val == other.val or np.isnan(self.val) and np.isnan(other.val)
     
     def diff(self, varidx:int=0) -> SyntaxTree:
         return ConstantSyntaxTree(0.0)

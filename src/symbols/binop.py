@@ -1,6 +1,7 @@
 import numpy as np
 from symbols.syntax_tree import SyntaxTree
 from symbols.const import ConstantSyntaxTree
+from symbols import simplifier
 from backprop.bperrors import KnowBackpropError
 
 
@@ -21,22 +22,22 @@ class BinaryOperatorSyntaxTree(SyntaxTree):
     
     def __call__(self, x):
         if self.output is None:
-            self.output = self.__operate(self.left(x), self.right(x))
+            self.output = self.operate(self.left(x), self.right(x))
         return self.output
     
     def __getitem__(self, x_d):
         x, d = x_d
         if d not in self.y_know:
             if d == ():
-                self.y_know[d] = self.__operate(self.left[x_d], self.right[x_d])
+                self.y_know[d] = self.operate(self.left[x_d], self.right[x_d])
             elif len(d) == 1:
-                self.y_know[d] = self.__operate_deriv(self.left[(x,())], self.left[x_d], self.right[(x,())], self.right[x_d])
+                self.y_know[d] = self.operate_deriv(self.left[(x,())], self.left[x_d], self.right[(x,())], self.right[x_d])
             else:
                 raise RuntimeError(f"Derivative {d} not supported.")
         return self.y_know[d]
     
     def at(self, x):
-        return self.__operate(self.left.at(x), self.right.at(x))
+        return self.operate(self.left.at(x), self.right.at(x))
     
     def clear_output(self):
         super().clear_output()
@@ -58,59 +59,11 @@ class BinaryOperatorSyntaxTree(SyntaxTree):
         return self.left.validate() and self.right.validate()
 
     def simplify(self):
-        return self
         self.left = self.left.simplify()
         self.right = self.right.simplify()
-        is_left_const  = type(self.left)  is ConstantSyntaxTree
-        is_right_const = type(self.right) is ConstantSyntaxTree
-
-        if is_left_const and is_right_const and (self.operator != '/' or self.right.val != 0.):
-            return ConstantSyntaxTree( self.__operate(self.left.val, self.right.val) )
-        
-        if self.operator == '*':
-            if (is_left_const and self.left.val == 0) or (is_right_const and self.right.val == 0):
-                return ConstantSyntaxTree(0.0)
-            if (is_left_const and self.left.val == 1):
-                return self.right
-            if (is_right_const and self.right.val == 1):
-                return self.left
-            if self.left == self.right:
-                return UnaryOperatorSyntaxTree('square', self.left)
-        
-        if self.operator == '/':
-            if self.left == self.right: return ConstantSyntaxTree(1.0)
-            if is_left_const and self.left.val == 0: return ConstantSyntaxTree(0.0)
-        
-        if self.operator == '+':
-            if is_left_const  and self.left.val  == 0: return self.right
-            if is_right_const and self.right.val == 0: return self.left
-        if self.operator == '-':
-            if is_right_const and self.right.val == 0: return self.left
-            if self.left == self.right: return ConstantSyntaxTree(0.0)
-        
-        if self.operator == '^' and is_right_const:
-            if self.right.val == 0:
-                return ConstantSyntaxTree(1.0)
-            
-            if self.right.val == 1:
-                return self.left
-            
-            if self.right.val == 2 and type(self.left) is UnaryOperatorSyntaxTree and self.left.operator == 'sqrt':
-                return self.left.inner
-            
-            if type(self.right) is ConstantSyntaxTree:
-                if self.right.val == 2: return UnaryOperatorSyntaxTree('square', self.left)
-                if self.right.val == 3: return UnaryOperatorSyntaxTree('cube', self.left)
-            
-            if type(self.left) is BinaryOperatorSyntaxTree and self.left.operator == '^' and \
-               type(self.left.right) is ConstantSyntaxTree:
-                self.right = ConstantSyntaxTree(self.right.val * self.left.right.val)
-                self.left = self.left.left
-                return self
-        
-        return self
+        return simplifier.simplify_binary_stree(self)
     
-    def __operate(self, left:np.array, right:np.array) -> np.array:
+    def operate(self, left:np.array, right:np.array) -> np.array:
         if   self.operator == '/': return left / right
         elif self.operator == '*': return left * right
         elif self.operator == '+': return left + right
@@ -118,7 +71,7 @@ class BinaryOperatorSyntaxTree(SyntaxTree):
         elif self.operator == '^': return left ** right
         raise RuntimeError(f"Operation not defined for operator {self.operator}.")
     
-    def __operate_inv(self, output:np.array, get_left:bool=True) -> np.array:
+    def operate_inv(self, output:np.array, get_left:bool=True) -> np.array:
         if   self.operator == '/':
             self.right.output[self.right.output == 0.0] = np.nan
             
@@ -146,7 +99,7 @@ class BinaryOperatorSyntaxTree(SyntaxTree):
         
         raise RuntimeError(f"Inverse operation not defined for operator {self.operator}.")
     
-    def __operate_deriv(self, left:np.array, left_deriv:np.array, right:np.array, right_deriv:np.array) -> np.array:
+    def operate_deriv(self, left:np.array, left_deriv:np.array, right:np.array, right_deriv:np.array) -> np.array:
         if   self.operator == '/': return ((right*left_deriv) - (left*right_deriv)) / (right**2)
         elif self.operator == '*': return (right*left_deriv) + (left*right_deriv)
         elif self.operator == '+': return left_deriv + right_deriv
@@ -162,6 +115,7 @@ class BinaryOperatorSyntaxTree(SyntaxTree):
             self.operator == other.operator and \
             self.left == other.left and self.right == other.right
     
+    """
     def diff(self, varidx:int=0) -> SyntaxTree:
         if self.is_const_wrt(varidx):
             return ConstantSyntaxTree(0)
@@ -205,6 +159,7 @@ class BinaryOperatorSyntaxTree(SyntaxTree):
             )
         
         raise RuntimeError(f"Differentiation not defined for operator {self.operator}.")
+    """
     
     def is_const(self) -> bool:
         return self.left.is_const() and self.right.is_const()
@@ -217,9 +172,9 @@ class BinaryOperatorSyntaxTree(SyntaxTree):
         if child is None or pulled_output is None:
             return pulled_output
         if   id(child) == id(self.left):
-            pulled_output = self.__operate_inv(pulled_output, get_left=True)
+            pulled_output = self.operate_inv(pulled_output, get_left=True)
         elif id(child) == id(self.right):
-            pulled_output = self.__operate_inv(pulled_output, get_left=False)
+            pulled_output = self.operate_inv(pulled_output, get_left=False)
         else:
             raise RuntimeError('Invalid child.')
         if flatten:

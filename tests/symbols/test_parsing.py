@@ -1,4 +1,5 @@
 import pytest
+import numpy as np
 from symbols.parsing import parse_syntax_tree
 from symbols.binop import BinaryOperatorSyntaxTree
 from symbols.unaop import UnaryOperatorSyntaxTree
@@ -40,6 +41,14 @@ from symbols.var import VariableSyntaxTree
 
     ('x2', VariableSyntaxTree(2)),
     ('-1.2', ConstantSyntaxTree(-1.2)),
+    ('inf', ConstantSyntaxTree(np.inf)),
+    ('(square(x0) * ninf)',
+        BinaryOperatorSyntaxTree('*',
+            UnaryOperatorSyntaxTree('square', VariableSyntaxTree()), ConstantSyntaxTree(-np.inf))),
+    ('nan', ConstantSyntaxTree(np.nan)),
+    ('(square(x0) * nan)',
+        BinaryOperatorSyntaxTree('*',
+            UnaryOperatorSyntaxTree('square', VariableSyntaxTree()), ConstantSyntaxTree(np.nan))),
     ('unaopt(x0)', None),
     ('1.2 @ x0', None),
     ('@!  2', None),

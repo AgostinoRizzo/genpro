@@ -1,5 +1,6 @@
 import lrparsing
 from lrparsing import Ref, Token
+import numpy as np
 
 from symbols.syntax_tree import SyntaxTree
 from symbols.binop import BinaryOperatorSyntaxTree
@@ -18,6 +19,8 @@ class SyntaxTreeParser(lrparsing.Grammar):
         unaopt_re = '|'.join(UnaryOperatorSyntaxTree.OPERATORS)
 
         constant = Token(re="[\+\-]?[0-9]+\.[0-9]+")
+        infinity = Token(re="[pn]?inf")
+        nan      = Token(re="nan")
         variable = Token(re="x[0-9]+")
         binopt_iden = Token(re=binopt_re)
         unaopt_iden = Token(re=unaopt_re)
@@ -28,7 +31,7 @@ class SyntaxTreeParser(lrparsing.Grammar):
     expr = Ref("expr")
     binopt = '(' + expr + T.binopt_iden + expr + ')'
     unaopt = T.unaopt_iden + '(' + expr + ')'
-    expr = T.constant | T.variable | binopt | unaopt
+    expr = T.constant | T.infinity | T.nan | T.variable | binopt | unaopt
     START = expr
 
 
@@ -57,6 +60,13 @@ def build_expr(parse_tree) -> SyntaxTree:
     if rule.name == 'T.constant':
         val = float(symbols[0])
         return ConstantSyntaxTree(val)
+    
+    if rule.name == 'T.infinity':
+        val = (-np.inf) if symbols[0][0] == 'n' else np.inf
+        return ConstantSyntaxTree(val)
+    
+    if rule.name == 'T.nan':
+        return ConstantSyntaxTree(np.nan)
     
     raise RuntimeError('Invalid rule.')
 

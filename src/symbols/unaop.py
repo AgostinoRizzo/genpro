@@ -1,8 +1,8 @@
 import numpy as np
 import sympy
 from symbols.syntax_tree import SyntaxTree
-from symbols.binop import BinaryOperatorSyntaxTree
 from symbols.const import ConstantSyntaxTree
+from symbols import simplifier
 from backprop.bperrors import KnowBackpropError
 
 
@@ -22,22 +22,22 @@ class UnaryOperatorSyntaxTree(SyntaxTree):
     
     def __call__(self, x):
         if self.output is None:
-            self.output = self.__operate(self.inner(x))
+            self.output = self.operate(self.inner(x))
         return self.output
     
     def __getitem__(self, x_d):
         x, d = x_d
         if d not in self.y_know:
             if d == ():
-                self.y_know[d] = self.__operate(self.inner[x_d])
+                self.y_know[d] = self.operate(self.inner[x_d])
             elif len(d) == 1:
-                self.y_know[d] = self.__operate_deriv(self.inner[(x,())], self.inner[x_d])
+                self.y_know[d] = self.operate_deriv(self.inner[(x,())], self.inner[x_d])
             else:
                 raise RuntimeError(f"Derivative {d} not supported.")
         return self.y_know[d]
     
     def at(self, x):
-        return self.__operate(self.inner.at(x))
+        return self.operate(self.inner.at(x))
     
     def clear_output(self):
         super().clear_output()
@@ -51,31 +51,10 @@ class UnaryOperatorSyntaxTree(SyntaxTree):
         return self.inner.validate()
 
     def simplify(self):
-        return self
         self.inner = self.inner.simplify()
-
-        if type(self.inner) is ConstantSyntaxTree:
-            return ConstantSyntaxTree( self.__operate(self.inner.val) )
-        
-        if self.operator == 'exp' and type(self.inner) is UnaryOperatorSyntaxTree and self.inner.operator == 'log':
-            return self.inner.inner
-        
-        if self.operator == 'log' and type(self.inner) is UnaryOperatorSyntaxTree and self.inner.operator == 'exp':
-            return self.inner.inner
-        
-        if self.operator == 'sqrt' and type(self.inner) is BinaryOperatorSyntaxTree and \
-           self.inner.operator == '^' and type(self.inner.right) is ConstantSyntaxTree and self.inner.right.val == 2:
-            return self.inner.left
-        
-        if self.operator == 'sqrt' and type(self.inner) is UnaryOperatorSyntaxTree and self.inner.operator == 'square':
-            return self.inner.inner
-        
-        if self.operator == 'square' and type(self.inner) is UnaryOperatorSyntaxTree and self.inner.operator == 'sqrt':
-            return self.inner.inner
-        
-        return self
+        return simplifier.simplify_unary_stree(self)
     
-    def __operate(self, inner:np.array) -> np.array:
+    def operate(self, inner:np.array) -> np.array:
         if self.operator == 'exp'   : return np.exp (inner)
         if self.operator == 'log'   : return np.log (inner)
         if self.operator == 'sqrt'  : return np.sqrt(inner)
@@ -83,7 +62,7 @@ class UnaryOperatorSyntaxTree(SyntaxTree):
         if self.operator == 'cube'  : return inner ** 3
         raise RuntimeError(f"Operation not defined for operator {self.operator}.")
     
-    def __operate_inv(self, output:np.array) -> np.array:
+    def operate_inv(self, output:np.array) -> np.array:
         if self.operator == 'exp'   : return np.log(output)
         if self.operator == 'log'   : return np.exp(output)
         if self.operator == 'sqrt'  : return output ** 2
@@ -92,7 +71,7 @@ class UnaryOperatorSyntaxTree(SyntaxTree):
         
         raise RuntimeError(f"Inverse operation not defined for operator {self.operator}.")
     
-    def __operate_deriv(self, inner:np.array, inner_deriv:np.array) -> np.array:
+    def operate_deriv(self, inner:np.array, inner_deriv:np.array) -> np.array:
         if self.operator == 'exp'   : return np.exp(inner) * inner_deriv
         if self.operator == 'log'   : return inner_deriv / inner
         if self.operator == 'sqrt'  : return inner_deriv / (2.0 * np.sqrt(inner))
@@ -109,6 +88,7 @@ class UnaryOperatorSyntaxTree(SyntaxTree):
             self.operator == other.operator and \
             self.inner == other.inner
     
+    """
     def diff(self, varidx:int=0) -> SyntaxTree:
         if self.is_const_wrt(varidx):
             return ConstantSyntaxTree(0)
@@ -155,6 +135,7 @@ class UnaryOperatorSyntaxTree(SyntaxTree):
             )
         
         raise RuntimeError(f"Differentiation not defined for operator {self.operator}.")
+    """
     
     def is_const(self) -> bool:
         return self.inner.is_const()
@@ -166,7 +147,7 @@ class UnaryOperatorSyntaxTree(SyntaxTree):
         pulled_output = super().pull_output(target_output, child, flatten)
         if child is None or pulled_output is None: return pulled_output
         if id(child) == id(self.inner):
-            pulled_output = self.__operate_inv(pulled_output)
+            pulled_output = self.operate_inv(pulled_output)
             if flatten: utils.flatten(pulled_output)
             return pulled_output
         raise RuntimeError('Invalid child.')

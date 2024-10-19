@@ -163,6 +163,7 @@ class GP:
                         profiling.enable()
                         child, _, _, _ = self.corrector.correct(child)
                         profiling.disable()
+                        child = child.simplify()
 
                     child_eval = self.evaluator.evaluate(child)
                     #if not child_eval.better_than(before_child_eval):
