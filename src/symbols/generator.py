@@ -12,6 +12,8 @@ from symbols.misc  import UnknownSyntaxTree
 
 class SyntaxTreeGenerator:
     OPERATORS = BinaryOperatorSyntaxTree.OPERATORS + UnaryOperatorSyntaxTree.OPERATORS
+    UNA_OPERATORS = UnaryOperatorSyntaxTree.OPERATORS
+    BIN_OPERATORS = BinaryOperatorSyntaxTree.OPERATORS
 
     def __init__(self, nvars:int=1, y_iqr:float=1.0):
         self.unkn_counter = 0
