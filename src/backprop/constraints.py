@@ -62,6 +62,9 @@ class BackpropConstraints(Constraints):
         if   (image_pconstr > 0.0).all(): y[y < 0.0] = 0.0
         elif (image_pconstr < 0.0).all(): y[y > 0.0] = 0.0
     
+    def check_const(self, c) -> bool:
+        return True
+    
     def __str__(self) -> str:
         out = ''
         if self.noroot:

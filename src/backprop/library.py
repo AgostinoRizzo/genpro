@@ -5,6 +5,7 @@ from multiprocessing import Process, Lock, Condition
 import random
 
 from symbols.syntax_tree import SyntaxTree
+from symbols.const import ConstantSyntaxTree
 from symbols.visitor import SyntaxTreeIneqOperatorCollector
 from gp import creator, selector
 
@@ -194,13 +195,16 @@ class Library:
         self.symbfreq = SymbolicFrequencies()
     
     def query(self, sem, max_dist=np.inf) -> SyntaxTree:
-        #const_fit = sem.mean()
-        #const_fit_d = np.linalg.norm(const_fit - sem)
+        const_fit = sem.mean()
+        const_fit_d = compute_distance(const_fit, sem)
+        max_dist = min(max_dist, const_fit_d)
         
         d, idx = self.sem_index.query(sem, max_dist=max_dist)
         
-        if d == np.infty: return None
-        #if const_fit_d <= d: return backprop.ConstantSyntaxTree(const_fit)
+        if d == np.infty and const_fit_d > max_dist:
+            return None
+        if const_fit_d <= d:
+            return ConstantSyntaxTree(const_fit)
 
         stree = self.stree_provider.get_stree(idx)
         #self.symbfreq.add(stree)
@@ -494,11 +498,21 @@ class HierarchicalConstrainedLibrary(Library):
             self.clib[K] = ExactKnnIndex(self.lib_data[self.clib_idxmap[K]])
 
     def cquery(self, y, C, max_dist=np.inf) -> SyntaxTree:
+        # constant fit (when compliant w.r.t. C).
+        const_fit = y.mean()
+        const_fit_dist = np.inf
+        if C.check_const(const_fit):
+            const_fit_dist = compute_distance(const_fit, y)
+            max_dist = min(max_dist, const_fit_dist)
+        
         max_depth = min(C.get_max_depth(), self.max_depth)
 
         if C.are_none():
             K = (max_depth,)
-            return self.__local_query(self.clib[K], self.clib_idxmap[K], y, max_dist)
+            stree, dist = self.__local_query(self.clib[K], self.clib_idxmap[K], y, max_dist)
+            if const_fit_dist <= max_dist and const_fit_dist <= dist:
+                return ConstantSyntaxTree(const_fit)
+            return stree
 
         k_bytes, noroot = C.get_key_image()
 
@@ -507,17 +521,20 @@ class HierarchicalConstrainedLibrary(Library):
             if K not in self.clib: continue
             
             check_image = len(K) < 3
-            return self.__local_cquery(self.clib[K], self.clib_idxmap[K], y, C, max_dist, check_image)
+            stree, dist = self.__local_cquery(self.clib[K], self.clib_idxmap[K], y, C, max_dist, check_image)
+            if const_fit_dist <= max_dist and const_fit_dist <= dist:
+                return ConstantSyntaxTree(const_fit)
+            return stree
         
         return None  # never here.
     
-    def __local_query(self, lib, clib_idxmap, y, max_dist) -> SyntaxTree:
+    def __local_query(self, lib, clib_idxmap, y, max_dist) -> tuple[SyntaxTree,float]:
         dist, local_idx = lib.query(y, max_dist=max_dist)
-        if dist == np.infty: return None
+        if dist == np.infty: return None, dist
         global_idx = clib_idxmap[local_idx]
-        return self.stree_provider.get_stree(global_idx)
+        return self.stree_provider.get_stree(global_idx), dist
     
-    def __local_cquery(self, lib, clib_idxmap, y, C, max_dist, check_image:bool, k:int=128) -> SyntaxTree:
+    def __local_cquery(self, lib, clib_idxmap, y, C, max_dist, check_image:bool, k:int=128) -> tuple[SyntaxTree,float]:
         offset_i = 0
 
         while True:
@@ -525,13 +542,13 @@ class HierarchicalConstrainedLibrary(Library):
             
             for i in range(offset_i, k):
                 dist_i = dist[i]
-                if dist_i == np.inf: return None
+                if dist_i == np.inf: return None, dist_i
                 
                 global_idx_i = clib_idxmap[local_idx[i]]
                 depth_i, noroot_i, k_i = self.C_map[global_idx_i]
 
                 if C.match_key((k_i, noroot_i), check_image):
-                    return self.stree_provider.get_stree(global_idx_i)
+                    return self.stree_provider.get_stree(global_idx_i), dist_i
             
             offset_i = k
             k += k
