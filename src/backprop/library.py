@@ -196,14 +196,17 @@ class Library:
     
     def query(self, sem, max_dist=np.inf) -> SyntaxTree:
         const_fit = sem.mean()
-        const_fit_d = compute_distance(const_fit, sem)
-        max_dist = min(max_dist, const_fit_d)
+        const_fit_d = np.inf
+        if np.isnan(const_fit): const_fit = None
+        else:
+            const_fit_d = compute_distance(const_fit, sem)
+            max_dist = min(max_dist, const_fit_d)
         
         d, idx = self.sem_index.query(sem, max_dist=max_dist)
         
         if d == np.infty and const_fit_d > max_dist:
             return None
-        if const_fit_d <= d:
+        if const_fit is not None and const_fit_d <= d:
             return ConstantSyntaxTree(const_fit)
 
         stree = self.stree_provider.get_stree(idx)
@@ -500,8 +503,9 @@ class HierarchicalConstrainedLibrary(Library):
     def cquery(self, y, C, max_dist=np.inf) -> SyntaxTree:
         # constant fit (when compliant w.r.t. C).
         const_fit = y.mean()
+        if np.isnan(const_fit): const_fit = None
         const_fit_dist = np.inf
-        if C.check_const(const_fit):
+        if const_fit is not None and C.check_const(const_fit):
             const_fit_dist = compute_distance(const_fit, y)
             max_dist = min(max_dist, const_fit_dist)
         
@@ -510,7 +514,7 @@ class HierarchicalConstrainedLibrary(Library):
         if C.are_none():
             K = (max_depth,)
             stree, dist = self.__local_query(self.clib[K], self.clib_idxmap[K], y, max_dist)
-            if const_fit_dist <= max_dist and const_fit_dist <= dist:
+            if const_fit is not None and const_fit_dist <= max_dist and const_fit_dist <= dist:
                 return ConstantSyntaxTree(const_fit)
             return stree
 
@@ -522,7 +526,7 @@ class HierarchicalConstrainedLibrary(Library):
             
             check_image = len(K) < 3
             stree, dist = self.__local_cquery(self.clib[K], self.clib_idxmap[K], y, C, max_dist, check_image)
-            if const_fit_dist <= max_dist and const_fit_dist <= dist:
+            if const_fit is not None and const_fit_dist <= max_dist and const_fit_dist <= dist:
                 return ConstantSyntaxTree(const_fit)
             return stree
         
