@@ -281,3 +281,11 @@ def random_test(y) -> float:
     z = (runs-runs_exp)/stan_dev 
   
     return abs(z)
+
+
+def is_symmetric(y, Y_Ids) -> bool:
+    y_0 = y[Y_Ids[0]]
+    for i in range(1, Y_Ids.shape[0]):
+        if not np.array_equal(y[Y_Ids[i]], y_0, equal_nan=True):
+            return False
+    return True

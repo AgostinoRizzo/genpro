@@ -259,7 +259,8 @@ def test_pull_know():
     
     stree.set_parent()
     stree[(S_know.X, ())]  # needed for 'pull_know'.
-    k_pulled, noroot_pulled = backprop_node.pull_know(S_know.y)
+    k_pulled, noroot_pulled, symm_pulled = backprop_node.pull_know(S_know.y)
 
     assert (k_pulled == 1.0).all()
     assert noroot_pulled
+    assert symm_pulled is None

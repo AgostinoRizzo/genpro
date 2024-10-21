@@ -131,10 +131,10 @@ class SyntaxTree:
             return utils.flatten(target_output) if flatten else target_output
         return self.parent.pull_output(target_output, self, flatten)
     
-    def pull_know(self, k_target:np.array, noroot_target:bool=False, child=None, track:dict={}) -> tuple[np.array,bool]:
+    def pull_know(self, k_target:np.array, noroot_target:bool=False, symm_target:tuple[bool,np.array]=None, child=None, track:dict={}) -> tuple[np.array,bool,tuple[bool,np.array]]:
         if self.parent is None:
-            return k_target, noroot_target
-        return self.parent.pull_know(k_target, noroot_target, self, track)
+            return k_target, noroot_target, symm_target
+        return self.parent.pull_know(k_target, noroot_target, symm_target, self, track)
     
     def pull_know_deriv(self, image_track:dict, derividx:int, k_target:np.array, child=None) -> np.array:
         if self.parent is None:

@@ -57,6 +57,7 @@ class DataKnowledge:
         self.derivs = {}
         self.sign = {}
         self.symm = {}
+        self.symmvars = []
         self.noroot = set()
         self.zero = {}
         self.undef = []
@@ -84,6 +85,9 @@ class DataKnowledge:
         assert type(d) is tuple
         assert type(x) is float or type(x) is int  # TODO: manage symmetry constraints in multivar (*).
         self.symm[d] = (x, iseven)
+    
+    def add_symmvars(self, vars:tuple[int]):
+        self.symmvars.append(vars)
     
     def add_noroot(self, d):
         if type(d) is int: d = (0,)*d
@@ -328,7 +332,7 @@ class Dataset:
         y = self.func(X)
         if noise > 0.:
             y_std = y.std()
-            y += np.random.normal(scale=math.sqrt(noise*y_std), size=X.shape[0])
+            y += np.random.normal(scale=noise*y_std, size=X.shape[0])
 
         for i in range(y.size):
             self.data.append(DataPoint(X[i], y[i]))
@@ -501,7 +505,7 @@ class Dataset:
         )
     
     def evaluate_extra(self, model) -> dict:
-        dx = (self.xu - self.xl) / 2
+        dx = 0.0 #TODO: (self.xu - self.xl) / 2
         X = self.spsampler.meshspace(self.xl - dx, self.xu + dx, 500)  # TODO: factorize sample size.
         Y = self.func(X)
         X = X[~np.isnan(Y)]  # remove nan values (where self.func is not defined).

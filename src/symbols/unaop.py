@@ -152,19 +152,22 @@ class UnaryOperatorSyntaxTree(SyntaxTree):
             return pulled_output
         raise RuntimeError('Invalid child.')
     
-    def pull_know(self, k_target:np.array, noroot_target:bool=False, child=None, track:dict={}) -> tuple[np.array,bool]:
+    def pull_know(self, k_target:np.array, noroot_target:bool=False, symm_target:tuple[bool,np.array]=None, child=None, track:dict={}) -> tuple[np.array,bool,tuple[bool,np.array]]:
         
-        k_pulled, noroot_pulled = super().pull_know(k_target, noroot_target, track=track)
+        k_pulled, noroot_pulled, symm_pulled = super().pull_know(k_target, noroot_target, symm_target, track=track)
         if child is None:
-            return k_pulled, noroot_pulled 
+            return k_pulled, noroot_pulled, symm_pulled
         
         if id(child) != id(self.inner):
             raise RuntimeError('Invalid child.')
         
         k_target = k_pulled
         noroot_target = noroot_pulled
+        symm_target = symm_pulled
+        
         k_pulled = np.full(k_target.shape, np.nan)
         noroot_pulled = False
+        symm_pulled = symm_target  # symmetry (w.r.t. variables) backprop.
 
         if self.operator == 'square':
             if (k_target < 0.0).any():
@@ -195,8 +198,8 @@ class UnaryOperatorSyntaxTree(SyntaxTree):
         else:
             raise RuntimeError('Invalid operator.')
         
-        track[id(self.inner)] = (k_pulled, noroot_pulled)
-        return k_pulled, noroot_pulled
+        track[id(self.inner)] = (k_pulled, noroot_pulled, symm_pulled)
+        return k_pulled, noroot_pulled, symm_pulled
     
     def pull_know_deriv(self, image_track:dict, derividx:int, k_target:np.array, child=None) -> np.array:
         

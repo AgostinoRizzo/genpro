@@ -10,6 +10,7 @@ from symbols.binop import BinaryOperatorSyntaxTree
 from symbols.unaop import UnaryOperatorSyntaxTree
 from symbols.misc import UnknownSyntaxTree
 from gp import corrector, creator
+from backprop.utils import is_symmetric
 
 
 @pytest.fixture
@@ -29,7 +30,7 @@ def data_resistance2():
 
 backprop_node = ConstantSyntaxTree(2.0)
 
-@pytest.mark.parametrize("data,stree,noroot,k_image,k_deriv,partial,none", [
+@pytest.mark.parametrize("data,stree,noroot,symm,k_image,k_deriv,partial,none", [
     (
         'data_magman',
         BinaryOperatorSyntaxTree('/',
@@ -40,6 +41,7 @@ backprop_node = ConstantSyntaxTree(2.0)
             backprop_node
         ),
         True,
+        None,
         [1.] * 100,
         {(0,): [-1.] * 42 + [np.nan] * 16 + [1.] * 42},
         True,
@@ -56,6 +58,7 @@ backprop_node = ConstantSyntaxTree(2.0)
             UnaryOperatorSyntaxTree('cube', backprop_node)
         ),
         True,
+        None,
         [1.] * 100,
         {(0,): [-1.] * 42 + [np.nan] * 16 + [1.] * 42},
         True,
@@ -73,6 +76,7 @@ backprop_node = ConstantSyntaxTree(2.0)
                 UnaryOperatorSyntaxTree('square', backprop_node))
         ),
         True,
+        None,
         [np.nan] * 100,  # natural (lossless) softening.
         {(0,): [np.nan] * 100},  # lossy softening.
         True,
@@ -89,7 +93,28 @@ backprop_node = ConstantSyntaxTree(2.0)
             backprop_node
         ),
         True,
+        True,
         [np.nan] * 10 + ([np.nan] + [1.] * 9) * 9,
+        {(0,): [np.nan] * 100, (1,): [np.nan] * 100},
+        True,
+        False
+    ),
+
+    (
+        'data_resistance2',
+        BinaryOperatorSyntaxTree('/',
+            BinaryOperatorSyntaxTree('*',
+                VariableSyntaxTree(0),
+                VariableSyntaxTree(1),
+            ),
+            BinaryOperatorSyntaxTree('+',
+                backprop_node,
+                VariableSyntaxTree(1),
+            )
+        ),
+        True,
+        False,
+        [np.nan] * 100,
         {(0,): [np.nan] * 100, (1,): [np.nan] * 100},
         True,
         False
@@ -110,6 +135,7 @@ backprop_node = ConstantSyntaxTree(2.0)
                 )
             )
         ),
+        True,
         True,
         [np.nan] * 100,
         {(0,): [np.nan] * 100, (1,): [np.nan] * 100},
@@ -136,13 +162,14 @@ backprop_node = ConstantSyntaxTree(2.0)
             )
         ),
         True,
+        True,
         [np.nan] * 10 + ([np.nan] + [1.] * 9) * 9,
         {(0,): [np.nan] * 100, (1,): [np.nan] * 100},
         True,
         False
     ),
 ])
-def test_corrector(data, stree, noroot, k_image, k_deriv, partial, none, request):
+def test_corrector(data, stree, noroot, symm, k_image, k_deriv, partial, none, request):
     S, S_train = request.getfixturevalue(data)
     max_depth     = 5
     max_length    = 20
@@ -160,6 +187,8 @@ def test_corrector(data, stree, noroot, k_image, k_deriv, partial, none, request
     assert new_stree.get_max_depth() <= max_depth
 
     assert C_pulled.noroot == noroot
+    assert (C_pulled.symm is None and symm is None) or C_pulled.symm[0] == symm
+    assert C_pulled.symm is None or C_pulled.symm[0] == is_symmetric(new_stree[X_mesh, ()], C_pulled.symm[1])
     assert set(C_pulled.origin_pconstrs.keys()) == set([()] + list(k_deriv.keys()))
 
     assert np.array_equal(C_pulled.origin_pconstrs[()], np.array(k_image), equal_nan=True)

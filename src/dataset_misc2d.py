@@ -30,6 +30,10 @@ class Resistance2(Datasetnd):
         # concavity
         #self.knowledge.add_sign((0,0), self.xl, [INFTY, INFTY], '-')
         #self.knowledge.add_sign((1,1), self.xl, [INFTY, INFTY], '-')
+
+        # symmetry (w.r.t. variables).
+        self.knowledge.add_symmvars((0,1))
+        self.knowledge.add_symmvars((1,0))
         
     def func(self, X) -> float:
         x0 = X[:,0]

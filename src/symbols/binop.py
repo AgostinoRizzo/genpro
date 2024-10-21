@@ -3,6 +3,7 @@ from symbols.syntax_tree import SyntaxTree
 from symbols.const import ConstantSyntaxTree
 from symbols import simplifier
 from backprop.bperrors import KnowBackpropError
+from backprop.utils import is_symmetric
 
 
 class BinaryOperatorSyntaxTree(SyntaxTree):
@@ -181,11 +182,11 @@ class BinaryOperatorSyntaxTree(SyntaxTree):
             pulled_output = utils.flatten(pulled_output)
         return pulled_output
     
-    def pull_know(self, k_target:np.array, noroot_target:bool=False, child=None, track:dict={}) -> tuple[np.array,bool]:
+    def pull_know(self, k_target:np.array, noroot_target:bool=False, symm_target:tuple[bool,np.array]=None, child=None, track:dict={}) -> tuple[np.array,bool,tuple[bool,np.array]]:
                
-        k_pulled, noroot_pulled = super().pull_know(k_target, noroot_target, track=track)
+        k_pulled, noroot_pulled, symm_pulled = super().pull_know(k_target, noroot_target, symm_target, track=track)
         if child is None:
-            return k_pulled, noroot_pulled
+            return k_pulled, noroot_pulled, symm_pulled
         
         A = None
         B = None
@@ -205,8 +206,11 @@ class BinaryOperatorSyntaxTree(SyntaxTree):
         
         k_target = k_pulled
         noroot_target = noroot_pulled
+        symm_target = symm_pulled
+        
         k_pulled = np.full(k_target.shape, np.nan)
         noroot_pulled = False
+        symm_pulled = None if symm_target is None else (None, symm_target[1])
 
         if self.operator == '+':
             k_pulled[(k_target > 0.0) & (k_B <= 0.0)] = +1.0
@@ -241,8 +245,12 @@ class BinaryOperatorSyntaxTree(SyntaxTree):
         else:
             raise RuntimeError('Invalid operator.')
         
-        track[id(A)] = (k_pulled, noroot_pulled)
-        return k_pulled, noroot_pulled
+        # symmetry (w.r.t. variables) backprop.
+        if symm_target is not None:
+            symm_pulled = (is_symmetric(B.y_know[()], symm_target[1]), symm_pulled[1])
+        
+        track[id(A)] = (k_pulled, noroot_pulled, symm_pulled)
+        return k_pulled, noroot_pulled, symm_pulled
     
     def pull_know_deriv(self, image_track:dict, derividx:int, k_target:np.array, child=None) -> np.array:
         

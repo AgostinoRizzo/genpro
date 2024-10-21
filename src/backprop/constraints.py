@@ -14,12 +14,13 @@ class Constraints:
 
 
 class BackpropConstraints(Constraints):
-    def __init__(self, max_depth:int, max_length:int, pconstrs:dict[tuple,np.array], noroot:bool):
+    def __init__(self, max_depth:int, max_length:int, pconstrs:dict[tuple,np.array], noroot:bool, symm:tuple[bool,np.array]):
         super().__init__(max_depth, max_length)
         self.origin_pconstrs = pconstrs
         self.pconstrs_image = pconstrs[()]
         self.pconstrs = np.concatenate( [pconstrs[deriv] for deriv in sorted(pconstrs.keys())] )  # important order with sorted!
         self.noroot = noroot
+        self.symm = symm
 
         # precompute meta-info.
         self.key = (self.pconstrs.tobytes(), noroot)

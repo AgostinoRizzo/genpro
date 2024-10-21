@@ -5,6 +5,13 @@ from backprop.bperrors import KnowBackpropError
 from gp import utils
 
 
+def find_row_idx(X, x):
+    for i in range(X.shape[0]):
+        if np.array_equal(X[i], x, equal_nan=True):
+            return i
+    return -1
+
+
 class Corrector:
     def __init__(self, S_data, know, max_depth:int, max_length:int, X_mesh, libsize:int, lib_maxdepth:int, lib_maxlength:int, solutionCreator):
         self.S_data = S_data
@@ -17,9 +24,26 @@ class Corrector:
         for deriv in know.sign.keys():
             if len(deriv) == 1:
                 self.S_know_derivs[deriv] = know.synth_dataset(X_mesh, deriv=deriv)
+        
+        self.symm_Y_Ids = None
+        if know.symmvars is not None and len(know.symmvars) > 1:
+            self.symm_Y_Ids = []
+            for vars in know.symmvars:
+                symm_Y_Ids_row = []
+                for i in range(X_mesh.shape[0]):
+                    x = X_mesh[i][list(vars)]
+                    idx = find_row_idx(X_mesh, x)
+                    if idx < 0: raise RuntimeError('X_mesh is not a mesh.')
+                    symm_Y_Ids_row.append(idx)
+                self.symm_Y_Ids.append(symm_Y_Ids_row)
+            self.symm_Y_Ids = np.array(self.symm_Y_Ids) 
 
         derivs = [()] + list(self.S_know_derivs.keys())
-        self.lib = library.HierarchicalConstrainedLibrary(libsize, lib_maxdepth, lib_maxlength, S_data, know, X_mesh, derivs, solutionCreator)
+        if self.symm_Y_Ids is None:
+            self.lib = library.HierarchicalConstrainedLibrary(libsize, lib_maxdepth, lib_maxlength, S_data, know, X_mesh, derivs, solutionCreator)
+        else:
+            self.symm_lib  = library.HierarchicalConstrainedLibrary(libsize, lib_maxdepth, lib_maxlength, S_data, know, X_mesh, derivs, solutionCreator, True , self.symm_Y_Ids)
+            self.asymm_lib = library.HierarchicalConstrainedLibrary(libsize, lib_maxdepth, lib_maxlength, S_data, know, X_mesh, derivs, solutionCreator, False, self.symm_Y_Ids)
     
     def correct(self, stree, backprop_node=None, relax:bool=False):
         for _ in range(1):
@@ -52,7 +76,11 @@ class Corrector:
 
             y_backprop_node = backprop_node(self.S_data.X)
             max_dist = library.compute_distance(y_backprop_node, y_pulled)
-            new_node = self.lib.cquery(y_pulled, C_pulled, max_dist=max_dist)
+            new_node = None
+            if C_pulled.symm is None: new_node = self.lib.      cquery(y_pulled, C_pulled, max_dist=max_dist)
+            elif C_pulled.symm[0]:    new_node = self.symm_lib. cquery(y_pulled, C_pulled, max_dist=max_dist)
+            else:                     new_node = self.asymm_lib.cquery(y_pulled, C_pulled, max_dist=max_dist)
+
             if new_node is None:
                 return stree, new_node, C_pulled, y_pulled
             if new_node.get_nnodes() > max_nesting_length:
@@ -77,7 +105,8 @@ class Corrector:
             # backprop image knowledge.
             stree[(self.S_know.X, ())]  # needed for 'pull_know'.
             image_track = {}
-            k_image_pulled, noroot_pulled = backprop_node.pull_know(self.S_know.y, track=image_track)
+            symm = None if self.symm_Y_Ids is None else (True, self.symm_Y_Ids)
+            k_image_pulled, noroot_pulled, symm_pulled = backprop_node.pull_know(self.S_know.y, symm_target=symm, track=image_track)
             k_pulled[()] = k_image_pulled
 
             # backprop derivative knowledge.
@@ -89,15 +118,16 @@ class Corrector:
         except KnowBackpropError:
             return None
 
-        return constraints.BackpropConstraints(max_nesting_depth, max_nesting_length, k_pulled, noroot_pulled)
+        return constraints.BackpropConstraints(max_nesting_depth, max_nesting_length, k_pulled, noroot_pulled, symm_pulled)
     
     def __get_relaxed_constraints(self, max_nesting_depth, max_nesting_length) -> constraints.BackpropConstraints:
         k_none = {}
         noroot_none = False
+        symm_none = None
 
         k_none[()] = np.full(self.X_mesh.size, np.nan)
         for deriv, S_know_deriv in self.S_know_derivs.items():
             k_none[deriv] = np.full(self.X_mesh.size, np.nan)
 
-        return constraints.BackpropConstraints(max_nesting_depth, max_nesting_length, k_none, noroot_none)
+        return constraints.BackpropConstraints(max_nesting_depth, max_nesting_length, k_none, noroot_none, symm_none)
         

@@ -8,6 +8,7 @@ from symbols.syntax_tree import SyntaxTree
 from symbols.const import ConstantSyntaxTree
 from symbols.visitor import SyntaxTreeIneqOperatorCollector
 from gp import creator, selector
+from backprop.utils import is_symmetric
 
 
 def compute_distance(p1:np.array, p2:np.array):
@@ -118,7 +119,7 @@ class Library:
     DIST_EPSILON = 1e-1 #1e-8
     UNIQUENESS_MAX_DECIMALS = 1 #8
 
-    def __init__(self, size:int, max_depth:int, max_length:int, data, know, solutionCreator):
+    def __init__(self, size:int, max_depth:int, max_length:int, data, know, solutionCreator, X_mesh=None, symm:bool=None, symm_Y_Ids=None):
         """
         A total of 'size' random trees are generated:
             * algebraic simplification of trees
@@ -146,10 +147,13 @@ class Library:
             if know.is_undef_at(X_extra[i]): def_st_extra_idx[i] = False
 
         all_semantics = {}
+        max_trials = 10
+        ntrials = 0
 
-        while extra_trees > 0:
+        while extra_trees > 0 and ntrials < max_trials:
             strees = solutionCreator.create_population(extra_trees, max_depth, max_length)
             extra_trees = 0
+            ntrials += 1
             
             for t in strees:
                 t = t.simplify()  # TODO: ensure executed once.
@@ -160,6 +164,11 @@ class Library:
                 """if (st <= 0.).any():
                     extra_trees += 1
                     continue"""
+                
+                if symm is not None and symm != is_symmetric(t[(X_mesh, ())], symm_Y_Ids):
+                    extra_trees += 1
+                    continue
+
                 if not np.isfinite(st**2)[def_st_idx].all():
                     extra_trees += 1
                     continue
@@ -453,8 +462,8 @@ class IterativeConstrainedLibrary(Library):
 
 
 class HierarchicalConstrainedLibrary(Library):
-    def __init__(self, size:int, max_depth:int, max_length:int, data, know, X_mesh, derivs:list[tuple[int]], solutionCreator):
-        super().__init__(size, max_depth, max_length, data, know, solutionCreator)
+    def __init__(self, size:int, max_depth:int, max_length:int, data, know, X_mesh, derivs:list[tuple[int]], solutionCreator, symm:bool=None, symm_Y_Ids=None):
+        super().__init__(size, max_depth, max_length, data, know, solutionCreator, X_mesh, symm, symm_Y_Ids)
         self.max_depth = max_depth
         
         K_none = (None, None)
@@ -512,23 +521,29 @@ class HierarchicalConstrainedLibrary(Library):
         max_depth = min(C.get_max_depth(), self.max_depth)
 
         if C.are_none():
-            K = (max_depth,)
-            stree, dist = self.__local_query(self.clib[K], self.clib_idxmap[K], y, max_dist)
-            if const_fit is not None and const_fit_dist <= max_dist and const_fit_dist <= dist:
-                return ConstantSyntaxTree(const_fit)
-            return stree
+            try:
+                K = (max_depth,)
+                stree, dist = self.__local_query(self.clib[K], self.clib_idxmap[K], y, max_dist)
+                if const_fit is not None and const_fit_dist <= max_dist and const_fit_dist <= dist:
+                    return ConstantSyntaxTree(const_fit)
+                return stree
+            except KeyError:
+                return None
 
         k_bytes, noroot = C.get_key_image()
 
         for K in [(max_depth, noroot, k_bytes), (max_depth, noroot), (max_depth,)]:
         
-            if K not in self.clib: continue
+            try:
             
-            check_image = len(K) < 3
-            stree, dist = self.__local_cquery(self.clib[K], self.clib_idxmap[K], y, C, max_dist, check_image)
-            if const_fit is not None and const_fit_dist <= max_dist and const_fit_dist <= dist:
-                return ConstantSyntaxTree(const_fit)
-            return stree
+                check_image = len(K) < 3
+                stree, dist = self.__local_cquery(self.clib[K], self.clib_idxmap[K], y, C, max_dist, check_image)
+                if const_fit is not None and const_fit_dist <= max_dist and const_fit_dist <= dist:
+                    return ConstantSyntaxTree(const_fit)
+                return stree
+
+            except KeyError:
+                continue
         
         return None  # never here.
     
