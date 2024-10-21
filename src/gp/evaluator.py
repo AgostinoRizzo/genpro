@@ -1,12 +1,12 @@
 import numpy as np
 from symbols.syntax_tree import SyntaxTree
-from gp.stats import GPStats, LayeredGPStats
+from gp.stats import QualitiesGPStats, FeasibilityGPStats
 from gp.evaluation import RealEvaluation, LayeredEvaluation, UnconstrainedLayeredEvaluation
 
 
 class Evaluator:
     def evaluate(self, stree:SyntaxTree): return None
-    def create_stats(self): return GPStats()
+    def create_stats(self): return None
 
 
 class R2Evaluator(Evaluator):
@@ -17,6 +17,9 @@ class R2Evaluator(Evaluator):
         ssr = np.sum( (stree(self.data.X) - self.data.y) ** 2 )
         r2  = max( 0., 1 - ((ssr / self.data.sst) if self.data.sst > 0. else 1.) )
         return RealEvaluation(r2, minimize=False)
+    
+    def create_stats(self):
+        return QualitiesGPStats(0.0, 1.0, 'R2')
 
 
 class KnowledgeEvaluator(Evaluator):
@@ -45,6 +48,9 @@ class KnowledgeEvaluator(Evaluator):
                 y = stree[(self.X_mesh, deriv)][meshspace_idx]
                 nv += np.sum( (( y < th ) if sign == '+' else ( y > th )) | (~np.isfinite(y)) )
         
+        # TODO: symmetry constraints.
+        # ...
+
         return n, nv
     
     def __init_meshspace_map(self):
@@ -77,7 +83,7 @@ class LayeredEvaluator(Evaluator):
         return LayeredEvaluation(n, nv, r2)
     
     def create_stats(self):
-        return LayeredGPStats()
+        return FeasibilityGPStats(QualitiesGPStats(0.0, 1.0, 'R2'))
 
 
 class UnconstrainedLayeredEvaluator(LayeredEvaluator):

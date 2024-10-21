@@ -13,6 +13,7 @@ from backprop import lpbackprop, jump_backprop
 from backprop import bpropagator
 from backprop import project
 from gp import utils, creator, evaluation, evaluator, selector, crossover, mutator, corrector
+from gp.stats import CorrectorGPStats
 
 from symbols import syntax_tree
 import profiling
@@ -104,6 +105,9 @@ class GP:
         self.knowledge = knowledge
         self.stats = evaluator.create_stats()
         self.genidx = 0
+
+        if self.corrector is not None:
+            self.stats = CorrectorGPStats(self.stats)
         
         from backprop.pareto_front import DataLengthFrontTracker, MultiHeadFrontTracker
         #self.fea_front_tracker = DataLengthFrontTracker()
@@ -116,16 +120,16 @@ class GP:
         
         self._evaluate_all()
         self.population = utils.sort_population(self.population, self.eval_map)
-        self.stats.update(self.population, self.eval_map)
+        self.stats.update(self)
         
         for self.genidx in range(1, self.ngen):
 
             if newgen_callback is not None:
-                newgen_callback(self.genidx, f"\nGeneration {self.genidx} {self.stats.best_eval}")
+                newgen_callback(self.genidx, f"\nGeneration {self.genidx} {self.eval_map[id(self.population[0])]}")
             
             children = self._create_children()
             self._replace(children)
-            self.stats.update(self.population, self.eval_map)
+            self.stats.update(self)
             
         """
         print()
@@ -133,7 +137,7 @@ class GP:
             print(p, self.eval_map[id(p)].fea_ratio, self.eval_map[id(p)].data_r2, self.eval_map[id(p)].know_mse)
         """
         
-        return self.stats.best, self.stats.best_eval
+        return self.population[0], self.eval_map[id(self.population[0])]
         
     def _evaluate_all(self):
         self.eval_map.clear()
@@ -161,7 +165,8 @@ class GP:
                     #before_child = child.clone()
                     if self.corrector is not None:
                         profiling.enable()
-                        child, _, _, _ = self.corrector.correct(child)
+                        child, new_node, _, _ = self.corrector.correct(child)
+                        self.stats.on_correction(new_node is not None)
                         profiling.disable()
                         child = child.simplify()
 
