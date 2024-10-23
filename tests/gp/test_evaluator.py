@@ -2,6 +2,7 @@ import pytest
 
 import dataset
 import dataset_misc2d
+import space
 from gp.evaluator import R2Evaluator, KnowledgeEvaluator, LayeredEvaluator
 from symbols.parsing import parse_syntax_tree
 
@@ -22,9 +23,10 @@ def data_resistance2():
 def test_evaluator(data, expr, request):
     S, S_train = request.getfixturevalue(data)
 
-    X_mesh            = S_train.spsampler.meshspace(S_train.xl, S_train.xu, 100)
+    MESH_SIZE         = 100
+    mesh              = space.MeshSpace(S_train, S.knowledge, MESH_SIZE)
     r2_evaluator      = R2Evaluator(S_train)
-    know_evaluator    = KnowledgeEvaluator(S.knowledge, X_mesh)
+    know_evaluator    = KnowledgeEvaluator(S.knowledge, mesh)
     layered_evaluator = LayeredEvaluator(know_evaluator, r2_evaluator)
     
     stree = parse_syntax_tree(expr)

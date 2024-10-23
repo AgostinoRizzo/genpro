@@ -11,8 +11,12 @@ def simplify_unary_stree(stree):
     if stree.operator == 'exp' and type(stree.inner) is unaop.UnaryOperatorSyntaxTree and stree.inner.operator == 'log':
         return stree.inner.inner
     
-    if stree.operator == 'log' and type(stree.inner) is unaop.UnaryOperatorSyntaxTree and stree.inner.operator == 'exp':
-        return stree.inner.inner
+    if stree.operator == 'log':
+        if type(stree.inner) is unaop.UnaryOperatorSyntaxTree and stree.inner.operator == 'exp':
+            return stree.inner.inner
+        if type(stree.inner      ) is unaop.UnaryOperatorSyntaxTree and stree.inner.operator       == 'sqrt' and \
+           type(stree.inner.inner) is unaop.UnaryOperatorSyntaxTree and stree.inner.inner.operator == 'exp':
+           return binop.BinaryOperatorSyntaxTree('*', ConstantSyntaxTree(0.5), stree.inner.inner.inner)
     
     if stree.operator == 'sqrt' and type(stree.inner) is binop.BinaryOperatorSyntaxTree and \
         stree.inner.operator == '^' and type(stree.inner.right) is ConstantSyntaxTree and stree.inner.right.val == 2:
@@ -48,6 +52,18 @@ def simplify_binary_stree(stree):
             return unaop.UnaryOperatorSyntaxTree('cube', stree.right)
         if type(stree.right) is unaop.UnaryOperatorSyntaxTree and stree.right.operator == 'square' and stree.right.inner == stree.left:
             return unaop.UnaryOperatorSyntaxTree('cube', stree.left)
+        for is_const, const_child, child in [(is_left_const, stree.left, stree.right), (is_right_const, stree.right, stree.left)]:
+            if is_const and type(child) is binop.BinaryOperatorSyntaxTree and child.operator == '*':
+                if type(child.left) is ConstantSyntaxTree:
+                    const_child.val *= child.left.val
+                    if id(child) == id(stree.left): stree.left = child.right
+                    else: stree.right = child.right
+                    return stree
+                if type(child.right) is ConstantSyntaxTree:
+                    const_child.val *= child.right.val
+                    if id(child) == id(stree.left): stree.left = child.left
+                    else: stree.right = child.left
+                    return stree
 
     if stree.operator == '/':
         if stree.left == stree.right: return ConstantSyntaxTree(1.0)  # TODO: consider x/x when x=0.

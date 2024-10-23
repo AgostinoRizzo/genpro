@@ -2,6 +2,7 @@ import numpy as np
 from symbols.syntax_tree import SyntaxTree
 from gp.stats import QualitiesGPStats, FeasibilityGPStats
 from gp.evaluation import RealEvaluation, LayeredEvaluation, UnconstrainedLayeredEvaluation
+from backprop.utils import count_symmetric
 
 
 class Evaluator:
@@ -23,9 +24,9 @@ class R2Evaluator(Evaluator):
 
 
 class KnowledgeEvaluator(Evaluator):
-    def __init__(self, know, X_mesh):
+    def __init__(self, know, mesh):
         self.know = know
-        self.X_mesh = X_mesh
+        self.mesh = mesh
         self.meshspace_map = {}
         self.__init_meshspace_map()
     
@@ -45,11 +46,14 @@ class KnowledgeEvaluator(Evaluator):
                     self.meshspace_map[(deriv, tuple(l), tuple(u), sign, th)]
                 n += meshspace_idx.size
 
-                y = stree[(self.X_mesh, deriv)][meshspace_idx]
+                y = stree[(self.mesh.X, deriv)][meshspace_idx]
                 nv += np.sum( (( y < th ) if sign == '+' else ( y > th )) | (~np.isfinite(y)) )
         
-        # TODO: symmetry constraints.
-        # ...
+        # symmetry constraints.
+        if self.know.has_symmvars():
+            __n = len(self.know.symmvars) - 1
+            n += __n
+            nv += __n - count_symmetric(stree[(self.mesh.X, ())], self.mesh.symm_Y_Ids)
 
         return n, nv
     
@@ -60,8 +64,8 @@ class KnowledgeEvaluator(Evaluator):
             for (l,u,sign,th) in constrs:
                 
                 meshspace_idx = []
-                for i in range(self.X_mesh.shape[0]):
-                    pt = self.X_mesh[i]
+                for i in range(self.mesh.X.shape[0]):
+                    pt = self.mesh.X[i]
 
                     if (pt >= l).all() and (pt <= u).all() and not self.know.is_undef_at(pt):
                         meshspace_idx.append(i)

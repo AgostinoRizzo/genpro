@@ -26,6 +26,9 @@ from symbols.parsing import parse_syntax_tree
     ('(1.0 * square(x0))', 'square(x0)'),
     ('(x0 * 0.0)', '0.0'),
     ('(0.0 * square(x0))', '0.0'),
+
+    ('log(sqrt(exp(sqrt((x1 * x0)))))', '(0.5 * sqrt((x1 * x0)))'),
+    ('(0.11 * (0.11 * (x0 * x1)))', '(0.0121 * (x0 * x1))'),
 ])
 def test_simplifier(expr, simple_expr):
     stree = parse_syntax_tree(expr)

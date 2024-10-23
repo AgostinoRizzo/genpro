@@ -119,7 +119,7 @@ class Library:
     DIST_EPSILON = 1e-1 #1e-8
     UNIQUENESS_MAX_DECIMALS = 1 #8
 
-    def __init__(self, size:int, max_depth:int, max_length:int, data, know, solutionCreator, X_mesh=None, symm:bool=None, symm_Y_Ids=None):
+    def __init__(self, size:int, max_depth:int, max_length:int, data, know, solutionCreator, mesh=None, symm:bool=None):
         """
         A total of 'size' random trees are generated:
             * algebraic simplification of trees
@@ -165,7 +165,7 @@ class Library:
                     extra_trees += 1
                     continue"""
                 
-                if symm is not None and symm != is_symmetric(t[(X_mesh, ())], symm_Y_Ids):
+                if symm is not None and symm != is_symmetric(t[(mesh.X, ())], mesh.symm_Y_Ids):
                     extra_trees += 1
                     continue
 
@@ -258,7 +258,7 @@ class Library:
 
 
 class ConstrainedLibrary(Library):
-    def __init__(self, size:int, max_depth:int, max_length:int, data, know, X_mesh, derivs:list[tuple[int]], solutionCreator):
+    def __init__(self, size:int, max_depth:int, max_length:int, data, know, mesh, derivs:list[tuple[int]], solutionCreator):
         super().__init__(size, max_depth, max_length, data, know, solutionCreator)
         self.max_depth = max_depth
         
@@ -278,17 +278,17 @@ class ConstrainedLibrary(Library):
             [-1.0] * data.nvars,
         ])
 
-        def_k_t_image_idx = np.full(X_mesh.shape[0], True, dtype=bool)
+        def_k_t_image_idx = np.full(mesh.X.shape[0], True, dtype=bool)
         def_k_t_extra_idx = np.full(X_extra.shape[0], True, dtype=bool)
         for i in range(def_k_t_image_idx.size):
-            if know.is_undef_at(X_mesh[i]): def_k_t_image_idx[i] = False
+            if know.is_undef_at(mesh.X[i]): def_k_t_image_idx[i] = False
         for i in range(def_k_t_extra_idx.size):
             if know.is_undef_at(X_extra[i]): def_k_t_extra_idx[i] = False
 
         for i, t in enumerate(self.stree_index):
             d_t = t.get_max_depth()
-            k_t_image = np.sign(t[(X_mesh, ())])
-            k_t = np.concatenate( [np.sign(t[(X_mesh, d)]) for d in sorted(derivs)] )  # important to sort them!
+            k_t_image = np.sign(t[(mesh.X, ())])
+            k_t = np.concatenate( [np.sign(t[(mesh.X, d)]) for d in sorted(derivs)] )  # important to sort them!
             t_extra = t.at(X_extra)
             t.clear_output()
 
@@ -402,7 +402,7 @@ class ConstrainedLibrary(Library):
 
 
 class IterativeConstrainedLibrary(Library):
-    def __init__(self, size:int, max_depth:int, max_length:int, data, know, X_mesh, derivs:list[tuple[int]], solutionCreator):
+    def __init__(self, size:int, max_depth:int, max_length:int, data, know, mesh, derivs:list[tuple[int]], solutionCreator):
         super().__init__(size, max_depth, max_length, data, know, solutionCreator)
         self.C_map = [None] * len(self.stree_index)
         self.nqueries = 0
@@ -414,17 +414,17 @@ class IterativeConstrainedLibrary(Library):
             [-1.0] * data.nvars,
         ])
 
-        def_k_t_image_idx = np.full(X_mesh.shape[0], True, dtype=bool)
+        def_k_t_image_idx = np.full(mesh.X.shape[0], True, dtype=bool)
         def_k_t_extra_idx = np.full(X_extra.shape[0], True, dtype=bool)
         for i in range(def_k_t_image_idx.size):
-            if know.is_undef_at(X_mesh[i]): def_k_t_image_idx[i] = False
+            if know.is_undef_at(mesh.X[i]): def_k_t_image_idx[i] = False
         for i in range(def_k_t_extra_idx.size):
             if know.is_undef_at(X_extra[i]): def_k_t_extra_idx[i] = False
 
         for i, t in enumerate(self.stree_index):
             d_t = t.get_max_depth()
-            k_t_image = np.sign(t[(X_mesh, ())])
-            k_t = np.concatenate( [np.sign(t[(X_mesh, d)]) for d in sorted(derivs)] )  # important to sort them!
+            k_t_image = np.sign(t[(mesh.X, ())])
+            k_t = np.concatenate( [np.sign(t[(mesh.X, d)]) for d in sorted(derivs)] )  # important to sort them!
             t_extra = t.at(X_extra)
             t.clear_output()
 
@@ -462,8 +462,8 @@ class IterativeConstrainedLibrary(Library):
 
 
 class HierarchicalConstrainedLibrary(Library):
-    def __init__(self, size:int, max_depth:int, max_length:int, data, know, X_mesh, derivs:list[tuple[int]], solutionCreator, symm:bool=None, symm_Y_Ids=None):
-        super().__init__(size, max_depth, max_length, data, know, solutionCreator, X_mesh, symm, symm_Y_Ids)
+    def __init__(self, size:int, max_depth:int, max_length:int, data, know, mesh, derivs:list[tuple[int]], solutionCreator, symm:bool=None):
+        super().__init__(size, max_depth, max_length, data, know, solutionCreator, mesh, symm)
         self.max_depth = max_depth
         
         K_none = (None, None)
@@ -478,17 +478,17 @@ class HierarchicalConstrainedLibrary(Library):
             [-1.0] * data.nvars,
         ])
 
-        def_k_t_image_idx = np.full(X_mesh.shape[0], True, dtype=bool)
+        def_k_t_image_idx = np.full(mesh.X.shape[0], True, dtype=bool)
         def_k_t_extra_idx = np.full(X_extra.shape[0], True, dtype=bool)
         for i in range(def_k_t_image_idx.size):
-            if know.is_undef_at(X_mesh[i]): def_k_t_image_idx[i] = False
+            if know.is_undef_at(mesh.X[i]): def_k_t_image_idx[i] = False
         for i in range(def_k_t_extra_idx.size):
             if know.is_undef_at(X_extra[i]): def_k_t_extra_idx[i] = False
 
         for i, t in enumerate(self.stree_index):
             d_t = t.get_max_depth()
-            k_t_image = np.sign(t[(X_mesh, ())])
-            k_t = np.concatenate( [np.sign(t[(X_mesh, d)]) for d in sorted(derivs)] )
+            k_t_image = np.sign(t[(mesh.X, ())])
+            k_t = np.concatenate( [np.sign(t[(mesh.X, d)]) for d in sorted(derivs)] )
             t_extra = t.at(X_extra)
             t.clear_output()
 
@@ -574,7 +574,7 @@ class HierarchicalConstrainedLibrary(Library):
 
         
 class DynamicConstrainedLibrary:
-    def __init__(self, population:list, eval_map:dict, selector:selector.Selector, data, X_mesh):
+    def __init__(self, population:list, eval_map:dict, selector:selector.Selector, data, mesh):
         parents = selector.select(population, eval_map, len(population))
         self.strees = [random.choice(p.cache.nodes) for p in parents]
         self.sem    = [t(data.X) for t in self.strees]
@@ -588,7 +588,7 @@ class DynamicConstrainedLibrary:
         ])
 
         for i, t in enumerate(self.strees):
-            k_t = np.sign(t[(X_mesh, ())])
+            k_t = np.sign(t[(mesh.X, ())])
             t.clear_output()
             t_extra = t(X_extra)
             t.clear_output()

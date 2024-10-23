@@ -283,9 +283,21 @@ def random_test(y) -> float:
     return abs(z)
 
 
+SYMMETRIC_RTOL = 0.2e-15
+
 def is_symmetric(y, Y_Ids) -> bool:
+    global SYMMETRIC_RTOL
     y_0 = y[Y_Ids[0]]
     for i in range(1, Y_Ids.shape[0]):
-        if not np.array_equal(y[Y_Ids[i]], y_0, equal_nan=True):
+        if not np.allclose(y[Y_Ids[i]], y_0, rtol=SYMMETRIC_RTOL, atol=0.0, equal_nan=True):  #if not np.array_equal(y[Y_Ids[i]], y_0, equal_nan=True):
             return False
     return True
+
+def count_symmetric(y, Y_Ids) -> int:
+    global SYMMETRIC_RTOL
+    n = 0
+    y_0 = y[Y_Ids[0]]
+    for i in range(1, Y_Ids.shape[0]):
+        if np.allclose(y[Y_Ids[i]], y_0, rtol=SYMMETRIC_RTOL, atol=0.0, equal_nan=True):  #if np.array_equal(y[Y_Ids[i]], y_0, equal_nan=True):
+            n += 1
+    return n

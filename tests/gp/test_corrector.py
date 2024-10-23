@@ -4,6 +4,7 @@ import numpy as np
 import dataset
 import dataset_misc1d
 import dataset_misc2d
+import space
 from symbols.const import ConstantSyntaxTree
 from symbols.var import VariableSyntaxTree
 from symbols.binop import BinaryOperatorSyntaxTree
@@ -173,7 +174,8 @@ def test_corrector(data, stree, noroot, symm, k_image, k_deriv, partial, none, r
     S, S_train = request.getfixturevalue(data)
     max_depth     = 5
     max_length    = 20
-    X_mesh        = S_train.spsampler.meshspace(S_train.xl, S_train.xu, 100)
+    MESH_SIZE     = 100
+    mesh          = space.MeshSpace(S_train, S.knowledge, MESH_SIZE)
     libsize       = 2000
     lib_maxdepth  = 3
     lib_maxlength = 10
@@ -181,14 +183,14 @@ def test_corrector(data, stree, noroot, symm, k_image, k_deriv, partial, none, r
     y_iqr = S_train.get_y_iqr()
     solutionCreator = creator.RandomSolutionCreator(nvars=S.nvars, y_iqr=y_iqr)
 
-    corr = corrector.Corrector(S_train, S.knowledge, max_depth, max_length, X_mesh, libsize, lib_maxdepth, lib_maxlength, solutionCreator)
+    corr = corrector.Corrector(S_train, S.knowledge, max_depth, max_length, mesh, libsize, lib_maxdepth, lib_maxlength, solutionCreator)
     new_stree, new_node, C_pulled, y_pulled = corr.correct(stree, backprop_node)
 
     assert new_stree.get_max_depth() <= max_depth
 
     assert C_pulled.noroot == noroot
     assert (C_pulled.symm is None and symm is None) or C_pulled.symm[0] == symm
-    assert C_pulled.symm is None or C_pulled.symm[0] == is_symmetric(new_stree[X_mesh, ()], C_pulled.symm[1])
+    assert C_pulled.symm is None or C_pulled.symm[0] == is_symmetric(new_stree[mesh.X, ()], C_pulled.symm[1])
     assert set(C_pulled.origin_pconstrs.keys()) == set([()] + list(k_deriv.keys()))
 
     assert np.array_equal(C_pulled.origin_pconstrs[()], np.array(k_image), equal_nan=True)

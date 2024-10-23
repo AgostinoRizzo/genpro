@@ -6,6 +6,12 @@ import math
 
 DERIV_IDENTIFIERS:dict[tuple,list] = {}
 
+def find_row_idx(X, x):
+    for i in range(X.shape[0]):
+        if np.array_equal(X[i], x, equal_nan=True):
+            return i
+    return -1
+
 
 class SpaceSampler:
     def meshspace(self, xl, xu, npoints:int): pass
@@ -68,16 +74,21 @@ class MultidimSpaceSampler(SpaceSampler):
 
 
 class MeshSpace:
-    def __init__(self, mesh, X_data):
-        if len(mesh.shape) == 1: mesh = np.asmatrix(mesh).T
-        self.index = KDTree(mesh)
-        self.X_data_map = np.empty(X_data.shape[0], dtype=np.int64)
-        for i in range(self.X_data_map.size):
-            _, i_mesh = self.index.query(X_data[i])
-            self.X_data_map[i] = i_mesh
-    
-    def nearest_meshpoint(self, X_data_idx:int):
-        return self.X_data_map[X_data_idx]
+    def __init__(self, data, know, mesh_size:int):
+        self.X = data.spsampler.meshspace(data.xl, data.xu, mesh_size)
+        self.symm_Y_Ids = None
+        
+        if know.has_symmvars():
+            self.symm_Y_Ids = []
+            for vars in know.symmvars:
+                symm_Y_Ids_row = []
+                for i in range(self.X.shape[0]):
+                    x = self.X[i][list(vars)]
+                    idx = find_row_idx(self.X, x)
+                    if idx < 0: raise RuntimeError('X_mesh is not a mesh.')
+                    symm_Y_Ids_row.append(idx)
+                self.symm_Y_Ids.append(symm_Y_Ids_row)
+            self.symm_Y_Ids = np.array(self.symm_Y_Ids) 
 
 
 def get_all_derivs(nvars:int=1, max_derivdeg:int=2) -> list:
