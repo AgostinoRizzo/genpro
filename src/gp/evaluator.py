@@ -84,7 +84,7 @@ class LayeredEvaluator(Evaluator):
     def evaluate(self, stree:SyntaxTree):
         n, nv = self.know_evaluator.evaluate(stree)
         r2 = self.r2_evaluator.evaluate(stree).value
-        return LayeredEvaluation(n, nv, r2)
+        return LayeredEvaluation(n, nv, r2, stree)
     
     def create_stats(self):
         return FeasibilityGPStats(QualitiesGPStats(0.0, 1.0, 'R2'))

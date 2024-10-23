@@ -24,9 +24,10 @@ class RealEvaluation(Evaluation):
 
 
 class LayeredEvaluation(Evaluation):
-    def __init__(self, n, nv, r2):
+    def __init__(self, n, nv, r2, stree):
         self.fea_ratio = 1.0 - (nv / n)
         self.r2 = r2
+        self.stree = stree
     
     def better_than(self, other) -> bool:        
         if self.r2 == 0.0: return False
@@ -34,7 +35,10 @@ class LayeredEvaluation(Evaluation):
         if self.fea_ratio > other.fea_ratio: return True
         if self.fea_ratio < other.fea_ratio: return False
 
-        return self.r2 > other.r2
+        if self.r2 > other.r2: return True
+        if self.r2 < other.r2: return False
+
+        return self.stree.get_nnodes() < other.stree.get_nnodes()
     
     def get_value(self):
         return self.r2
