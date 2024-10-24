@@ -2,7 +2,8 @@ import pytest
 
 import dataset
 import dataset_misc1d
-from backprop import backprop
+from symbols.binop import BinaryOperatorSyntaxTree
+from symbols.misc import UnknownSyntaxTree
 from backprop import lpbackprop
 from backprop import jump_backprop
 from backprop import constraints
@@ -19,9 +20,9 @@ def test_jump_backprop():
     S_test  = dataset.NumpyDataset(S, test=True)
 
     # setup test model.
-    unknown_stree_a = backprop.UnknownSyntaxTree('A')
-    unknown_stree_b = backprop.UnknownSyntaxTree('B')
-    stree     = backprop.BinaryOperatorSyntaxTree('/', unknown_stree_a, unknown_stree_b)
+    unknown_stree_a = UnknownSyntaxTree('A')
+    unknown_stree_b = UnknownSyntaxTree('B')
+    stree     = BinaryOperatorSyntaxTree('/', unknown_stree_a, unknown_stree_b)
     stree_pr  = stree.diff().simplify()
     stree_pr2 = stree_pr.diff().simplify()
     stree_map = {(): stree, (0,): stree_pr, (0,0): stree_pr2}

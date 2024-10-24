@@ -5,7 +5,7 @@ import numpy as np
 import dataset
 import dataset_misc1d
 import dataset_misc2d
-import dataset_feynman
+import dataset_feynman1d
 import dataset_hlab
 import space
 
@@ -39,7 +39,7 @@ DATA_SETS = [
         dataset_misc2d.Resistance2(),
         EmptyDataset()
     ] + \
-    load_dataset(dataset_feynman) + \
+    load_dataset(dataset_feynman1d) + \
     load_dataset(dataset_hlab)
 
 

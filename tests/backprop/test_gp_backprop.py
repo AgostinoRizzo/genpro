@@ -1,6 +1,8 @@
 import dataset
 import dataset_misc1d
-from backprop import backprop
+from symbols.binop import BinaryOperatorSyntaxTree
+from symbols.var import VariableSyntaxTree
+from symbols.misc import UnknownSyntaxTree
 from backprop import gp_backprop
 
 
@@ -23,8 +25,8 @@ def test_gp_backprop_lpeval():
     best_stree = sorted_population[0]
     best_eval = eval_map[id(best_stree)]
 
-    assert type(best_stree) is backprop.BinaryOperatorSyntaxTree and best_stree.operator == '-' and \
-           type(best_stree.left) is backprop.UnknownSyntaxTree and \
-           type(best_stree.right) is backprop.VariableSyntaxTree
+    assert type(best_stree) is BinaryOperatorSyntaxTree and best_stree.operator == '-' and \
+           type(best_stree.left) is UnknownSyntaxTree and \
+           type(best_stree.right) is VariableSyntaxTree
     assert best_eval.costvals == [0, 3]
 

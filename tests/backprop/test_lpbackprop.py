@@ -2,8 +2,9 @@ import pytest
 import re
 import numpy as np
 
-from backprop.backprop import \
-    SyntaxTree, BinaryOperatorSyntaxTree, UnknownSyntaxTree
+from symbols.syntax_tree import SyntaxTree
+from symbols.binop import BinaryOperatorSyntaxTree
+from symbols.misc import UnknownSyntaxTree
 from backprop.lpbackprop import ASPSpecBuilder, build_knowledge_spec, synthesize_unknown
 import dataset
 import dataset_misc1d
