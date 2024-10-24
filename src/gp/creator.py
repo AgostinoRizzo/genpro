@@ -113,10 +113,10 @@ class RandomSolutionCreator(SolutionCreator):
 
 
 class PTC2RandomSolutionCreator(SolutionCreator):
-    def __init__(self, nvars:int, y_iqr:float=1.0):
+    def __init__(self, nvars:int, cl:float=-1.0, cu:float=1.0):
         assert nvars > 0
         self.nvars = nvars
-        self.cl, self.cu = -y_iqr, y_iqr
+        self.cl, self.cu = cl, cu
     
     def create_population(self, popsize:int, max_depth:int, max_length:int) -> list[SyntaxTree]:
         assert popsize > 0 and max_depth >= 0 and max_length > 0
