@@ -151,7 +151,7 @@ class Library:
         ntrials = 0
 
         while extra_trees > 0 and ntrials < max_trials:
-            strees = solutionCreator.create_population(extra_trees, max_depth, max_length)
+            strees = solutionCreator.create_population(extra_trees, max_depth, max_length, create_consts=False)
             extra_trees = 0
             ntrials += 1
             
