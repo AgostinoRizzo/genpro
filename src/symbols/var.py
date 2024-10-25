@@ -48,6 +48,9 @@ class VariableSyntaxTree(SyntaxTree):
     def is_const_wrt(self, varidx):
         return self.idx != varidx
     
+    def is_terminal(self) -> bool:
+        return True
+    
     def accept(self, visitor):
         visitor.visitVariable(self)
     

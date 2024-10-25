@@ -20,30 +20,26 @@ class Crossover:
     def cross(self, parent1:SyntaxTree, parent2:SyntaxTree) -> SyntaxTree:
         return None
 
+
 class SubTreeCrossover:
-    def __init__(self, max_depth:int, max_length:int):
+    def __init__(self, max_depth:int, max_length:int, internal_cross_prob:float=0.9):
         self.max_depth = max_depth
         self.max_length = max_length
+        self.internal_cross_prob = internal_cross_prob
     
     def cross(self, parent1:SyntaxTree, parent2:SyntaxTree) -> SyntaxTree:
         child = parent1.clone()
         child.set_parent()
 
-        cross_point1 = random.choice(child.cache.nodes)
+        cross_point1 = self.__select_cross_point(child.cache.nodes)
         cross_point1_depth = cross_point1.get_depth()
         max_nesting_depth = self.max_depth - cross_point1_depth
         max_nesting_length = self.max_length - (child.get_nnodes() - cross_point1.get_nnodes())
         
         parent_opt = None if not cross_point1.has_parent() else cross_point1.parent.operator
-        allowedNodes = []
-        for node in parent2.cache.nodes:
-            if node.get_max_depth() <= max_nesting_depth and \
-               node.get_nnodes() <= max_nesting_length and \
-               ((type(node) is not UnaryOperatorSyntaxTree and type(node) is not BinaryOperatorSyntaxTree) or can_nest(parent_opt, node.operator)):
-                allowedNodes.append(node)
-        
-        if len(allowedNodes) == 0: return child
-        cross_point2 = random.choice(allowedNodes).clone()
+        cross_point2 = self.__select_cross_branch(parent2.cache.nodes, max_nesting_depth, max_nesting_length, parent_opt)
+        if cross_point2 is None:
+            return child
         
         child = utils.replace_subtree(child, cross_point1, cross_point2)
         child.cache.clear()
@@ -51,6 +47,37 @@ class SubTreeCrossover:
         if cross_point2.has_parent():
             cross_point2.parent.invalidate_output()
         return child
+    
+    def __select_cross_point(self, nodes):
+        terminal_nodes = []
+        internal_nodes = []
+        for n in nodes:
+            if n.is_terminal(): terminal_nodes.append(n)
+            else: internal_nodes.append(n)
+        
+        if random.random() < self.internal_cross_prob:
+            return random.choice(internal_nodes) if len(internal_nodes) > 0 else random.choice(terminal_nodes)
+        return random.choice(terminal_nodes) if len(terminal_nodes) > 0 else random.choice(internal_nodes)
+    
+    def __select_cross_branch(self, nodes, max_nesting_depth, max_nesting_length, parent_opt):
+        allowedTerminalNodes = []
+        allowedInternalNodes = []
+        for node in nodes:
+            if node.get_max_depth() <= max_nesting_depth and \
+               node.get_nnodes() <= max_nesting_length and \
+               ((type(node) is not UnaryOperatorSyntaxTree and type(node) is not BinaryOperatorSyntaxTree) or can_nest(parent_opt, node.operator)):
+                if node.is_terminal(): allowedTerminalNodes.append(node)
+                else: allowedInternalNodes.append(node)
+        
+        allowedNodes = None
+        if random.random() < self.internal_cross_prob:
+            allowedNodes = allowedInternalNodes if len(allowedInternalNodes) > 0 else allowedTerminalNodes
+        else:
+            allowedNodes = allowedTerminalNodes if len(allowedTerminalNodes) > 0 else allowedInternalNodes
+
+        if len(allowedNodes) == 0: return None
+        return random.choice(allowedNodes).clone()
+
 
 class SubTreeImprovementCrossover:
     def __init__(self, max_depth:int, S_train):

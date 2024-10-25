@@ -42,6 +42,12 @@ class ConstantSyntaxTreeCollector(SyntaxTreeVisitor):
     def visitConstant(self, stree:ConstantSyntaxTree):
         self.constants.append(stree)
 
+class NonTerminalSyntaxTreeCollector(SyntaxTreeVisitor):
+    def __init__(self):
+        self.nodes = []
+    def visitUnaryOperator (self, stree:UnaryOperatorSyntaxTree):  self.nodes.append(stree)
+    def visitBinaryOperator(self, stree:BinaryOperatorSyntaxTree): self.nodes.append(stree)
+
 
 class SyntaxTreeNodeCounter(SyntaxTreeVisitor):
     def __init__(self):

@@ -53,6 +53,9 @@ class ConstantSyntaxTree(SyntaxTree):
     def is_const_wrt(self, varidx):
         return True
     
+    def is_terminal(self) -> bool:
+        return True
+    
     def validate(self) -> bool:
         res = not np.isnan(self.val)
         return res

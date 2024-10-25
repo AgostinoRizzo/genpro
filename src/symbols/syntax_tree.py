@@ -125,6 +125,7 @@ class SyntaxTree:
     def diff(self, varidx:int=0): return None
     def is_const(self) -> bool: return False
     def is_const_wrt(self, varidx) -> bool: return False
+    def is_terminal(self) -> bool: return False
     
     def pull_output(self, target_output:np.array, child=None, flatten:bool=False) -> np.array:
         if self.parent is None:

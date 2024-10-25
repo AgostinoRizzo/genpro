@@ -2,7 +2,7 @@ import random
 from symbols.syntax_tree import SyntaxTree
 from symbols.binop import BinaryOperatorSyntaxTree
 from symbols.unaop import UnaryOperatorSyntaxTree
-from symbols.visitor import SyntaxTreeNodeCounter, SyntaxTreeNodeSelector, ConstantSyntaxTreeCollector
+from symbols.visitor import ConstantSyntaxTreeCollector, NonTerminalSyntaxTreeCollector
 from symbols.grammar import get_nesting_operators, get_una_nesting_operators, get_bin_nesting_operators
 from gp import utils, gp
 
@@ -25,13 +25,7 @@ class SubtreeReplacerMutator(Mutator):
         self.solutionCreator = solutionCreator
     
     def mutate(self, stree:SyntaxTree) -> SyntaxTree:
-        nodesCounter = SyntaxTreeNodeCounter()
-        stree.accept(nodesCounter)
-        nnodes = nodesCounter.nnodes
-
-        nodeSelector = SyntaxTreeNodeSelector(random.randrange(nnodes))
-        stree.accept(nodeSelector)
-        sub_stree = nodeSelector.node
+        sub_stree = random.choice(stree.cache.nodes)
 
         # replace subtree with random branch.
 
@@ -54,13 +48,10 @@ class SubtreeReplacerMutator(Mutator):
     
 class FunctionSymbolMutator(Mutator):
     def mutate(self, stree:SyntaxTree) -> SyntaxTree:
-        nodesCounter = SyntaxTreeNodeCounter()
-        stree.accept(nodesCounter)
-        nnodes = nodesCounter.nnodes
-
-        nodeSelector = SyntaxTreeNodeSelector(random.randrange(nnodes))
-        stree.accept(nodeSelector)
-        sub_stree = nodeSelector.node
+        nonTerminalCollector = NonTerminalSyntaxTreeCollector()
+        stree.accept(nonTerminalCollector)
+        if len(nonTerminalCollector.nodes) == 0: return stree
+        sub_stree = random.choice(nonTerminalCollector.nodes)
 
         stree.set_parent()
   
@@ -70,13 +61,13 @@ class FunctionSymbolMutator(Mutator):
             sub_stree.operator = random.choice(
                 [opt for opt in get_bin_nesting_operators(sub_stree.operator) if opt != sub_stree.operator])
             
-            sub_stree.invalidate_output()
+            sub_stree.invalidate_output()  # parent already set.
 
         elif type(sub_stree) is UnaryOperatorSyntaxTree:
             sub_stree.operator = random.choice(
                 [opt for opt in get_una_nesting_operators(sub_stree.operator) if opt != sub_stree.operator])
 
-            sub_stree.invalidate_output()
+            sub_stree.invalidate_output()  # parent already set.
 
         return stree
 
