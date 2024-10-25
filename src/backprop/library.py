@@ -116,9 +116,6 @@ class ApproxKnnIndex(KnnIndex):
 
 
 class Library:
-    DIST_EPSILON = 1e-1 #1e-8
-    UNIQUENESS_MAX_DECIMALS = 1 #8
-
     def __init__(self, size:int, max_depth:int, max_length:int, data, know, solutionCreator, mesh=None, symm:bool=None):
         """
         A total of 'size' random trees are generated:
@@ -159,7 +156,7 @@ class Library:
                 t = t.simplify()  # TODO: ensure executed once.
                 st = t(data.X)
                 st_extra = t.at(X_extra)
-                st_key = tuple(st.round(Library.UNIQUENESS_MAX_DECIMALS).tolist())
+                st_key = tuple(st.tolist())
 
                 """if (st <= 0.).any():
                     extra_trees += 1
