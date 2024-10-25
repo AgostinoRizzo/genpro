@@ -11,6 +11,7 @@ from symbols.unaop import UnaryOperatorSyntaxTree
 from symbols.const import ConstantSyntaxTree
 from symbols.var   import VariableSyntaxTree
 from symbols.misc  import SemanticSyntaxTree
+from symbols.grammar import can_nest
 from backprop import models, library
 from gp import utils, gp, selector
 
@@ -33,9 +34,12 @@ class SubTreeCrossover:
         max_nesting_depth = self.max_depth - cross_point1_depth
         max_nesting_length = self.max_length - (child.get_nnodes() - cross_point1.get_nnodes())
         
+        parent_opt = None if not cross_point1.has_parent() else cross_point1.parent.operator
         allowedNodes = []
         for node in parent2.cache.nodes:
-            if node.get_max_depth() <= max_nesting_depth and node.get_nnodes() <= max_nesting_length:
+            if node.get_max_depth() <= max_nesting_depth and \
+               node.get_nnodes() <= max_nesting_length and \
+               ((type(node) is not UnaryOperatorSyntaxTree and type(node) is not BinaryOperatorSyntaxTree) or can_nest(parent_opt, node.operator)):
                 allowedNodes.append(node)
         
         if len(allowedNodes) == 0: return child

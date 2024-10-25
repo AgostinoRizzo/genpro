@@ -3,6 +3,9 @@ import numpy as np
 from backprop import library, constraints
 from backprop.bperrors import KnowBackpropError
 from gp import utils
+from symbols.unaop import UnaryOperatorSyntaxTree
+from symbols.binop import BinaryOperatorSyntaxTree
+from symbols.grammar import can_nest
 
 
 class Corrector:
@@ -62,9 +65,14 @@ class Corrector:
             else:                     new_node = self.asymm_lib.cquery(y_pulled, C_pulled, max_dist=max_dist)
 
             if new_node is None:
-                return stree, new_node, C_pulled, y_pulled
+                return stree, new_node, C_pulled, y_pulled  # TODO: return proper exception to be monitored.
             if new_node.get_nnodes() > max_nesting_length:
-                return stree, None, C_pulled, y_pulled
+                return stree, None, C_pulled, y_pulled  # TODO: return proper exception to be monitored.
+            
+            parent_opt = None if not backprop_node.has_parent() else backprop_node.parent.operator
+            if (type(new_node) is UnaryOperatorSyntaxTree or type(new_node) is BinaryOperatorSyntaxTree) and \
+               not can_nest(parent_opt, new_node.operator):
+                return stree, None, C_pulled, y_pulled  # TODO: return proper exception to be monitored.
 
             # correct stree...
             new_stree = utils.replace_subtree(stree, backprop_node, new_node)

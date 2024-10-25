@@ -5,6 +5,7 @@ from symbols.unaop import UnaryOperatorSyntaxTree
 from symbols.var import VariableSyntaxTree
 from symbols.const import ConstantSyntaxTree
 from symbols.generator import SyntaxTreeGenerator
+from symbols.grammar import get_nesting_operators, get_una_nesting_operators
 from gp import utils
 
 
@@ -39,12 +40,12 @@ def createRandomTerminal(cl:float, cu:float, nvars:int, create_consts:bool=True)
         return ConstantSyntaxTree(val=random.uniform(cl, cu))
     return VariableSyntaxTree(idx=random.randrange(nvars))
 
-def createRandomNonTerminal(max_nchildren:int):
+def createRandomNonTerminal(max_nchildren:int, parent_opt:str=None):
     operator = None
     if max_nchildren == 1:
-        operator = random.choice(SyntaxTreeGenerator.UNA_OPERATORS)
+        operator = random.choice(get_una_nesting_operators(parent_opt))
     else:
-        operator = random.choice(SyntaxTreeGenerator.OPERATORS)
+        operator = random.choice(get_nesting_operators(parent_opt))
     
     if operator in UnaryOperatorSyntaxTree.OPERATORS:
         p = ExtensionPoint()
@@ -59,7 +60,7 @@ def createRandomNonTerminal(max_nchildren:int):
     return nt, [p1, p2]
     
 
-def ptc2(target_len:int, max_depth:int, cl:float, cu:float, nvars:int, create_consts:bool):
+def ptc2(target_len:int, max_depth:int, cl:float, cu:float, nvars:int, create_consts:bool, parent_opt:str=None):
     if target_len <= 0 or max_depth < 0:
         raise ValueError('Invalid target_len or max_depth.')
     
@@ -67,7 +68,7 @@ def ptc2(target_len:int, max_depth:int, cl:float, cu:float, nvars:int, create_co
         return createRandomTerminal(cl, cu, nvars, create_consts)
     
     target_len -= 1
-    root, Q = createRandomNonTerminal(target_len)
+    root, Q = createRandomNonTerminal(target_len, parent_opt)
     
     while len(Q) > 0 and len(Q) < target_len:
         i = random.randrange(len(Q))
@@ -80,7 +81,7 @@ def ptc2(target_len:int, max_depth:int, cl:float, cu:float, nvars:int, create_co
             extpoint.extend(createRandomTerminal(cl, cu, nvars))
             continue
         
-        child, __Q = createRandomNonTerminal(target_len - len(Q))  # TODO: check validity.
+        child, __Q = createRandomNonTerminal(target_len - len(Q), extpoint.parent.operator)
         extpoint.extend(child)
 
         Q += __Q
@@ -92,7 +93,7 @@ def ptc2(target_len:int, max_depth:int, cl:float, cu:float, nvars:int, create_co
 
 
 class SolutionCreator:
-    def create_population(self, popsize:int, max_depth:int, max_length:int, create_consts:bool=True) -> list[SyntaxTree]:
+    def create_population(self, popsize:int, max_depth:int, max_length:int, create_consts:bool=True, parent_opt:str=None) -> list[SyntaxTree]:
         pass
 
 
@@ -102,7 +103,7 @@ class RandomSolutionCreator(SolutionCreator):
         self.stree_generator = SyntaxTreeGenerator(nvars, y_iqr)
         self.trunks = trunks
     
-    def create_population(self, popsize:int, max_depth:int, max_length:int, create_consts:bool=True) -> list[SyntaxTree]:
+    def create_population(self, popsize:int, max_depth:int, max_length:int, create_consts:bool=True, parent_opt:str=None) -> list[SyntaxTree]:
         assert popsize > 0 and max_depth >= 0
         population = self.stree_generator.create_random(max_depth, popsize, check_duplicates=True)
         if self.trunks is not None:
@@ -113,16 +114,17 @@ class RandomSolutionCreator(SolutionCreator):
 
 
 class PTC2RandomSolutionCreator(SolutionCreator):
-    def __init__(self, nvars:int, cl:float=-1.0, cu:float=1.0):
+    def __init__(self, nvars:int, cl:float=-1.0, cu:float=1.0, simplify:bool=True):
         assert nvars > 0
         self.nvars = nvars
         self.cl, self.cu = cl, cu
+        self.simplify = simplify
     
-    def create_population(self, popsize:int, max_depth:int, max_length:int, create_consts:bool=True) -> list[SyntaxTree]:
+    def create_population(self, popsize:int, max_depth:int, max_length:int, create_consts:bool=True, parent_opt:str=None) -> list[SyntaxTree]:
         assert popsize > 0 and max_depth >= 0 and max_length > 0
         population = []
         for _ in range(popsize):
             target_len = random.randint(1, max_length)
-            stree = ptc2(target_len, max_depth, self.cl, self.cu, self.nvars, create_consts)
-            population.append(stree.simplify())
+            stree = ptc2(target_len, max_depth, self.cl, self.cu, self.nvars, create_consts, parent_opt)
+            population.append(stree.simplify() if self.simplify else stree)
         return population

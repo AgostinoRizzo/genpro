@@ -3,6 +3,7 @@ from symbols.syntax_tree import SyntaxTree
 from symbols.binop import BinaryOperatorSyntaxTree
 from symbols.unaop import UnaryOperatorSyntaxTree
 from symbols.visitor import SyntaxTreeNodeCounter, SyntaxTreeNodeSelector, ConstantSyntaxTreeCollector
+from symbols.grammar import get_nesting_operators, get_una_nesting_operators, get_bin_nesting_operators
 from gp import utils, gp
 
 
@@ -41,7 +42,8 @@ class SubtreeReplacerMutator(Mutator):
         new_substree_max_length = self.max_length - (stree.get_nnodes() - sub_stree.get_nnodes())
         assert new_substree_max_depth >= 0 and new_substree_max_length > 0
 
-        new_sub_stree = self.solutionCreator.create_population(1, new_substree_max_depth, new_substree_max_length)[0]
+        parent_opt = None if not sub_stree.has_parent() else sub_stree.parent.operator
+        new_sub_stree = self.solutionCreator.create_population(1, new_substree_max_depth, new_substree_max_length, parent_opt=parent_opt)[0]
         stree = utils.replace_subtree(stree, sub_stree, new_sub_stree)
 
         stree.set_parent()
@@ -66,17 +68,15 @@ class FunctionSymbolMutator(Mutator):
 
         if   type(sub_stree) is BinaryOperatorSyntaxTree:
             sub_stree.operator = random.choice(
-                [opt for opt in BinaryOperatorSyntaxTree.OPERATORS if opt != sub_stree.operator])
+                [opt for opt in get_bin_nesting_operators(sub_stree.operator) if opt != sub_stree.operator])
             
             sub_stree.invalidate_output()
 
         elif type(sub_stree) is UnaryOperatorSyntaxTree:
-            #sub_stree.operator = random.choice(
-            #    [opt for opt in UnaryOperatorSyntaxTree.OPERATORS if opt != sub_stree.operator])
+            sub_stree.operator = random.choice(
+                [opt for opt in get_una_nesting_operators(sub_stree.operator) if opt != sub_stree.operator])
 
-            #sub_stree.invalidate_output()
-
-            pass
+            sub_stree.invalidate_output()
 
         return stree
 

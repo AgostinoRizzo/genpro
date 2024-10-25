@@ -47,6 +47,8 @@ def simplify_binary_stree(stree):
         if (is_right_const and stree.right.val == 1):
             return stree.left
         if stree.left == stree.right:
+            if type(stree.left) is unaop.UnaryOperatorSyntaxTree and stree.left.operator == 'sqrt':
+                return unaop.UnaryOperatorSyntaxTree('square', stree.left.inner)
             return unaop.UnaryOperatorSyntaxTree('square', stree.left)
         if type(stree.left) is unaop.UnaryOperatorSyntaxTree and stree.left.operator == 'square' and stree.left.inner == stree.right:
             return unaop.UnaryOperatorSyntaxTree('cube', stree.right)
