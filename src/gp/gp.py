@@ -12,6 +12,8 @@ from symbols.misc  import UnknownSyntaxTree
 from backprop import lpbackprop, jump_backprop
 from backprop import bpropagator
 from backprop import project
+from backprop.bperrors import BackpropError
+from backprop.library import LibraryError
 from gp import utils, creator, evaluation, evaluator, selector, crossover, mutator, corrector
 from gp.stats import CorrectorGPStats
 
@@ -165,10 +167,17 @@ class GP:
                     #before_child = child.clone()
                     if self.corrector is not None:
                         profiling.enable()
-                        child, new_node, _, _ = self.corrector.correct(child)
-                        self.stats.on_correction(new_node is not None)
+                        try:
+                            child, new_node, C_pulled, _ = self.corrector.correct(child)
+                            child = child.simplify()
+                            
+                            self.stats.on_correction(C_pulled)
+
+                        except BackpropError as backprop_e:
+                            self.stats.on_backprop_error(backprop_e)
+                        except LibraryError as lib_e:
+                            self.stats.on_library_error(lib_e)
                         profiling.disable()
-                        child = child.simplify()
 
                     child_eval = self.evaluator.evaluate(child)
                     #if not child_eval.better_than(before_child_eval):

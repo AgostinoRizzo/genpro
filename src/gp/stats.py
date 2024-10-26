@@ -1,6 +1,9 @@
 import matplotlib.pyplot as plt
 import numpy as np
 
+from backprop.bperrors import BackpropError
+from backprop.library import LibraryError
+
 
 """
 this class acts according to the Chain of Responsibility pattern.
@@ -118,29 +121,67 @@ class CorrectorGPStats(GPStats):
     def __init__(self, next=None):
         super().__init__(next)
         self.correction_rate = []
+        self.softening_rate = []
+        self.error_rate = {}
+        
+        self.ntrials = 0
         self.ncorrections = 0
-        self.successful_corrections = 0
-    
+        self.nsoftenings = 0
+        self.nerrors = {}
+
+        for e in BackpropError.__subclasses__() + LibraryError.__subclasses__():
+            self.error_rate[e.__name__] = []
+            self.nerrors[e.__name__] = 0
+        
     def update(self, gp):
         super().update(gp)
 
         rate = np.nan
         if gp.genidx > 0:
-            rate = 0.0 if self.ncorrections == 0.0 else (self.successful_corrections / self.ncorrections)
+            rate = 0.0 if self.ntrials == 0.0 else (self.ncorrections / self.ntrials)
         self.correction_rate.append(rate)
+
+        rate = np.nan
+        if gp.genidx > 0:
+            rate = 0.0 if self.ntrials == 0.0 else (self.nsoftenings / self.ntrials)
+        self.softening_rate.append(rate)
+
+        for e_name, n in self.nerrors.items():
+            rate = np.nan
+            if gp.genidx > 0:
+                rate = 0.0 if n == 0.0 else (n / self.ntrials)
+            self.error_rate[e_name].append(rate)
+        
+        self.ntrials = 0
         self.ncorrections = 0
-        self.successful_corrections = 0
+        self.nsoftenings = 0
+        for e_name in self.nerrors:
+            self.nerrors[e_name] = 0
     
-    def on_correction(self, success_status:bool=True):
-        if success_status:
-            self.successful_corrections += 1
+    def on_correction(self, C_pulled):
+        self.ntrials += 1
         self.ncorrections += 1
+        if C_pulled.are_none(): self.nsoftenings += 1
+    
+    def on_backprop_error(self, e:BackpropError):
+        self.__on_error(e)
+    
+    def on_library_error(self, e:LibraryError):
+        self.__on_error(e)
+    
+    def __on_error(self, e):
+        self.ntrials += 1
+        self.nerrors[e.__class__.__name__] += 1
     
     def plot(self):
         super().plot()
 
-        plt.plot(self.correction_rate)
+        plt.plot(self.correction_rate, label='correction-rate')
+        plt.plot(self.softening_rate, label='softening-rate')
+        for e_name, rate in self.error_rate.items():
+            plt.plot(rate, label=e_name)
         
+        plt.legend()
         plt.ylim((-0.01, 1.01))
         plt.xlabel('Generation')
         plt.ylabel('Rate')

@@ -114,6 +114,12 @@ class ApproxKnnIndex(KnnIndex):
         return self.index.query(anchored_point, k=k, p=2, distance_upper_bound=max_dist)
 
 
+class LibraryError(RuntimeError):
+    pass
+
+class LibraryLookupError(LibraryError):
+    pass
+
 
 class Library:
     def __init__(self, size:int, max_depth:int, max_length:int, data, know, solutionCreator, mesh=None, symm:bool=None):
@@ -211,7 +217,7 @@ class Library:
         d, idx = self.sem_index.query(sem, max_dist=max_dist)
         
         if d == np.infty and const_fit_d > max_dist:
-            return None
+            raise LibraryLookupError()
         if const_fit is not None and const_fit_d <= d:
             return ConstantSyntaxTree(const_fit)
 
@@ -221,7 +227,7 @@ class Library:
     
     def multiquery(self, sem, k=4, max_dist=np.inf) -> list[tuple[np.array, SyntaxTree]]:
         d, idx = self.sem_index.query(sem, k=k, max_dist=max_dist)
-        if d[0] == np.infty: return None  # nearest firts.
+        if d[0] == np.infty: raise LibraryLookupError()  # nearest firts.
         return [ (self.lib_data[__idx], self.stree_provider.get_stree(__idx)) for __idx in idx ]
     
     def find_best_similarity(self):
@@ -523,9 +529,11 @@ class HierarchicalConstrainedLibrary(Library):
                 stree, dist = self.__local_query(self.clib[K], self.clib_idxmap[K], y, max_dist)
                 if const_fit is not None and const_fit_dist <= max_dist and const_fit_dist <= dist:
                     return ConstantSyntaxTree(const_fit)
+                if stree is None:
+                    raise LibraryLookupError()
                 return stree
             except KeyError:
-                return None
+                raise LibraryLookupError()
 
         k_bytes, noroot = C.get_key_image()
 
@@ -537,12 +545,14 @@ class HierarchicalConstrainedLibrary(Library):
                 stree, dist = self.__local_cquery(self.clib[K], self.clib_idxmap[K], y, C, max_dist, check_image)
                 if const_fit is not None and const_fit_dist <= max_dist and const_fit_dist <= dist:
                     return ConstantSyntaxTree(const_fit)
+                if stree is None:
+                    raise LibraryLookupError()
                 return stree
 
             except KeyError:
                 continue
         
-        return None  # never here.
+        raise LibraryLookupError()  # never here.
     
     def __local_query(self, lib, clib_idxmap, y, max_dist) -> tuple[SyntaxTree,float]:
         dist, local_idx = lib.query(y, max_dist=max_dist)
