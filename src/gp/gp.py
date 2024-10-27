@@ -3,6 +3,7 @@ import logging
 import numpy as np
 from scipy.spatial.distance import pdist as scipy_pdist
 from scipy.spatial.distance import squareform as scipy_squareform
+from dataclasses import dataclass
 
 import dataset
 from symbols.syntax_tree import SyntaxTree
@@ -14,6 +15,7 @@ from backprop import bpropagator
 from backprop import project
 from backprop.bperrors import BackpropError
 from backprop.library import LibraryError
+from backprop.pareto_front import DataLengthFrontTracker, FrontDuplicateError
 from gp import utils, creator, evaluation, evaluator, selector, crossover, mutator, corrector
 from gp.stats import CorrectorGPStats
 
@@ -73,48 +75,52 @@ class SemanticCrowdingDiversifier(Diversifier):
                 eval_map[id(p)].crowdist = 0
 
 
+@dataclass
+class GPSettings:
+    popsize:int
+    ngen:int
+    max_depth:int
+    max_length:int
+    S_train:dataset.NumpyDataset
+    S_test:dataset.NumpyDataset
+    creator:creator.SolutionCreator
+    evaluator:evaluator.Evaluator
+    selector:selector.Selector
+    crossover:crossover.Crossover
+    mutator:mutator.Mutator
+    corrector:corrector.Corrector
+    mutrate:float
+    elitism:int=0
+    knowledge:dataset.DataKnowledge=None
+    track_fea_front:bool=True
+
+
 class GP:
-    def __init__(self,
-                 popsize:int,
-                 ngen:int,
-                 max_depth:int,
-                 max_length:int,
-                 S_train:dataset.NumpyDataset,
-                 S_test:dataset.NumpyDataset,
-                 creator:creator.SolutionCreator,
-                 evaluator:evaluator.Evaluator,
-                 selector:selector.Selector,
-                 crossover:crossover.Crossover,
-                 mutator:mutator.Mutator,
-                 corrector:corrector.Corrector,
-                 mutrate:float,
-                 elitism:int=0,
-                 knowledge=None):
-        
-        self.population = creator.create_population(popsize, max_depth, max_length)
-        self.eval_map = {}
-        self.popsize = popsize
-        self.ngen = ngen
-        self.S_train = S_train
-        self.S_test = S_test
-        self.evaluator = evaluator
-        self.selector = selector
-        self.crossover = crossover
-        self.mutator = mutator
-        self.corrector = corrector
-        self.mutrate = mutrate
-        self.elitism = elitism
-        self.knowledge = knowledge
-        self.stats = evaluator.create_stats()
-        self.genidx = 0
+    def __init__(self, args:GPSettings):
+        self.population = args.creator.create_population(args.popsize, args.max_depth, args.max_length)
+        self.eval_map   = {}
+        self.popsize    = args.popsize
+        self.ngen       = args.ngen
+        self.S_train    = args.S_train
+        self.S_test     = args.S_test
+        self.evaluator  = args.evaluator
+        self.selector   = args.selector
+        self.crossover  = args.crossover
+        self.mutator    = args.mutator
+        self.corrector  = args.corrector
+        self.mutrate    = args.mutrate
+        self.elitism    = args.elitism
+        self.knowledge  = args.knowledge
+        self.stats      = args.evaluator.create_stats()
+        self.genidx     = 0
+        self.fea_front_tracker = None
 
         if self.corrector is not None:
             self.stats = CorrectorGPStats(self.stats)
         
-        from backprop.pareto_front import DataLengthFrontTracker, MultiHeadFrontTracker
-        #self.fea_front_tracker = DataLengthFrontTracker()
-        self.fea_front_tracker = MultiHeadFrontTracker()
-    
+        if args.track_fea_front:
+            self.fea_front_tracker = DataLengthFrontTracker(self.popsize, max_fronts=1)
+        
     def evolve(self, newgen_callback=None) -> tuple[list[SyntaxTree], dict]:
         """
         returns best syntax tree and its evaluation.
@@ -123,6 +129,8 @@ class GP:
         self._evaluate_all()
         self.population = utils.sort_population(self.population, self.eval_map)
         self.stats.update(self)
+
+        self._on_initial_generation()
         
         for self.genidx in range(1, self.ngen):
 
@@ -140,6 +148,9 @@ class GP:
         """
         
         return self.population[0], self.eval_map[id(self.population[0])]
+    
+    def _on_initial_generation(self):
+        pass
         
     def _evaluate_all(self):
         self.eval_map.clear()
@@ -187,8 +198,9 @@ class GP:
                     children.append(child)
                     self.eval_map[id(child)] = child_eval
 
-                    if type(child_eval) is evaluation.LayeredEvaluation and child_eval.fea_ratio == 1.0:
-                        self.fea_front_tracker.track(child, child_eval)
+                    if self.fea_front_tracker is not None and child_eval.fea_ratio == 1.0:
+                        try: self.fea_front_tracker.track(child, (child_eval.r2, child.cache.nnodes), child_eval)
+                        except FrontDuplicateError: pass
         
         return children
     
@@ -197,14 +209,64 @@ class GP:
             children = utils.sort_population(children, self.eval_map)
             for i in range(self.elitism):
                 children[-1-i] = self.population[i]
+        
         self.population = children  # generational replacement.
-
         self.population = utils.sort_population(self.population, self.eval_map)
-        #self.population = (self.fea_front_tracker.get_population() + self.population)[:self.popsize]
         
         # update evaluation map based on new population.
+        self._update_evaluation()
+    
+    def _update_evaluation(self):
         new_eval_map = {}
         for stree in self.population:
             new_eval_map[id(stree)] = self.eval_map[id(stree)]
-        
         self.eval_map = new_eval_map
+
+
+class MOGP(GP):
+    def __init__(self, args:GPSettings):
+        args.track_fea_front = False
+        super().__init__(args)
+        self.elitism = 0
+        self.fea_fronts_size = 0
+
+        self.fea_front_tracker = DataLengthFrontTracker(self.popsize)
+        assert type(self.evaluator) is evaluator.LayeredEvaluator
+    
+    def _on_initial_generation(self):
+        self.fea_fronts_size = 0
+        for c in self.population:
+            c_eval = self.eval_map[id(c)]
+            if c_eval.fea_ratio == 1.0 and c_eval.r2 > 0.0:
+                self.fea_front_tracker.track(c, (c_eval.r2, c.cache.nnodes), c_eval)
+                self.fea_fronts_size += 1
+    
+    def _replace(self, children:list[SyntaxTree]):
+        unfea_children = []
+        nfea_children = 0
+        fea_duplicates = []
+        for c in children:
+            c_eval = self.eval_map[id(c)]
+            if c_eval.fea_ratio == 1.0 and c_eval.r2 > 0.0:
+                try:
+                    self.fea_front_tracker.track(c, (c_eval.r2, c.cache.nnodes), c_eval)
+                    nfea_children += 1
+                except FrontDuplicateError:
+                    fea_duplicates.append(c)
+            else:
+                unfea_children.append(c)
+        
+        self.fea_fronts_size = max(self.fea_fronts_size, nfea_children)
+        self.population = self.fea_front_tracker.get_population(self.fea_fronts_size)
+        for p in self.population: self.eval_map[id(p)] = self.fea_front_tracker.eval_map[id(p)]
+
+        if self.fea_fronts_size < self.popsize:
+            n_toadd = self.popsize - self.fea_fronts_size
+            if len(unfea_children) < n_toadd:
+                n_duplicates_toadd = n_toadd - len(unfea_children)
+                n_toadd -= n_duplicates_toadd
+                self.population += utils.sort_population(fea_duplicates, self.eval_map)[:n_duplicates_toadd]
+            self.population += utils.sort_population(unfea_children, self.eval_map)[:n_toadd]
+        
+        # update evaluation map based on new population.
+        self._update_evaluation()

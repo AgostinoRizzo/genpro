@@ -79,41 +79,59 @@ class SymbolicFrequencies:
         return frozenset(optCollector.opts)
 
 
+class FrontDuplicateError(RuntimeError):
+    pass
+
+
 class DataLengthFrontTracker:
 
-    def __init__(self, nfronts:int=8):
-        self.front = {f: [] for f in range(nfronts)}
-        self.nfronts = nfronts
+    def __init__(self, popsize:int, max_fronts=np.inf):
+        assert popsize > 0
+        self.popsize = popsize
+        self.max_fronts = max_fronts
+        self.front = {}
+        self.eval_map = {}
         self.symbfreq = SymbolicFrequencies()
 
-    def track(self, stree, evaluation, frontidx:int=0):
-        if frontidx >= self.nfronts: return
-
-        stree_data = evaluation.r2
-        stree_length = stree.cache.nnodes
-
-        if stree_data < 0.01: return
+    def track(self, stree, datalength_eval:tuple, evaluation, frontidx:int=0, tracked_counter:int=0):
+        if frontidx >= self.max_fronts:
+            return
+        if frontidx not in self.front:
+            self.front[frontidx] = []
+        
+        stree_data, stree_length = datalength_eval
 
         to_remove = []
         is_dominated = False
 
-        for idx, (_, data, length) in enumerate(self.front[frontidx]):
-            if stree_data >= data and stree_length <= length:
+        curr_front = self.front[frontidx]
+        tracked_counter += len(curr_front)
+
+        for idx, (_, data, length) in enumerate(curr_front):
+            if (stree_data >= data and stree_length < length) or (stree_data > data and stree_length <= length):
                 to_remove.append(idx)
             
-            if data >= stree_data and length <= stree_length:
+            if  data == stree_data and length == stree_length:
+                raise FrontDuplicateError()
+            elif data >= stree_data and length <= stree_length:
                 is_dominated = True
         
         if len(to_remove) > 0 or not is_dominated:
             for idx in sorted(to_remove, reverse=True):
-                self.symbfreq.remove(self.front[frontidx][idx][0])
-                self.front[frontidx].pop(idx)  # TODO: add removed into next front.
+                curr_sol = curr_front[idx]
+                self.symbfreq.remove(curr_sol[0])
+                curr_front.pop(idx)
+                curr_sol_eval = self.eval_map[id(curr_sol[0])]
+                del self.eval_map[id(curr_sol[0])]
+                if tracked_counter < self.popsize:
+                    self.track(curr_sol[0], (curr_sol[1], curr_sol[2]), curr_sol_eval, frontidx + 1, tracked_counter)
             
             self.front[frontidx].append((stree, stree_data, stree_length))
+            self.eval_map[id(stree)] = evaluation
             self.symbfreq.add(stree)
 
-        elif is_dominated:
-            self.track(stree, evaluation, frontidx + 1)
+        elif is_dominated and tracked_counter < self.popsize:
+            self.track(stree, datalength_eval, evaluation, frontidx + 1, tracked_counter)
 
     def get_front(self, frontidx:int=0):
         _, symbdist = self.compute_symbdist(frontidx)
@@ -127,11 +145,13 @@ class DataLengthFrontTracker:
             #return symbdist_diff
         
         return sorted(self.front[frontidx], key=cmp_to_key(fcmp))
-    
-    def get_population(self):
+
+    def get_population(self, max_size:int):
         population = []
-        for frontidx in range(self.nfronts):
+        for frontidx in range(len(self.front)):
             population += [stree for stree, _, _ in self.get_front(frontidx)]
+            if len(population) >= max_size:
+                return population[:max_size]
         return population
     
     """
@@ -226,6 +246,31 @@ class DataLengthFrontTracker:
         
         return crowdist
 
+    
+    def compute_extend_of_convergence(self, data_lu:tuple[float,float], length_lu:tuple[float,float], frontidx:int=0) -> float:
+        data_min, data_max     = data_lu
+        length_min, length_max = length_lu
+        data_range             = data_max - data_min
+        length_range           = length_max - length_min
+
+        def fcmp(a, b):
+            return a[1] - b[1]
+        front = sorted(self.front[frontidx], key=cmp_to_key(fcmp))
+        if len(front) == 0: return 1.0
+
+        data_front   = [((data-data_min)/data_range)       for _, data, _   in front]  # get data   front normalized.
+        length_front = [((length-length_min)/length_range) for _, _, length in front]  # get length front normalized.
+        
+        extent = 0.0
+        for i in range(len(front)):
+            if i == 0:
+                extent += data_front[i] * length_front[i]
+            else:
+                extent += (data_front[i] - data_front[i-1]) * length_front[i]
+        extent += 1.0 - data_front[-1]
+
+        return 1.0 - extent
+    
     def is_empty(self) -> bool:
         for f in self.front.values():
             if len(f) > 0: return False
