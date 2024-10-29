@@ -246,8 +246,22 @@ class BinaryOperatorSyntaxTree(SyntaxTree):
             raise RuntimeError('Invalid operator.')
         
         # symmetry (w.r.t. variables) backprop.
-        if symm_target is not None:
-            symm_pulled = (is_symmetric(B.y_know[()], symm_target[1]), symm_pulled[1])
+        if symm_target is not None and symm_target[0] is not None:
+            pulled_symmetric = None
+
+            if self.operator == '+' or self.operator == '-':
+                B_symmetric = is_symmetric(B.y_know[()], symm_target[1])
+                if symm_target[0]: pulled_symmetric = B_symmetric
+                elif B_symmetric: pulled_symmetric = False
+            
+            elif self.operator == '*' or self.operator == '/':
+                B_symmetric = is_symmetric(B.y_know[()], symm_target[1])
+                if B_symmetric:
+                    if (k_B != 0.0).all(): pulled_symmetric = symm_target[0]
+                    elif not symm_target[0]: raise KnowBackpropError()
+            
+            symm_pulled = (pulled_symmetric, symm_pulled[1])
+
         
         track[id(A)] = (k_pulled, noroot_pulled, symm_pulled)
         return k_pulled, noroot_pulled, symm_pulled

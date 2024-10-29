@@ -94,7 +94,7 @@ backprop_node = ConstantSyntaxTree(2.0)
             backprop_node
         ),
         True,
-        True,
+        None,  # symm
         [np.nan] * 10 + ([np.nan] + [1.] * 9) * 9,
         {(0,): [np.nan] * 100, (1,): [np.nan] * 100},
         True,
@@ -114,7 +114,7 @@ backprop_node = ConstantSyntaxTree(2.0)
             )
         ),
         True,
-        False,
+        None,  # symm
         [np.nan] * 100,
         {(0,): [np.nan] * 100, (1,): [np.nan] * 100},
         True,
@@ -137,7 +137,7 @@ backprop_node = ConstantSyntaxTree(2.0)
             )
         ),
         True,
-        True,
+        None,  # symm
         [np.nan] * 100,
         {(0,): [np.nan] * 100, (1,): [np.nan] * 100},
         True,
@@ -163,7 +163,7 @@ backprop_node = ConstantSyntaxTree(2.0)
             )
         ),
         True,
-        True,
+        None,  # symm
         [np.nan] * 10 + ([np.nan] + [1.] * 9) * 9,
         {(0,): [np.nan] * 100, (1,): [np.nan] * 100},
         True,
@@ -190,7 +190,7 @@ def test_corrector(data, stree, noroot, symm, k_image, k_deriv, partial, none, r
 
     assert C_pulled.noroot == noroot
     assert (C_pulled.symm is None and symm is None) or C_pulled.symm[0] == symm
-    assert C_pulled.symm is None or C_pulled.symm[0] == is_symmetric(new_stree[mesh.X, ()], C_pulled.symm[1])
+    assert C_pulled.symm is None or C_pulled.symm[0] is None or C_pulled.symm[0] == is_symmetric(new_stree[mesh.X, ()], C_pulled.symm[1])
     assert set(C_pulled.origin_pconstrs.keys()) == set([()] + list(k_deriv.keys()))
 
     assert np.array_equal(C_pulled.origin_pconstrs[()], np.array(k_image), equal_nan=True)

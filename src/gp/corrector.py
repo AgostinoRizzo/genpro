@@ -25,8 +25,7 @@ class Corrector:
         if know.has_symmvars():
             self.symm_lib  = library.HierarchicalConstrainedLibrary(libsize, lib_maxdepth, lib_maxlength, S_data, know, mesh, derivs, solutionCreator, True)
             self.asymm_lib = library.HierarchicalConstrainedLibrary(libsize, lib_maxdepth, lib_maxlength, S_data, know, mesh, derivs, solutionCreator, False)
-        else:
-            self.lib = library.HierarchicalConstrainedLibrary(libsize, lib_maxdepth, lib_maxlength, S_data, know, mesh, derivs, solutionCreator)
+        self.lib = library.HierarchicalConstrainedLibrary(libsize, lib_maxdepth, lib_maxlength, S_data, know, mesh, derivs, solutionCreator)
     
     def correct(self, stree, backprop_node=None, relax:bool=False):
         for _ in range(1):
