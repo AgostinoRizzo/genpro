@@ -45,7 +45,7 @@ for S, datafile in SYMBREG_BENCHMARKS:
             constrained_str = 'constrained' if constrained else 'unconstrained'
             print(f"Testing {S.get_name()}-{data_conf}-{constrained_str}...")
 
-            symbreg_config = GPConfig(S, datafile=datafile, noisy=data_conf=='noisy', constrained=constrained)
+            symbreg_config = GPConfig(S, datafile=datafile, noisy=(data_conf=='noisy'), constrained=constrained)
             symb_regressor = symbreg_config.create_symbreg()
 
             try:

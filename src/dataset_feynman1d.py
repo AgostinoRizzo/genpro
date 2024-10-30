@@ -6,10 +6,15 @@ SPEED_OF_LIGHT = 2.99792458e8
 PLANCK_CONSTANT = 6.626e-34
 ELECTRIC_CONSTANT = 8.854e-12
 
+"""
+For each problem, a partial domain definition is considered.
+"""
 
 class FeynmanICh6Eq20a(dataset.Dataset1d):
     def __init__(self) -> None:
         super().__init__(xl=-4., xu=4.)
+        self.def_xl = -1.5
+        self.def_xu =  1.5
         self.yl =  0.
         self.yu =  0.5
 
@@ -59,12 +64,10 @@ class FeynmanICh6Eq20a(dataset.Dataset1d):
 
 class FeynmanICh29Eq4(dataset.Dataset1d):
     def __init__(self) -> None:
-        super().__init__(xl=0., xu=1.)
-        self.yl = 0
-        self.yu = 1
-
-        self._yl = 0
-        self._yu = 4e-9
+        super().__init__(xl=-1., xu=1.)  # x float, positive
+        self.def_xl = 0.
+        self.yl = -4e-9
+        self.yu =  4e-9
 
         INFTY = self.numlims.INFTY
 
@@ -84,13 +87,11 @@ class FeynmanICh29Eq4(dataset.Dataset1d):
         self.knowledge.add_symm(2, 0, iseven=True )
 
     def func(self, x: float) -> float:
-        y = x / SPEED_OF_LIGHT
-        return self._ymap(y)
+        return x / SPEED_OF_LIGHT
     
     def get_sympy(self, evaluated:bool=False):
         x = sympy.Symbol(self.get_varnames()[0])
         expr = x / SPEED_OF_LIGHT
-        if evaluated: return self._ymap(expr)
         return expr
     
     def get_name(self) -> str:
@@ -99,21 +100,16 @@ class FeynmanICh29Eq4(dataset.Dataset1d):
     def get_xlabel(self, xidx:int=0) -> str:
         return 'omega (x)'
     
-    def is_yscaled(self) -> bool:
-        return True
-    
     def get_varnames(self) -> dict[int,str]:
         return {0: 'omega'}
 
 
 class FeynmanICh34Eq27(dataset.Dataset1d):
     def __init__(self) -> None:
-        super().__init__(xl=0., xu=1.)
-        self.yl = 0
-        self.yu = 1
-
-        self._yl = 0
-        self._yu = 1.1e-34
+        super().__init__(xl=-1., xu=1.)  # x float (positive)
+        self.def_xl = 0.
+        self.yl = -1.1e-34
+        self.yu =  1.1e-34
 
         INFTY = self.numlims.INFTY
 
@@ -133,13 +129,11 @@ class FeynmanICh34Eq27(dataset.Dataset1d):
         self.knowledge.add_symm(2, 0, iseven=True )
 
     def func(self, x: float) -> float:
-        y = (PLANCK_CONSTANT / (2 * np.pi)) * x
-        return self._ymap(y)
+        return (PLANCK_CONSTANT / (2 * np.pi)) * x
     
     def get_sympy(self, evaluated:bool=False):
         x  = sympy.Symbol(self.get_varnames()[0])
         expr = (PLANCK_CONSTANT / (2 * sympy.pi)) * x
-        if evaluated: return self._ymap(expr)
         return expr
     
     def get_name(self) -> str:
@@ -148,21 +142,16 @@ class FeynmanICh34Eq27(dataset.Dataset1d):
     def get_xlabel(self, xidx:int=0) -> str:
         return 'omega (x)'
     
-    def is_yscaled(self) -> bool:
-        return True
-    
     def get_varnames(self) -> dict[int,str]:
         return {0: 'omega'}
 
 
 class FeynmanIICh8Eq31(dataset.Dataset1d):
     def __init__(self) -> None:
-        super().__init__(xl=0., xu=1.)
-        self.yl = 0
-        self.yu = 1
-
-        self._yl = 0
-        self._yu = 4.5e-12
+        super().__init__(xl=-1., xu=1.)  # x float positive
+        self.def_xl = 0.0  # partial domain definition
+        self.yl = 0.
+        self.yu = 4.5e-12
 
         INFTY = self.numlims.INFTY
 
@@ -185,13 +174,11 @@ class FeynmanIICh8Eq31(dataset.Dataset1d):
         self.knowledge.add_symm(2, 0, iseven=True )
 
     def func(self, x: float) -> float:
-        y = (ELECTRIC_CONSTANT * (x ** 2)) / 2
-        return self._ymap(y)
+        return (ELECTRIC_CONSTANT * (x ** 2)) / 2
     
     def get_sympy(self, evaluated:bool=False):
         x  = sympy.Symbol(self.get_varnames()[0])
         expr = (ELECTRIC_CONSTANT * (x ** 2)) / 2
-        if evaluated: return self._ymap(expr)
         return expr
     
     def get_name(self) -> str:
@@ -200,21 +187,16 @@ class FeynmanIICh8Eq31(dataset.Dataset1d):
     def get_xlabel(self, xidx:int=0) -> str:
         return 'Ef (x)'
     
-    def is_yscaled(self) -> bool:
-        return True
-    
     def get_varnames(self) -> dict[int,str]:
         return {0: 'E_f'}
 
 
 class FeynmanIICh27Eq16(dataset.Dataset1d):
     def __init__(self) -> None:
-        super().__init__(xl=0., xu=1.)
-        self.yl = 0
-        self.yu = 1
-
-        self._yl = 0
-        self._yu = 0.003
+        super().__init__(xl=-1., xu=1.)
+        self.def_xl = 0.  # partial domain definition
+        self.yl = 0.
+        self.yu = 0.003
 
         INFTY = self.numlims.INFTY
 
@@ -237,13 +219,11 @@ class FeynmanIICh27Eq16(dataset.Dataset1d):
         self.knowledge.add_symm(2, 0, iseven=True )
 
     def func(self, x: float) -> float:
-        y = ELECTRIC_CONSTANT * SPEED_OF_LIGHT * (x ** 2)
-        return self._ymap(y)
+        return ELECTRIC_CONSTANT * SPEED_OF_LIGHT * (x ** 2)
     
     def get_sympy(self, evaluated:bool=False):
         x  = sympy.Symbol(self.get_varnames()[0])
         expr = ELECTRIC_CONSTANT * SPEED_OF_LIGHT * (x ** 2)
-        if evaluated: return self._ymap(expr)
         return expr
     
     def get_name(self) -> str:
@@ -251,9 +231,6 @@ class FeynmanIICh27Eq16(dataset.Dataset1d):
     
     def get_xlabel(self, xidx:int=0) -> str:
         return 'Ef (x)'
-    
-    def is_yscaled(self) -> bool:
-        return True
     
     def get_varnames(self) -> dict[int,str]:
         return {0: 'E_f'}

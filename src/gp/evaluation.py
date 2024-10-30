@@ -30,7 +30,8 @@ class LayeredEvaluation(Evaluation):
         self.stree = stree
     
     def better_than(self, other) -> bool:        
-        if self.r2 == 0.0: return False
+        if self.r2  == 0.0: return False
+        if other.r2 == 0.0: return True
 
         if self.fea_ratio > other.fea_ratio: return True
         if self.fea_ratio < other.fea_ratio: return False

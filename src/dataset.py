@@ -89,6 +89,9 @@ class DataKnowledge:
     def add_symmvars(self, vars:tuple[int]):
         self.symmvars.append(vars)
     
+    def has_symmvars(self) -> bool:
+        return len(self.symmvars) > 1
+    
     def add_noroot(self, d):
         if type(d) is int: d = (0,)*d
         assert type(d) is tuple
@@ -314,6 +317,8 @@ class Dataset:
         self._xu = self.xu
         self._yl = self.yl
         self._yu = self.yu
+        self.def_xl = xl  # used for partial domain definition
+        self.def_xu = xu
         self.spsampler = spsampler
         self.plotter = plotter
         self.numlims = numlims.NumericLimits()
@@ -326,8 +331,8 @@ class Dataset:
     
     def sample(self, size:int=100, noise:float=0., mesh:bool=False):
         X = \
-            self.spsampler.meshspace(self.xl, self.xu, self.spsampler.get_meshsize(size)) if mesh else \
-            self.spsampler.randspace(self.xl, self.xu, size)
+            self.spsampler.meshspace(self.def_xl, self.def_xu, self.spsampler.get_meshsize(size)) if mesh else \
+            self.spsampler.randspace(self.def_xl, self.def_xu, size)
         
         y = self.func(X)
         if noise > 0.:

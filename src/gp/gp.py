@@ -177,7 +177,7 @@ class GP:
                     #before_child_eval = self.evaluator.evaluate(child)
                     #before_child = child.clone()
                     if self.corrector is not None:
-                        profiling.enable()
+                        #profiling.enable()
                         try:
                             child, new_node, C_pulled, _ = self.corrector.correct(child)
                             child = child.simplify()
@@ -188,7 +188,7 @@ class GP:
                             self.stats.on_backprop_error(backprop_e)
                         except LibraryError as lib_e:
                             self.stats.on_library_error(lib_e)
-                        profiling.disable()
+                        #profiling.disable()
 
                     child_eval = self.evaluator.evaluate(child)
                     #if not child_eval.better_than(before_child_eval):

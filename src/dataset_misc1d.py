@@ -120,6 +120,8 @@ class MagmanDataset(Dataset1d):
 class MagmanDatasetScaled(Dataset1d):
     def __init__(self) -> None:
         super().__init__(xl=-2., xu=2.)
+        self.def_xl = -0.5
+        self.def_xu =  0.5
         self.yl = -2.
         self.yu = 2.
 

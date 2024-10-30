@@ -2,6 +2,7 @@ import random
 import numpy as np
 from backprop import library, constraints
 from backprop import bperrors
+from backprop.utils import is_symmetric
 from gp import utils
 from symbols.unaop import UnaryOperatorSyntaxTree
 from symbols.binop import BinaryOperatorSyntaxTree
@@ -11,6 +12,7 @@ from symbols.grammar import can_nest
 class Corrector:
     def __init__(self, S_data, know, max_depth:int, max_length:int, mesh, libsize:int, lib_maxdepth:int, lib_maxlength:int, solutionCreator):
         self.S_data = S_data
+        self.know = know
         self.max_depth = max_depth
         self.max_length = max_length
         self.mesh = mesh
@@ -26,6 +28,16 @@ class Corrector:
             self.symm_lib  = library.HierarchicalConstrainedLibrary(libsize, lib_maxdepth, lib_maxlength, S_data, know, mesh, derivs, solutionCreator, True)
             self.asymm_lib = library.HierarchicalConstrainedLibrary(libsize, lib_maxdepth, lib_maxlength, S_data, know, mesh, derivs, solutionCreator, False)
         self.lib = library.HierarchicalConstrainedLibrary(libsize, lib_maxdepth, lib_maxlength, S_data, know, mesh, derivs, solutionCreator)
+        
+        """print(f"SYMM SIZE: {len(self.symm_lib.stree_index)}")
+        for i in range(10): print(self.symm_lib.stree_index[i])
+        print(f"ASYMM SIZE: {len(self.asymm_lib.stree_index)}")
+        for i in range(10): print(self.asymm_lib.stree_index[i])
+        print(f"LIB SIZE: {len(self.lib.stree_index)}")"""
+        self.symm_n = 0
+        self.asymm_n = 0
+        self.lib_n = 0
+        self.acc_n = 0
     
     def correct(self, stree, backprop_node=None, relax:bool=False):
         for _ in range(1):
@@ -57,9 +69,23 @@ class Corrector:
             y_backprop_node = backprop_node(self.S_data.X)
             max_dist = library.compute_distance(y_backprop_node, y_pulled)
             new_node = None
-            if C_pulled.symm is None: new_node = self.lib.      cquery(y_pulled, C_pulled, max_dist=max_dist)
-            elif C_pulled.symm[0]:    new_node = self.symm_lib. cquery(y_pulled, C_pulled, max_dist=max_dist)
-            else:                     new_node = self.asymm_lib.cquery(y_pulled, C_pulled, max_dist=max_dist)
+
+            check_constfit = True
+            if self.know.has_symmvars() and backprop_node.has_parent() and type(backprop_node.parent) is BinaryOperatorSyntaxTree:
+                sibling = backprop_node.parent.right if id(backprop_node) == backprop_node.parent.left else \
+                          backprop_node.parent.left
+                if not is_symmetric(sibling[(self.mesh.X, ())], self.mesh.symm_Y_Ids):
+                    check_constfit = False
+            
+            if C_pulled.symm is None or C_pulled.symm[0] is None:
+                new_node = self.lib.      cquery(y_pulled, C_pulled, max_dist=max_dist, check_constfit=check_constfit)
+                self.lib_n += 1
+            elif C_pulled.symm[0]:
+                new_node = self.symm_lib. cquery(y_pulled, C_pulled, max_dist=max_dist, check_constfit=check_constfit)
+                self.symm_n += 1
+            else:
+                new_node = self.asymm_lib.cquery(y_pulled, C_pulled, max_dist=max_dist, check_constfit=check_constfit)
+                self.asymm_n += 1
             
             if new_node.get_nnodes() > max_nesting_length:
                 raise bperrors.BackpropMaxLengthError()
@@ -68,7 +94,7 @@ class Corrector:
             if (type(new_node) is UnaryOperatorSyntaxTree or type(new_node) is BinaryOperatorSyntaxTree) and \
                not can_nest(parent_opt, new_node.operator):
                 raise bperrors.BackpropGrammarError()
-
+            
             # correct stree...
             new_stree = utils.replace_subtree(stree, backprop_node, new_node)
             new_stree.cache.clear()

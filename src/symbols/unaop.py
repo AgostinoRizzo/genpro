@@ -167,11 +167,9 @@ class UnaryOperatorSyntaxTree(SyntaxTree):
         
         k_pulled = np.full(k_target.shape, np.nan)
         noroot_pulled = False
-        symm_pulled = None  # symmetry (w.r.t. variables) backprop.
+        # symmetry (w.r.t. variables) backprop.
         if symm_target is not None and self.operator == 'square':
             symm_pulled = (None, symm_target[1])
-        else:
-            symm_target
 
         if self.operator == 'square':
             if (k_target < 0.0).any():

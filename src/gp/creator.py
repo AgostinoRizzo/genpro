@@ -35,8 +35,8 @@ class ExtensionPoint():
         child.parent = self.parent
 
 
-def createRandomTerminal(cl:float, cu:float, nvars:int, create_consts:bool=True):
-    if create_consts and random.random() < 0.5:
+def createRandomTerminal(cl:float, cu:float, nvars:int, create_consts:bool=True, const_prob:float=0.5):
+    if create_consts and const_prob > 0.0 and random.random() < const_prob:
         return ConstantSyntaxTree(val=random.uniform(cl, cu))
     return VariableSyntaxTree(idx=random.randrange(nvars))
 
@@ -60,12 +60,12 @@ def createRandomNonTerminal(max_nchildren:int, parent_opt:str=None):
     return nt, [p1, p2]
     
 
-def ptc2(target_len:int, max_depth:int, cl:float, cu:float, nvars:int, create_consts:bool, parent_opt:str=None):
+def ptc2(target_len:int, max_depth:int, cl:float, cu:float, nvars:int, create_consts:bool, parent_opt:str=None, const_prob:float=0.5):
     if target_len <= 0 or max_depth < 0:
         raise ValueError('Invalid target_len or max_depth.')
     
     if target_len == 1 or max_depth == 0:
-        return createRandomTerminal(cl, cu, nvars, create_consts)
+        return createRandomTerminal(cl, cu, nvars, create_consts, const_prob=const_prob)
     
     target_len -= 1
     root, Q = createRandomNonTerminal(target_len, parent_opt)
@@ -78,7 +78,7 @@ def ptc2(target_len:int, max_depth:int, cl:float, cu:float, nvars:int, create_co
         target_len -= 1
 
         if extpoint.parent.get_depth() == max_depth - 1:
-            extpoint.extend(createRandomTerminal(cl, cu, nvars))
+            extpoint.extend(createRandomTerminal(cl, cu, nvars, const_prob=const_prob))
             continue
         
         child, __Q = createRandomNonTerminal(target_len - len(Q), extpoint.parent.operator)
@@ -87,7 +87,7 @@ def ptc2(target_len:int, max_depth:int, cl:float, cu:float, nvars:int, create_co
         Q += __Q
 
     for extpoint in Q:
-        extpoint.extend(createRandomTerminal(cl, cu, nvars))
+        extpoint.extend(createRandomTerminal(cl, cu, nvars, const_prob=const_prob))
     
     return root
 
@@ -114,17 +114,18 @@ class RandomSolutionCreator(SolutionCreator):
 
 
 class PTC2RandomSolutionCreator(SolutionCreator):
-    def __init__(self, nvars:int, cl:float=-1.0, cu:float=1.0, simplify:bool=True):
+    def __init__(self, nvars:int, cl:float=-1.0, cu:float=1.0, simplify:bool=True, const_prob:float=0.5):
         assert nvars > 0
         self.nvars = nvars
         self.cl, self.cu = cl, cu
         self.simplify = simplify
+        self.const_prob = const_prob
     
     def create_population(self, popsize:int, max_depth:int, max_length:int, create_consts:bool=True, parent_opt:str=None) -> list[SyntaxTree]:
         assert popsize > 0 and max_depth >= 0 and max_length > 0
         population = []
         for _ in range(popsize):
             target_len = random.randint(1, max_length)
-            stree = ptc2(target_len, max_depth, self.cl, self.cu, self.nvars, create_consts, parent_opt)
+            stree = ptc2(target_len, max_depth, self.cl, self.cu, self.nvars, create_consts, parent_opt, const_prob=self.const_prob)
             population.append(stree.simplify() if self.simplify else stree)
         return population

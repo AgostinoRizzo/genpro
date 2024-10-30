@@ -284,20 +284,40 @@ def random_test(y) -> float:
 
 
 SYMMETRIC_RTOL = 0.2e-15
+SYMMETRIC_R2TH = 1.0 - 1e-50
 
 def is_symmetric(y, Y_Ids) -> bool:
     global SYMMETRIC_RTOL
+    
     y_0 = y[Y_Ids[0]]
+    #y_0_sst = np.sum( (y_0 - y_0.mean()) ** 2 )
+    
     for i in range(1, Y_Ids.shape[0]):
-        if not np.allclose(y[Y_Ids[i]], y_0, rtol=SYMMETRIC_RTOL, atol=0.0, equal_nan=True):  #if not np.array_equal(y[Y_Ids[i]], y_0, equal_nan=True):
+        #if not np.allclose(y[Y_Ids[i]], y_0, rtol=SYMMETRIC_RTOL, atol=0.0, equal_nan=True):  #if not np.array_equal(y[Y_Ids[i]], y_0, equal_nan=True):
+        if not np.allclose(y[Y_Ids[i]], y_0, equal_nan=True):
             return False
+
+        #ssr = np.sum( (y[Y_Ids[i]] - y_0) ** 2 )
+        #r2  = 1 - ((ssr / y_0_sst) if y_0_sst > 0. else 1.)
+        #if r2 < SYMMETRIC_R2TH: return False
+
     return True
 
 def count_symmetric(y, Y_Ids) -> int:
     global SYMMETRIC_RTOL
     n = 0
+    
     y_0 = y[Y_Ids[0]]
+    #y_0_sst = np.sum( (y_0 - y_0.mean()) ** 2 )
+
     for i in range(1, Y_Ids.shape[0]):
-        if np.allclose(y[Y_Ids[i]], y_0, rtol=SYMMETRIC_RTOL, atol=0.0, equal_nan=True):  #if np.array_equal(y[Y_Ids[i]], y_0, equal_nan=True):
+        #if np.allclose(y[Y_Ids[i]], y_0, rtol=SYMMETRIC_RTOL, atol=0.0, equal_nan=True):  #if np.array_equal(y[Y_Ids[i]], y_0, equal_nan=True):
+        if np.allclose(y[Y_Ids[i]], y_0, equal_nan=True):
             n += 1
+
+        #ssr = np.sum( (y[Y_Ids[i]] - y_0) ** 2 )
+        #r2  = 1 - ((ssr / y_0_sst) if y_0_sst > 0. else 1.)
+        #if r2 >= SYMMETRIC_R2TH:
+        #    n += 1
+
     return n

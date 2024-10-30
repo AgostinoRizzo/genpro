@@ -122,7 +122,7 @@ class LibraryLookupError(LibraryError):
 
 
 class Library:
-    def __init__(self, size:int, max_depth:int, max_length:int, data, know, solutionCreator, mesh=None, symm:bool=None):
+    def __init__(self, size:int, max_depth:int, max_length:int, data, know, solutionCreator, mesh=None, symm:bool=None, ext_strees:list=None):
         """
         A total of 'size' random trees are generated:
             * algebraic simplification of trees
@@ -135,67 +135,77 @@ class Library:
         self.stree_index = []
         self.lib_data = []
 
-        extra_trees = size
-        X_extra = np.array([
-            [ 0.0] * data.nvars,
-            [ 1.0] * data.nvars,
-            [-1.0] * data.nvars,
-        ])
+        if ext_strees is None:
+            extra_trees = size
+            X_extra = np.array([
+                [ 0.0] * data.nvars,
+                [ 1.0] * data.nvars,
+                [-1.0] * data.nvars,
+            ])
 
-        def_st_idx = np.full(data.X.shape[0], True, dtype=bool)
-        def_st_extra_idx = np.full(X_extra.shape[0], True, dtype=bool)
-        for i in range(def_st_idx.size):
-            if know.is_undef_at(data.X[i]): def_st_idx[i] = False
-        for i in range(def_st_extra_idx.size):
-            if know.is_undef_at(X_extra[i]): def_st_extra_idx[i] = False
+            def_st_idx = np.full(data.X.shape[0], True, dtype=bool)
+            def_st_extra_idx = np.full(X_extra.shape[0], True, dtype=bool)
+            for i in range(def_st_idx.size):
+                if know.is_undef_at(data.X[i]): def_st_idx[i] = False
+            for i in range(def_st_extra_idx.size):
+                if know.is_undef_at(X_extra[i]): def_st_extra_idx[i] = False
 
-        all_semantics = {}
-        max_trials = 10
-        ntrials = 0
+            all_semantics = {}
+            max_trials = 1
+            ntrials = 0
 
-        while extra_trees > 0 and ntrials < max_trials:
-            strees = solutionCreator.create_population(extra_trees, max_depth, max_length, create_consts=False)
-            extra_trees = 0
-            ntrials += 1
-            
-            for t in strees:
-                t = t.simplify()  # TODO: ensure executed once.
-                st = t(data.X)
-                st_extra = t.at(X_extra)
-                st_key = tuple(st.tolist())
-
-                """if (st <= 0.).any():
-                    extra_trees += 1
-                    continue"""
+            while extra_trees > 0 and ntrials < max_trials:
+                strees = solutionCreator.create_population(extra_trees, max_depth, max_length, create_consts=False)
+                extra_trees = 0
+                ntrials += 1
                 
-                if symm is not None and symm != is_symmetric(t[(mesh.X, ())], mesh.symm_Y_Ids):
-                    extra_trees += 1
-                    continue
+                for t in strees:
+                    t = t.simplify()  # TODO: ensure executed once.
+                    st = t(data.X)
+                    st_extra = t.at(X_extra)
+                    st_key = tuple(st.tolist())
 
-                if not np.isfinite(st**2)[def_st_idx].all():
-                    extra_trees += 1
-                    continue
-                
-                if (~np.isfinite(st_extra))[def_st_extra_idx].any() or \
-                   (~np.isfinite(st))[def_st_idx].any() or (st == st[0]).all():
-                    extra_trees += 1
-                    continue
-                
-                if st_key in all_semantics:
-                    old_stree_i = all_semantics[st_key]
-                    old_tree = self.stree_index[old_stree_i]
+                    """if (st <= 0.).any():
+                        extra_trees += 1
+                        continue"""
                     
-                    extra_trees += 1
-
-                    if old_tree.get_nnodes() <= t.get_nnodes():
+                    if symm is not None and symm != is_symmetric(t[(mesh.X, ())], mesh.symm_Y_Ids):
+                        extra_trees += 1
                         continue
-                    self.stree_index[old_stree_i] = t
-                    self.lib_data[old_stree_i] = st
 
-                else:
-                    all_semantics[st_key] = len(self.stree_index)
-                    self.stree_index.append(t)
-                    self.lib_data.append(st)
+                    if not np.isfinite(st**2)[def_st_idx].all():
+                        extra_trees += 1
+                        continue
+                    
+                    if (~np.isfinite(st_extra))[def_st_extra_idx].any() or \
+                    (~np.isfinite(st))[def_st_idx].any() or (st == st[0]).all():
+                        extra_trees += 1
+                        continue
+                    
+                    if st.std() < 0.0001:
+                        extra_trees += 1
+                        continue
+                    
+                    if st_key in all_semantics:
+                        old_stree_i = all_semantics[st_key]
+                        old_tree = self.stree_index[old_stree_i]
+                        
+                        extra_trees += 1
+
+                        if old_tree.get_nnodes() <= t.get_nnodes():
+                            continue
+                        self.stree_index[old_stree_i] = t
+                        self.lib_data[old_stree_i] = st
+
+                    else:
+                        all_semantics[st_key] = len(self.stree_index)
+                        self.stree_index.append(t)
+                        self.lib_data.append(st)
+        else:
+            for t in ext_strees:
+                st = t(data.X)
+                self.stree_index.append(t)
+                self.lib_data.append(st)
 
         self.lib_data = np.stack(self.lib_data)
         self.sem_index = ExactKnnIndex(self.lib_data)
@@ -465,8 +475,8 @@ class IterativeConstrainedLibrary(Library):
 
 
 class HierarchicalConstrainedLibrary(Library):
-    def __init__(self, size:int, max_depth:int, max_length:int, data, know, mesh, derivs:list[tuple[int]], solutionCreator, symm:bool=None):
-        super().__init__(size, max_depth, max_length, data, know, solutionCreator, mesh, symm)
+    def __init__(self, size:int, max_depth:int, max_length:int, data, know, mesh, derivs:list[tuple[int]], solutionCreator, symm:bool=None, ext_strees:list=None):
+        super().__init__(size, max_depth, max_length, data, know, solutionCreator, mesh, symm, ext_strees)
         self.max_depth = max_depth
         
         K_none = (None, None)
@@ -512,14 +522,16 @@ class HierarchicalConstrainedLibrary(Library):
         for K in self.clib_idxmap.keys():
             self.clib[K] = ExactKnnIndex(self.lib_data[self.clib_idxmap[K]])
 
-    def cquery(self, y, C, max_dist=np.inf) -> SyntaxTree:
+    def cquery(self, y, C, max_dist=np.inf, check_constfit:bool=True) -> SyntaxTree:
         # constant fit (when compliant w.r.t. C).
-        const_fit = y.mean()
-        if np.isnan(const_fit): const_fit = None
-        const_fit_dist = np.inf
-        if const_fit is not None and C.check_const(const_fit):
-            const_fit_dist = compute_distance(const_fit, y)
-            max_dist = min(max_dist, const_fit_dist)
+        const_fit = None
+        if check_constfit:
+            const_fit = y.mean()
+            if np.isnan(const_fit): const_fit = None
+            const_fit_dist = np.inf
+            if const_fit is not None and C.check_const(const_fit):
+                const_fit_dist = compute_distance(const_fit, y)
+                max_dist = min(max_dist, const_fit_dist)
         
         max_depth = min(C.get_max_depth(), self.max_depth)
 
@@ -647,3 +659,18 @@ class DynamicConstrainedLibrary:
                 best_d = d
         
         return self.strees[best_i].clone()
+
+
+def get_semiasymm_strees(symm_strees:list, mesh) -> list:
+    semiasymm_strees = []
+
+    for stree in symm_strees:
+        stree.set_parent()
+        
+        for n in stree.cache.nodes:
+            if type(n) is ConstantSyntaxTree: continue
+            if is_symmetric(n[(mesh.X, ())], mesh.symm_Y_Ids): continue
+
+            semiasymm_strees.append(n)
+    
+    return semiasymm_strees

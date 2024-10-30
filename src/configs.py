@@ -48,21 +48,20 @@ class GPConfig(SymbregConfig):
         self.S_train = dataset.NumpyDataset(S)
         self.S_test  = dataset.NumpyDataset(S, test=True)
 
-        y_iqr = self.S_train.get_y_iqr()
-
         syntax_tree.SyntaxTreeInfo.set_problem(self.S_train)
 
-        self.solutionCreator = gp_creator.RandomSolutionCreator(nvars=S.nvars, y_iqr=y_iqr)
+        const_prob = 0.0 if self.S.knowledge.has_symmvars() else 0.5
+        self.solutionCreator = gp_creator.PTC2RandomSolutionCreator(nvars=S.nvars, const_prob=const_prob)
 
         self.multiMutator = gp_mutator.MultiMutator(
             gp_mutator.SubtreeReplacerMutator(GPConfig.MAX_STREE_DEPTH, GPConfig.MAX_STREE_LENGTH, self.solutionCreator),
             gp_mutator.FunctionSymbolMutator(),
-            gp_mutator.NumericParameterMutator(all=True, y_iqr=y_iqr),
+            gp_mutator.NumericParameterMutator(all=True),
             #gp.NumericParameterMutator(all=False, y_iqr=y_iqr)
             )
 
-        X_mesh              = self.S_train.spsampler.meshspace(self.S_train.xl, self.S_train.xu, GPConfig.MESH_SIZE)
-        know_evaluator      = gp_evaluator.KnowledgeEvaluator(S.knowledge, X_mesh)
+        mesh                = space.MeshSpace(self.S_train, self.S.knowledge, GPConfig.MESH_SIZE)
+        know_evaluator      = gp_evaluator.KnowledgeEvaluator(self.S.knowledge, mesh)
         r2_evaluator        = gp_evaluator.R2Evaluator(self.S_train)
         r2_test_evaluator   = gp_evaluator.R2Evaluator(self.S_test)
         self.evaluator      = gp_evaluator.LayeredEvaluator(know_evaluator, r2_evaluator) if constrained else \
@@ -73,11 +72,11 @@ class GPConfig(SymbregConfig):
         self.selector  = gp_selector.TournamentSelector(GPConfig.GROUP_SIZE)
         self.crossover = gp_crossover.SubTreeCrossover(GPConfig.MAX_STREE_DEPTH, GPConfig.MAX_STREE_LENGTH)
         self.corrector = gp_corrector.Corrector(
-            self.S_train, S.knowledge, GPConfig.MAX_STREE_DEPTH, GPConfig.MAX_STREE_LENGTH, X_mesh, GPConfig.LIBSIZE, GPConfig.LIB_MAXDEPTH, GPConfig.LIB_MAXLENGTH, self.solutionCreator) \
+            self.S_train, self.S.knowledge, GPConfig.MAX_STREE_DEPTH, GPConfig.MAX_STREE_LENGTH, mesh, GPConfig.LIBSIZE, GPConfig.LIB_MAXDEPTH, GPConfig.LIB_MAXLENGTH, self.solutionCreator) \
             if constrained else None
 
     def create_symbreg(self):
-        return gp.GP \
+        settings = gp.GPSettings \
             (
                 self.POPSIZE,
                 self.GENERATIONS,
@@ -95,6 +94,7 @@ class GPConfig(SymbregConfig):
                 elitism=self.ELITISM,
                 knowledge=self.S.knowledge
             )
+        return gp.GP(settings)
 
 
 
@@ -108,24 +108,21 @@ SYMBREG_BENCHMARKS = \
 [
     # problem, dataset filename (sampled data if None)
 
-    # feynman 1d.
+    # feynman 1d (partial domain definition for all).
     (dataset_feynman1d.FeynmanICh6Eq20a (), None),
-    (dataset_feynman1d.FeynmanICh29Eq4  (), None),
+    (dataset_feynman1d.FeynmanICh29Eq4  (), None),  # can be remove x/speed_of_light (same as FeynmanICh34Eq27)
     (dataset_feynman1d.FeynmanICh34Eq27 (), None),
     (dataset_feynman1d.FeynmanIICh8Eq31 (), None),
-    (dataset_feynman1d.FeynmanIICh27Eq16(), None),
+    (dataset_feynman1d.FeynmanIICh27Eq16(), None),  # almost same as FeynmanIICh8Eq31 but less "scaling" needed
     
     # misc 1d.
-    (dataset_misc1d.MagmanDatasetScaled(), None),
+    (dataset_misc1d.MagmanDatasetScaled(), None),  # partial domain definition.
     (dataset_misc1d.MagmanDatasetScaled(), 'data/magman.csv'),
 
-    # feynman 2d.
-    #(dataset_feynman2d.FeynmanICh6Eq20(), None),
-
     # misc 2d.
-    (dataset_misc2d.Resistance2(), None),
+    (dataset_misc2d.Resistance2(), None),  # partial domain definition.
 
     # misc 3d.
-    (dataset_misc3d.Gravity    (), None),
-    (dataset_misc3d.Resistance3(), None),
+    (dataset_misc3d.Gravity    (), None),  # partial domain definition.
+    (dataset_misc3d.Resistance3(), None),  # partial domain definition.
 ]
