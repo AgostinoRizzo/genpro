@@ -15,7 +15,7 @@ from backprop import bpropagator
 from backprop import project
 from backprop.bperrors import BackpropError
 from backprop.library import LibraryError
-from backprop.pareto_front import DataLengthFrontTracker, FrontDuplicateError
+from backprop.pareto_front import MultiHeadFrontTracker, FrontDuplicateError
 from gp import utils, creator, evaluation, evaluator, selector, crossover, mutator, corrector
 from gp.stats import CorrectorGPStats
 
@@ -119,7 +119,7 @@ class GP:
             self.stats = CorrectorGPStats(self.stats)
         
         if args.track_fea_front:
-            self.fea_front_tracker = DataLengthFrontTracker(self.popsize, max_fronts=1)
+            self.fea_front_tracker = MultiHeadFrontTracker(self.popsize, max_fronts=1, min_fea_ratio=0.9)
         
     def evolve(self, newgen_callback=None) -> tuple[list[SyntaxTree], dict]:
         """
@@ -127,10 +127,8 @@ class GP:
         """
         
         self._evaluate_all()
-        self.population = utils.sort_population(self.population, self.eval_map)
-        self.stats.update(self)
-
         self._on_initial_generation()
+        self.stats.update(self)
         
         for self.genidx in range(1, self.ngen):
 
@@ -150,7 +148,7 @@ class GP:
         return self.population[0], self.eval_map[id(self.population[0])]
     
     def _on_initial_generation(self):
-        pass
+        self.population = utils.sort_population(self.population, self.eval_map)
         
     def _evaluate_all(self):
         self.eval_map.clear()
@@ -198,7 +196,7 @@ class GP:
                     children.append(child)
                     self.eval_map[id(child)] = child_eval
 
-                    if self.fea_front_tracker is not None and child_eval.fea_ratio == 1.0:
+                    if self.fea_front_tracker is not None:
                         try: self.fea_front_tracker.track(child, (child_eval.r2, child.cache.nnodes), child_eval)
                         except FrontDuplicateError: pass
         
@@ -230,43 +228,36 @@ class MOGP(GP):
         self.elitism = 0
         self.fea_fronts_size = 0
 
-        self.fea_front_tracker = DataLengthFrontTracker(self.popsize)
+        self.fea_front_tracker = MultiHeadFrontTracker(self.popsize)
         assert type(self.evaluator) is evaluator.LayeredEvaluator
     
     def _on_initial_generation(self):
-        self.fea_fronts_size = 0
-        for c in self.population:
-            c_eval = self.eval_map[id(c)]
-            if c_eval.fea_ratio == 1.0 and c_eval.r2 > 0.0:
-                self.fea_front_tracker.track(c, (c_eval.r2, c.cache.nnodes), c_eval)
-                self.fea_fronts_size += 1
+        self.__update_population_from_fronts(self.population)
     
     def _replace(self, children:list[SyntaxTree]):
-        unfea_children = []
-        nfea_children = 0
-        fea_duplicates = []
-        for c in children:
-            c_eval = self.eval_map[id(c)]
-            if c_eval.fea_ratio == 1.0 and c_eval.r2 > 0.0:
-                try:
-                    self.fea_front_tracker.track(c, (c_eval.r2, c.cache.nnodes), c_eval)
-                    nfea_children += 1
-                except FrontDuplicateError:
-                    fea_duplicates.append(c)
-            else:
-                unfea_children.append(c)
-        
-        self.fea_fronts_size = max(self.fea_fronts_size, nfea_children)
-        self.population = self.fea_front_tracker.get_population(self.fea_fronts_size)
-        for p in self.population: self.eval_map[id(p)] = self.fea_front_tracker.eval_map[id(p)]
+        self.__update_population_from_fronts(children)
 
-        if self.fea_fronts_size < self.popsize:
-            n_toadd = self.popsize - self.fea_fronts_size
-            if len(unfea_children) < n_toadd:
-                n_duplicates_toadd = n_toadd - len(unfea_children)
-                n_toadd -= n_duplicates_toadd
-                self.population += utils.sort_population(fea_duplicates, self.eval_map)[:n_duplicates_toadd]
-            self.population += utils.sort_population(unfea_children, self.eval_map)[:n_toadd]
-        
         # update evaluation map based on new population.
         self._update_evaluation()
+
+    def __update_population_from_fronts(self, children:list[SyntaxTree]):
+        duplicates = []
+        
+        for c in children:
+            c_eval = self.eval_map[id(c)]
+            try: self.fea_front_tracker.track(c, (c_eval.r2, c.cache.nnodes), c_eval)
+            except FrontDuplicateError:
+                duplicates.append(c)
+        
+        populations = self.fea_front_tracker.get_populations()
+        self.population = []
+        for h, p in populations:
+            for stree in p:
+                self.eval_map[id(stree)] = self.fea_front_tracker.heads[h].eval_map[id(stree)]
+            self.population += p
+        
+        remaining = self.popsize - len(self.population)
+        if remaining > 0:
+            self.population += utils.sort_population(duplicates, self.eval_map)[:remaining]
+        
+        assert len(self.population) == self.popsize

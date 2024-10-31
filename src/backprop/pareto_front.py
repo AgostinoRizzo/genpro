@@ -2,8 +2,10 @@ from functools import cmp_to_key
 import numpy as np
 import random
 import matplotlib.pyplot as plt
+from matplotlib.ticker import MaxNLocator
 
 from symbols.visitor import SyntaxTreeIneqOperatorCollector
+from gp.evaluation import LayeredEvaluation
 
 
 """class SymbolicFrequencies:
@@ -94,7 +96,7 @@ class DataLengthFrontTracker:
         self.symbfreq = SymbolicFrequencies()
 
     def track(self, stree, datalength_eval:tuple, evaluation, frontidx:int=0, tracked_counter:int=0):
-        if frontidx >= self.max_fronts:
+        if frontidx >= self.max_fronts or self.popsize == 0:
             return
         if frontidx not in self.front:
             self.front[frontidx] = []
@@ -276,14 +278,17 @@ class DataLengthFrontTracker:
             if len(f) > 0: return False
         return True
     
-    def plot(self, frontidx:int=-1):
+    def plot(self, data_lu:tuple[float,float], length_lu:tuple[float,float], frontidx:int=-1):
         
         def fcmp(a, b):
             return a[1] - b[1]
         
-        for frontidx in range(self.nfronts) if frontidx < 0 else range(frontidx, frontidx + 1):
+        plt.figure(figsize=(5,5))
+        
+        for frontidx in range(len(self.front)) if frontidx < 0 else range(frontidx, frontidx + 1):
             
             front = sorted(self.front[frontidx], key=cmp_to_key(fcmp))
+            if len(front) == 0: continue
 
             # plot front lines.
             if len(front) > 1:
@@ -294,7 +299,10 @@ class DataLengthFrontTracker:
                     x_line += [x_line[-1], data]
                     y_line += [length, length]
                 
-                plt.plot(x_line, y_line, linestyle='dashed')
+                plt.plot(x_line, y_line, linestyle='dashed', c='k')
+            
+            plt.plot([data_lu[0],   front[0][1] ], [front[0][2],  front[0][2] ], linestyle='dashed', c='k')
+            plt.plot([front[-1][1], front[-1][1]], [front[-1][2], length_lu[1]], linestyle='dashed', c='k')
             
             # plot front dots.
             symbset, symbdist = self.compute_symbdist(frontidx)
@@ -303,51 +311,71 @@ class DataLengthFrontTracker:
             y = [length for _, _, length in front]
             c = [symbdist[id(stree)] for stree, _, _ in front]
 
-            plt.scatter(x, y, c=c, cmap='coolwarm')
+            plt.scatter(x, y, c='k') #, c=c, cmap='coolwarm')
         
-        plt.colorbar()
-        plt.xlabel('R2')
-        plt.ylabel('#Nodes')
-        plt.title('Data-Length Front')
+        xl, xu = data_lu
+        yl, yu = length_lu
+        xy_margin = 0.05
+        x_margin = (xu-xl) * xy_margin
+        y_margin = (yu-yl) * xy_margin
+        xl -= x_margin
+        xu += x_margin
+        yl -= y_margin
+        yu += y_margin
+
+        #plt.colorbar()
+        plt.xlabel('R2-score')
+        plt.ylabel('Length')
+        plt.xlim((xl, xu))
+        plt.ylim((yl, yu))
+        plt.gca().yaxis.set_major_locator(MaxNLocator(integer=True))
+        #plt.gca().yaxis.tick_right()
+        #plt.gca().yaxis.set_label_position("right")
+        plt.title('Pareto Front(s)')
         plt.show()
 
 
 class MultiHeadFrontTracker:
-    def __init__(self):
-        self.front_tracker_a = DataLengthFrontTracker()
-        self.front_tracker_b = DataLengthFrontTracker()
+    def __init__(self, popsize:int, max_fronts=np.inf, min_fea_ratio:float=0.0):
+        self.popsize = popsize
+        self.max_fronts = max_fronts
+        self.min_fea_ratio = min_fea_ratio
+        self.heads = {}
     
-    def track(self, stree, evaluation, frontidx:int=0):
-        simil_a = self.front_tracker_a.symbfreq.compute_similarity(stree)
-        simil_b = self.front_tracker_b.symbfreq.compute_similarity(stree)
-        
-        if simil_a == 0 and simil_b == 0:
-            if not self.front_tracker_a.is_empty() and self.front_tracker_b.is_empty():
-                self.front_tracker_b.track(stree, evaluation, frontidx)
-            elif random.choice([0, 1]) == 0:
-                self.front_tracker_a.track(stree, evaluation, frontidx)
-            else:
-                self.front_tracker_b.track(stree, evaluation, frontidx)
-            return
+    def track(self, stree, datalength_eval:tuple, evaluation):
+        fea_ratio = evaluation.fea_ratio if type(evaluation) is LayeredEvaluation else 1.0
+        if fea_ratio < self.min_fea_ratio: return
+        if fea_ratio not in self.heads:
+            self.heads[fea_ratio] = DataLengthFrontTracker(self.popsize, self.max_fronts)
+        self.heads[fea_ratio].track(stree, datalength_eval, evaluation)
+    
+    def get_front(self, fea_ratio:float=1.0, frontidx:int=0):
+        if fea_ratio not in self.heads:
+            return []
+        return self.heads[fea_ratio].get_front(frontidx)
+    
+    def get_populations(self) -> list[list]:
+        populations = []
+        current_popsize = 0
+        remaining_popsize = self.popsize
 
-        if simil_a >= simil_b or True:
-        #if 'exp' not in SymbolicFrequencies.get_symbset(stree):
-            self.front_tracker_a.track(stree, evaluation, frontidx)
-        else:
-            self.front_tracker_b.track(stree, evaluation, frontidx)
-    
-    def get_front(self, frontidx:int=0):
-        crowdist = self.front_tracker_a.compute_crowdist(frontidx)
-        crowdist.update(self.front_tracker_b.compute_crowdist(frontidx))
+        for h, f in sorted(self.heads.items(), reverse=True):
+            
+            f.popsize = remaining_popsize
+            current_population = f.get_population(remaining_popsize)
+            current_popsize += len(current_population)
+            remaining_popsize = self.popsize - current_popsize
 
-        def fcmp(a, b):
-            nonlocal crowdist
-            return crowdist[id(b[0])] - crowdist[id(a[0])]
+            if remaining_popsize <= 0:
+                for __h, __f in self.heads.items():
+                    if __h < h: f.popsize = 0
+                populations.append( (h, current_population[:len(current_population)+remaining_popsize]) )
+                return populations
+            
+            populations.append((h, current_population))
         
-        return sorted(self.front_tracker_a.front[frontidx] + self.front_tracker_b.front[frontidx], key=cmp_to_key(fcmp))
-    
-    def get_population(self):
-        population = []
-        for frontidx in range(self.front_tracker_a.nfronts):
-            population += [stree for stree, _, _ in self.get_front(frontidx)]
-        return population
+        return populations
+
+    def get_head(self, headidx:int=0):
+        fea_ratio = sorted(self.heads.keys(), reverse=True)[headidx]
+        return self.heads[fea_ratio], fea_ratio

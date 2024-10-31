@@ -25,7 +25,7 @@ class RealEvaluation(Evaluation):
 
 class LayeredEvaluation(Evaluation):
     def __init__(self, n, nv, r2, stree):
-        self.fea_ratio = 1.0 - (nv / n)
+        self.fea_ratio = 0.0 if r2 == 0 else (1.0 - (nv / n))
         self.r2 = r2
         self.stree = stree
     
