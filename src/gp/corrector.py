@@ -20,6 +20,7 @@ class Corrector:
         self.max_depth = max_depth
         self.max_length = max_length
         self.mesh = mesh
+        self.backprop_trials = 1
         
         self.S_know = know.synth_dataset(mesh.X)
         self.S_know_derivs = {}
@@ -44,73 +45,95 @@ class Corrector:
         self.acc_n = 0
     
     def correct(self, stree, backprop_node=None, relax:bool=False):
-        for _ in range(1):
-            stree.cache.clear()
-            stree.set_parent()
+            
+        stree.cache.clear()
+        stree.set_parent()
 
-            if backprop_node is None:
-                backprop_nodes = stree.cache.backprop_nodes
-                if len(backprop_nodes) == 0:
-                    raise bperrors.NoBackpropPathError()
-                backprop_node = random.choice(backprop_nodes)
+        backprop_nodes = None
+        
+        if backprop_node is None:
+            backprop_nodes = stree.cache.backprop_nodes
+            if len(backprop_nodes) == 0:
+                raise bperrors.NoBackpropPathError()
+        else:
+            backprop_nodes = [backprop_node]
+        
+        ntrials = 0
+        last_error = None
+
+        while len(backprop_nodes) > 0 and ntrials < self.backprop_trials:
+        
+            backprop_node = random.choice(backprop_nodes)
             
             max_nesting_depth = self.max_depth - backprop_node.get_depth()
             max_nesting_length = self.max_length - (stree.get_nnodes() - backprop_node.get_nnodes())
             
-            # backprop knowledge...
-            C_pulled = None
-            if relax:
-                C_pulled = self.__get_relaxed_constraints(max_nesting_depth, max_nesting_length)
-            else:
-                C_pulled = self.backprop_know(stree, backprop_node, max_nesting_depth, max_nesting_length)
-            
-            # backprop data...
-            y = stree(self.S_data.X)  # needed for 'pull_output'.
-            y_pulled = backprop_node.pull_output(self.S_data.y)
-            if id(y_pulled) == id(self.S_data.y):
-                y_pulled = np.copy(self.S_data.y)
-            y_pulled_origin = np.copy(y_pulled)
-            C_pulled.project(y_pulled)
-            
-            y_backprop_node = backprop_node(self.S_data.X)
-            max_dist = library.compute_distance(y_backprop_node, y_pulled)
-            new_node = None
+            try:
 
-            check_constfit = True
-            if self.know.has_symmvars() and backprop_node.has_parent() and type(backprop_node.parent) is BinaryOperatorSyntaxTree:
-                sibling = backprop_node.parent.right if id(backprop_node) == backprop_node.parent.left else \
-                          backprop_node.parent.left
-                if not is_symmetric(sibling[(self.mesh.X, ())], self.mesh.symm_Y_Ids):
-                    check_constfit = False
+                # backprop knowledge...
+                C_pulled = None
+                if relax:
+                    C_pulled = self.__get_relaxed_constraints(max_nesting_depth, max_nesting_length)
+                else:
+                    C_pulled = self.backprop_know(stree, backprop_node, max_nesting_depth, max_nesting_length)
+                
+                # backprop data...
+                y = stree(self.S_data.X)  # needed for 'pull_output'.
+                y_pulled = backprop_node.pull_output(self.S_data.y)
+                if id(y_pulled) == id(self.S_data.y):
+                    y_pulled = np.copy(self.S_data.y)
+                y_pulled_origin = np.copy(y_pulled)
+                C_pulled.project(y_pulled)
+                
+                y_backprop_node = backprop_node(self.S_data.X)
+                max_dist = library.compute_distance(y_backprop_node, y_pulled)
+                new_node = None
 
-            if C_pulled.symm is None or C_pulled.symm[0] is None:
-                new_node = self.lib.      cquery(y_pulled, C_pulled, max_dist=max_dist, check_constfit=check_constfit)
-                self.lib_n += 1
-            elif C_pulled.symm[0]:
-                new_node = self.symm_lib. cquery(y_pulled, C_pulled, max_dist=max_dist, check_constfit=check_constfit)
-                self.symm_n += 1
-            else:
-                new_node = self.asymm_lib.cquery(y_pulled, C_pulled, max_dist=max_dist, check_constfit=check_constfit)
-                self.asymm_n += 1
+                check_constfit = True
+                if self.know.has_symmvars() and backprop_node.has_parent() and type(backprop_node.parent) is BinaryOperatorSyntaxTree:
+                    sibling = backprop_node.parent.right if id(backprop_node) == backprop_node.parent.left else \
+                            backprop_node.parent.left
+                    if not is_symmetric(sibling[(self.mesh.X, ())], self.mesh.symm_Y_Ids):
+                        check_constfit = False
+
+                if C_pulled.symm is None or C_pulled.symm[0] is None:
+                    new_node = self.lib.      cquery(y_pulled, C_pulled, max_dist=max_dist, check_constfit=check_constfit)
+                    self.lib_n += 1
+                elif C_pulled.symm[0]:
+                    new_node = self.symm_lib. cquery(y_pulled, C_pulled, max_dist=max_dist, check_constfit=check_constfit)
+                    self.symm_n += 1
+                else:
+                    new_node = self.asymm_lib.cquery(y_pulled, C_pulled, max_dist=max_dist, check_constfit=check_constfit)
+                    self.asymm_n += 1
+                
+                if new_node.get_nnodes() > max_nesting_length:
+                    raise bperrors.BackpropMaxLengthError()
+                
+                parent_opt = None if not backprop_node.has_parent() else backprop_node.parent.operator
+                if (type(new_node) is UnaryOperatorSyntaxTree or type(new_node) is BinaryOperatorSyntaxTree) and \
+                not can_nest(parent_opt, new_node.operator):
+                    raise bperrors.BackpropGrammarError()
+                
+                # correct stree...
+                new_stree = utils.replace_subtree(stree, backprop_node, new_node)
+                new_stree.cache.clear()
+                new_stree.set_parent()
+                if new_node.has_parent():
+                    new_node.parent.invalidate_output()
+                
+                stree = new_stree
+                return new_stree, new_node, C_pulled, y_pulled_origin
             
-            if new_node.get_nnodes() > max_nesting_length:
-                raise bperrors.BackpropMaxLengthError()
-            
-            parent_opt = None if not backprop_node.has_parent() else backprop_node.parent.operator
-            if (type(new_node) is UnaryOperatorSyntaxTree or type(new_node) is BinaryOperatorSyntaxTree) and \
-               not can_nest(parent_opt, new_node.operator):
-                raise bperrors.BackpropGrammarError()
-            
-            # correct stree...
-            new_stree = utils.replace_subtree(stree, backprop_node, new_node)
-            new_stree.cache.clear()
-            new_stree.set_parent()
-            if new_node.has_parent():
-                new_node.parent.invalidate_output()
-            
-            stree = new_stree
+            except BackpropError as backprop_e:
+                ntrials += 1
+                backprop_nodes.remove(backprop_node)
+                last_error = backprop_e
+            except LibraryError as lib_e:
+                ntrials += 1
+                backprop_nodes.remove(backprop_node)
+                last_error = lib_e
         
-        return new_stree, new_node, C_pulled, y_pulled_origin
+        raise last_error
     
     def backprop_know(self, stree, backprop_node, max_nesting_depth, max_nesting_length) -> constraints.BackpropConstraints:
         k_pulled = {}
