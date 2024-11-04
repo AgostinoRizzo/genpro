@@ -1,5 +1,6 @@
 import random
 import numpy as np
+import math
 from backprop import library, constraints
 from backprop import bperrors
 from backprop.utils import is_symmetric
@@ -7,6 +8,9 @@ from gp import utils
 from symbols.unaop import UnaryOperatorSyntaxTree
 from symbols.binop import BinaryOperatorSyntaxTree
 from symbols.grammar import can_nest
+
+from backprop.bperrors import BackpropError
+from backprop.library import LibraryError
 
 
 class Corrector:
@@ -59,15 +63,17 @@ class Corrector:
                 C_pulled = self.__get_relaxed_constraints(max_nesting_depth, max_nesting_length)
             else:
                 C_pulled = self.backprop_know(stree, backprop_node, max_nesting_depth, max_nesting_length)
-
+            
             # backprop data...
             y = stree(self.S_data.X)  # needed for 'pull_output'.
             y_pulled = backprop_node.pull_output(self.S_data.y)
+            if id(y_pulled) == id(self.S_data.y):
+                y_pulled = np.copy(self.S_data.y)
             y_pulled_origin = np.copy(y_pulled)
             C_pulled.project(y_pulled)
-
+            
             y_backprop_node = backprop_node(self.S_data.X)
-            max_dist = library.compute_distance(y_backprop_node, y_pulled)
+            max_dist = math.log2( library.compute_distance(y_backprop_node, y_pulled) + 1 )
             new_node = None
 
             check_constfit = True
@@ -76,7 +82,7 @@ class Corrector:
                           backprop_node.parent.left
                 if not is_symmetric(sibling[(self.mesh.X, ())], self.mesh.symm_Y_Ids):
                     check_constfit = False
-            
+
             if C_pulled.symm is None or C_pulled.symm[0] is None:
                 new_node = self.lib.      cquery(y_pulled, C_pulled, max_dist=max_dist, check_constfit=check_constfit)
                 self.lib_n += 1
@@ -103,7 +109,7 @@ class Corrector:
                 new_node.parent.invalidate_output()
             
             stree = new_stree
-
+        
         return new_stree, new_node, C_pulled, y_pulled_origin
     
     def backprop_know(self, stree, backprop_node, max_nesting_depth, max_nesting_length) -> constraints.BackpropConstraints:
@@ -135,4 +141,39 @@ class Corrector:
             k_none[deriv] = np.full(self.mesh.X.size, np.nan)
 
         return constraints.BackpropConstraints(max_nesting_depth, max_nesting_length, k_none, noroot_none, symm_none)
+    
+    def correct_recursive(self, stree, backprop_node=None, recurse:bool=True):
+
+        if backprop_node is None:
+            backprop_node = stree
+        try:
+            stree, new_node, C_pulled, y_pulled = self.correct(stree, backprop_node=backprop_node, relax=True)
+            stree = utils.replace_subtree(stree, new_node, backprop_node)
+            stree.set_parent()
+            dist = library.compute_distance(new_node(self.S_data.X), y_pulled)
+            #print(f"DIST {backprop_node} {library.compute_distance(backprop_node(self.S_data.X), y_pulled)}")
+
+        except BackpropError as backprop_e: dist = np.inf
+        except LibraryError as lib_e: dist = np.inf
+
+        if not recurse or dist == np.inf: return backprop_node, dist
+
+        if type(backprop_node) is UnaryOperatorSyntaxTree:
+            inner, dist_inner = self.correct_recursive(stree, backprop_node.inner, recurse=True)
+            if dist < dist_inner:
+                return backprop_node, dist
+            return self.correct_recursive(stree, inner)
         
+        if type(backprop_node) is BinaryOperatorSyntaxTree:
+            left,  dist_left  = self.correct_recursive(stree, backprop_node.left,  recurse=True)
+            right, dist_right = self.correct_recursive(stree, backprop_node.right, recurse=True)
+            if dist < dist_left and dist < dist_right:
+                return backprop_node, dist
+            if dist_left < dist_right:
+                return self.correct_recursive(stree, left)
+            if dist_right == np.inf:
+                return None, np.inf
+            return self.correct_recursive(stree, right)
+        
+        return backprop_node, dist
+    

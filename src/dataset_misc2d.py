@@ -49,4 +49,70 @@ class Resistance2(Datasetnd):
         return (x0*x1) / (x0+x1)
     
     def get_name(self) -> str:
-        return 'Resistance2'
+        return 'resistance2'
+
+
+class Keijzer14(Datasetnd):
+    def __init__(self) -> None:
+        super().__init__(xl=[-10.,-10.], xu=[10.,10.])
+        self.def_xl = np.array([-4.,-4.], dtype=float)  # partial domain definition
+        self.def_xu = np.array([ 4., 4.], dtype=float)
+        self.yl = 0.
+        self.yu = 0.
+        
+        # known positivity/negativity
+        self.knowledge.add_sign(0, self.xl, self.xu, '+')
+
+        # symmetry (w.r.t. variables).
+        self.knowledge.add_symmvars((0,1))
+        self.knowledge.add_symmvars((1,0))
+    
+    def get_varnames(self) -> dict[int,str]:
+        return {0: 'x', 1: 'y'}
+    
+    def func(self, X) -> float:
+        x = X[:,0]
+        y = X[:,1]
+        with np.errstate(divide='ignore', invalid='ignore'):
+            return 8.0 / (2.0 + x**2 + y**2)
+    
+    def get_sympy(self, evaluated:bool=False):
+        varnames = self.get_varnames()
+        x = sympy.Symbol(varnames[0])
+        y = sympy.Symbol(varnames[1])
+        return 8.0 / (2.0 + x**2 + y**2)
+    
+    def get_name(self) -> str:
+        return 'keijzer14'
+
+
+class Pagie1(Datasetnd):
+    def __init__(self) -> None:
+        super().__init__(xl=[-10.,-10.], xu=[10.,10.])
+        self.yl = 0.
+        self.yu = 2.
+        
+        # known positivity/negativity
+        self.knowledge.add_sign(0, self.xl, self.xu, '+')
+
+        # symmetry (w.r.t. variables).
+        self.knowledge.add_symmvars((0,1))
+        self.knowledge.add_symmvars((1,0))
+    
+    def get_varnames(self) -> dict[int,str]:
+        return {0: 'x', 1: 'y'}
+    
+    def func(self, X) -> float:
+        x = X[:,0]
+        y = X[:,1]
+        with np.errstate(divide='ignore', invalid='ignore'):
+            return (1.0 / (1.0 + x**(-4))) + (1.0 / (1.0 + y**(-4)))
+    
+    def get_sympy(self, evaluated:bool=False):
+        varnames = self.get_varnames()
+        x = sympy.Symbol(varnames[0])
+        y = sympy.Symbol(varnames[1])
+        return (1.0 / (1.0 + x**(-4))) + (1.0 / (1.0 + y**(-4)))
+    
+    def get_name(self) -> str:
+        return 'pagie1'

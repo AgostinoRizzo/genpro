@@ -119,13 +119,13 @@ class GP:
             self.stats = CorrectorGPStats(self.stats)
         
         if args.track_fea_front:
-            self.fea_front_tracker = MultiHeadFrontTracker(self.popsize, max_fronts=1, min_fea_ratio=0.9)
+            pass #self.fea_front_tracker = MultiHeadFrontTracker(self.popsize, max_fronts=1, min_fea_ratio=0.9)
         
     def evolve(self, newgen_callback=None) -> tuple[list[SyntaxTree], dict]:
         """
         returns best syntax tree and its evaluation.
         """
-        
+        profiling.enable()
         self._evaluate_all()
         self._on_initial_generation()
         self.stats.update(self)
@@ -144,7 +144,13 @@ class GP:
         for p in self.population:
             print(p, self.eval_map[id(p)].fea_ratio, self.eval_map[id(p)].data_r2, self.eval_map[id(p)].know_mse)
         """
+        print()
+        for p in self.population:
+            f  = "{:.2f}".format(self.eval_map[id(p)].fea_ratio)
+            r2 = "{:.2f}".format(self.eval_map[id(p)].data_eval.value)
+            print(f, r2, p)
         
+        profiling.disable()
         return self.population[0], self.eval_map[id(self.population[0])]
     
     def _on_initial_generation(self):
@@ -163,19 +169,16 @@ class GP:
             for _ in range(self.popsize - len(children)):
 
                 parents = self.selector.select(self.population, self.eval_map, 2)
-
                 child = self.crossover.cross(parents[0], parents[1])  # 100% crossover rate (child must be a new object!)
-                
+
                 if random.random() < self.mutrate:
                     child = self.mutator.mutate(child)
                 
                 if child.validate(): #TODO: and child not in children:
                     
                     child = child.simplify()
-                    #before_child_eval = self.evaluator.evaluate(child)
-                    #before_child = child.clone()
+
                     if self.corrector is not None:
-                        #profiling.enable()
                         try:
                             child, new_node, C_pulled, _ = self.corrector.correct(child)
                             child = child.simplify()
@@ -186,18 +189,14 @@ class GP:
                             self.stats.on_backprop_error(backprop_e)
                         except LibraryError as lib_e:
                             self.stats.on_library_error(lib_e)
-                        #profiling.disable()
 
                     child_eval = self.evaluator.evaluate(child)
-                    #if not child_eval.better_than(before_child_eval):
-                    #    child = before_child
-                    #    child_eval = self.evaluator.evaluate(child)
 
                     children.append(child)
                     self.eval_map[id(child)] = child_eval
 
                     if self.fea_front_tracker is not None:
-                        try: self.fea_front_tracker.track(child, (child_eval.r2, child.cache.nnodes), child_eval)
+                        try: self.fea_front_tracker.track(child, (child_eval.data_eval.value, child.cache.nnodes), child_eval)
                         except FrontDuplicateError: pass
         
         return children
@@ -245,7 +244,7 @@ class MOGP(GP):
         
         for c in children:
             c_eval = self.eval_map[id(c)]
-            try: self.fea_front_tracker.track(c, (c_eval.r2, c.cache.nnodes), c_eval)
+            try: self.fea_front_tracker.track(c, (c_eval.data_eval.value, c.cache.nnodes), c_eval)
             except FrontDuplicateError:
                 duplicates.append(c)
         

@@ -27,6 +27,9 @@ class Gravity(Datasetnd):
         self.knowledge.add_symmvars((0,1,2))
         self.knowledge.add_symmvars((1,0,2))
 
+    def get_varnames(self) -> dict[int,str]:
+        return {0: 'm1', 1: 'm2', 2: 'r'}
+    
     def func(self, X) -> float:
         x0 = X[:,0]
         x1 = X[:,1]
@@ -35,9 +38,10 @@ class Gravity(Datasetnd):
             return (6.674e-11 * x0 * x1) / (x2**2)
     
     def get_sympy(self, evaluated:bool=False):
-        x0 = sympy.Symbol('m1')
-        x1 = sympy.Symbol('m2')
-        x1 = sympy.Symbol('r')
+        varnames = self.get_varnames()
+        x0 = sympy.Symbol(varnames[0])
+        x1 = sympy.Symbol(varnames[1])
+        x2 = sympy.Symbol(varnames[2])
         return (6.674e-11 * x0 * x1) / (x2**2)
     
     def get_name(self) -> str:

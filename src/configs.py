@@ -103,6 +103,8 @@ import dataset_feynman2d
 import dataset_misc1d
 import dataset_misc2d
 import dataset_misc3d
+import dataset_miscnd
+import dataset_physics
 
 SYMBREG_BENCHMARKS = \
 [
@@ -125,4 +127,16 @@ SYMBREG_BENCHMARKS = \
     # misc 3d.
     (dataset_misc3d.Gravity    (), None),  # partial domain definition.
     (dataset_misc3d.Resistance3(), None),  # partial domain definition.
+
+    # from counterexample-driven GP.
+    (dataset_misc2d.Keijzer14(), None),  # partial domain definition.
+    # nguyen1 + nguyen3 + nguyen4 (1dim + even/odd symm).
+    (dataset_misc2d.Pagie1(), None),
+
+    # from hlab (physics).
+    (dataset_physics.AircraftLift(), None),
+    (dataset_physics.RocketFuelFlow(), None),
+
+    # from shape-constrained SR.
+    (dataset_miscnd.WavePower(), None),
 ]

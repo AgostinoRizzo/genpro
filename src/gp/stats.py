@@ -22,10 +22,12 @@ class GPStats:
 
 
 class QualitiesGPStats(GPStats):
-    def __init__(self, min_qual:float, max_qual:float, qual_name:str, next=None):
+    def __init__(self, best_qual:float, worst_qual:float, qual_name:str, next=None):
         super().__init__(next)
-        self.min_qual = min_qual
-        self.max_qual = max_qual
+        assert best_qual != worst_qual
+        self.best_qual = best_qual
+        self.worst_qual = worst_qual
+        self.minimize = self.best_qual < self.worst_qual
         self.qual_name = qual_name
         self.best = None
         self.best_eval = None
@@ -36,23 +38,35 @@ class QualitiesGPStats(GPStats):
 
         population = gp.population
         eval_map = gp.eval_map
-        currBest  = 0.0
+        currBest  = self.worst_qual
+        currWorst = self.best_qual
         currAvg   = 0.0
-        currWorst = 1.0
+        count = 0
 
         for stree in population:
-            stree_eval = eval_map[id(stree)]
+            stree_eval = eval_map[id(stree)].get_quality()
             stree_eval_value = stree_eval.get_value()
+
+            if  (self.minimize     and stree_eval_value > self.worst_qual) or \
+                (not self.minimize and stree_eval_value < self.worst_qual):
+                stree_eval_value = self.worst_qual
             
-            currBest   = max(currBest, stree_eval_value)
-            currAvg   += stree_eval_value
-            currWorst  = min(currWorst, stree_eval_value)
+            if np.isfinite(stree_eval_value):
+                if self.minimize:
+                    currBest   = min(currBest, stree_eval_value)
+                    currWorst  = max(currWorst, stree_eval_value)
+                else:
+                    currBest   = max(currBest, stree_eval_value)
+                    currWorst  = min(currWorst, stree_eval_value)
+                currAvg += stree_eval_value
+                count += 1
 
             if self.best is None or stree_eval.better_than(self.best_eval):
                 self.best = stree
                 self.best_eval = stree_eval
 
-        currAvg /= len(population)
+        if count > 0: currAvg /= count
+        else: currAvg = np.nan
 
         self.qualities['currBest' ].append(currBest)    
         self.qualities['currAvg'  ].append(currAvg)
@@ -66,7 +80,6 @@ class QualitiesGPStats(GPStats):
             plt.plot(qseries, label=quality)
 
         plt.legend()
-        plt.ylim((self.min_qual-0.01, self.max_qual+0.01))
         plt.xlabel('Generation')
         plt.ylabel(self.qual_name)
         plt.title('Qualities')

@@ -201,8 +201,10 @@ class BinaryOperatorSyntaxTree(SyntaxTree):
             pull_left = False
         else:
             raise RuntimeError('Invalid child.')
-        k_A = np.sign(A.y_know[()])  # TODO: never used!
-        k_B = np.sign(B.y_know[()])
+        B_y_know = B.y_know[()]
+        if np.isnan(B_y_know).any():
+            raise KnowBackpropError
+        k_B = np.sign(B_y_know)
         
         k_target = k_pulled
         noroot_target = noroot_pulled

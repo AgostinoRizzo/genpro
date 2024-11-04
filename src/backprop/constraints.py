@@ -34,11 +34,11 @@ class BackpropConstraints(Constraints):
         self.all_monotonic_pconstr = True
         for deriv, k in self.origin_pconstrs.items():
             k_vals = k[~np.isnan(k)]
-            if (k_vals > 0.0).all(): self.monotonic_pconstr[deriv] =  1.0
-            if (k_vals < 0.0).all(): self.monotonic_pconstr[deriv] = -1.0
+            if   (k_vals > 0.0).all() and k_vals.size > 0: self.monotonic_pconstr[deriv] =  1.0
+            elif (k_vals < 0.0).all() and k_vals.size > 0: self.monotonic_pconstr[deriv] = -1.0
             else:
                 self.monotonic_pconstr[deriv] = 0.0
-                self.all_monotonic_pconstr = False
+                if k_vals.size > 0: self.all_monotonic_pconstr = False
     
     def get_key(self) -> tuple:
         return self.key
@@ -76,7 +76,7 @@ class BackpropConstraints(Constraints):
         if not self.all_monotonic_pconstr or (c == 0.0 and self.noroot):
             return False
         image_sign = self.monotonic_pconstr[()]
-        return (image_sign > 0.0 and c > 0.0) or (image_sign < 0.0 and c < 0.0)  # formally, image_sign*c > 0
+        return image_sign == 0 or (image_sign > 0.0 and c > 0.0) or (image_sign < 0.0 and c < 0.0)  # formally, image_sign*c > 0
     
     def __str__(self) -> str:
         out = ''
