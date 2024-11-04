@@ -278,14 +278,14 @@ class DataLengthFrontTracker:
             if len(f) > 0: return False
         return True
     
-    def plot(self, data_lu:tuple[float,float], length_lu:tuple[float,float], frontidx:int=-1):
+    def plot(self, data_lu:tuple[float,float], length_lu:tuple[float,float], frontids:list):
         
         def fcmp(a, b):
             return a[1] - b[1]
         
         plt.figure(figsize=(5,5))
         
-        for frontidx in range(len(self.front)) if frontidx < 0 else range(frontidx, frontidx + 1):
+        for frontidx in range(len(self.front)) if len(frontids) == 0 else frontids:
             
             front = sorted(self.front[frontidx], key=cmp_to_key(fcmp))
             if len(front) == 0: continue

@@ -15,7 +15,7 @@ from backprop import bpropagator
 from backprop import project
 from backprop.bperrors import BackpropError
 from backprop.library import LibraryError
-from backprop.pareto_front import MultiHeadFrontTracker, FrontDuplicateError
+from backprop.pareto_front import DataLengthFrontTracker, MultiHeadFrontTracker, FrontDuplicateError
 from gp import utils, creator, evaluation, evaluator, selector, crossover, mutator, corrector
 from gp.stats import CorrectorGPStats
 
@@ -119,7 +119,7 @@ class GP:
             self.stats = CorrectorGPStats(self.stats)
         
         if args.track_fea_front:
-            pass #self.fea_front_tracker = MultiHeadFrontTracker(self.popsize, max_fronts=1, min_fea_ratio=0.9)
+            self.fea_front_tracker = MultiHeadFrontTracker(self.popsize, max_fronts=1, min_fea_ratio=0.9)
         
     def evolve(self, newgen_callback=None) -> tuple[list[SyntaxTree], dict]:
         """
@@ -222,13 +222,9 @@ class GP:
 
 class MOGP(GP):
     def __init__(self, args:GPSettings):
-        args.track_fea_front = False
         super().__init__(args)
         self.elitism = 0
-        self.fea_fronts_size = 0
-
-        self.fea_front_tracker = MultiHeadFrontTracker(self.popsize)
-        assert type(self.evaluator) is evaluator.LayeredEvaluator
+        self.front_tracker = DataLengthFrontTracker(self.popsize)
     
     def _on_initial_generation(self):
         self.__update_population_from_fronts(self.population)
@@ -244,16 +240,13 @@ class MOGP(GP):
         
         for c in children:
             c_eval = self.eval_map[id(c)]
-            try: self.fea_front_tracker.track(c, (c_eval.data_eval.value, c.cache.nnodes), c_eval)
+            try: self.front_tracker.track(c, (c_eval.data_eval.value, c.cache.nnodes), c_eval)
             except FrontDuplicateError:
                 duplicates.append(c)
         
-        populations = self.fea_front_tracker.get_populations()
-        self.population = []
-        for h, p in populations:
-            for stree in p:
-                self.eval_map[id(stree)] = self.fea_front_tracker.heads[h].eval_map[id(stree)]
-            self.population += p
+        self.population = self.front_tracker.get_population(self.popsize)
+        for stree in self.population:
+            self.eval_map[id(stree)] = self.front_tracker.eval_map[id(stree)]
         
         remaining = self.popsize - len(self.population)
         if remaining > 0:
