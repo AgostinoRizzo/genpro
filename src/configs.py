@@ -138,5 +138,12 @@ SYMBREG_BENCHMARKS = \
     (dataset_physics.RocketFuelFlow(), None),
 
     # from shape-constrained SR.
-    (dataset_miscnd.WavePower(), None),
+    (dataset_miscnd.WavePower            (), None),
+    (dataset_feynman2d.FeynmanICh6Eq20   (), None),
+    (dataset_feynman2d.FeynmanICh41Eq16  (), None),
+    (dataset_feynman2d.FeynmanICh48Eq20  (), None),
+    (dataset_feynman2d.FeynmanIICh6Eq15a (), None),
+    (dataset_feynman2d.FeynmanIICh11Eq27 (), None),
+    (dataset_feynman2d.FeynmanIICh11Eq28 (), None),
+    (dataset_feynman2d.FeynmanIIICh10Eq19(), None),
 ]

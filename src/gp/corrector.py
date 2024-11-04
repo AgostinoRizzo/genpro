@@ -73,7 +73,7 @@ class Corrector:
             C_pulled.project(y_pulled)
             
             y_backprop_node = backprop_node(self.S_data.X)
-            max_dist = math.log2( library.compute_distance(y_backprop_node, y_pulled) + 1 )
+            max_dist = library.compute_distance(y_backprop_node, y_pulled)
             new_node = None
 
             check_constfit = True
@@ -177,3 +177,28 @@ class Corrector:
         
         return backprop_node, dist
     
+    def select_backprop_node(self, stree):
+        stree.cache.clear()
+        stree.set_parent()
+
+        backprop_nodes = stree.cache.backprop_nodes
+        if len(backprop_nodes) == 0:
+            raise bperrors.NoBackpropPathError()
+        
+        max_dist = 0
+        max_dist_backprop_node = None
+
+        y = stree(self.S_data.X)  # needed for 'pull_output'.
+
+        for backprop_node in backprop_nodes:
+
+            # backprop data...
+            y_pulled = backprop_node.pull_output(self.S_data.y)
+            y_backprop_node = backprop_node(self.S_data.X)
+            dist = library.compute_distance(y_backprop_node, y_pulled)
+
+            if dist > max_dist:
+                max_dist_backprop_node = backprop_node
+                max_dist = dist
+        
+        return max_dist_backprop_node

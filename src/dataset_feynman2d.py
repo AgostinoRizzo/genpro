@@ -2,33 +2,31 @@ import numpy as np
 import sympy
 import dataset
 
-SPEED_OF_LIGHT = 2.99792458e8
-PLANCK_CONSTANT = 6.626e-34
-ELECTRIC_CONSTANT = 8.854e-12
-
 
 class FeynmanICh6Eq20(dataset.Datasetnd):
     def __init__(self) -> None:
-        super().__init__(xl=[-1.,0.0001], xu=[1.,1.])
+        super().__init__(xl=[1.,1.], xu=[3.,3.])
         self.yl = 0.
-        self.yu = 2.
+        self.yu = np.inf
         
         # known positivity/negativity
         self.knowledge.add_sign(0, self.xl, self.xu, '+')
     
         # monotonically increasing/decreasing
-        self.knowledge.add_sign((0,), [0., 0.], self.xu, '-')
-        self.knowledge.add_sign((0,), [self.xl[0], 0.], [0., self.xu[1]], '+')
+        self.knowledge.add_sign((1,), self.xl, self.xu, '-')
 
     def func(self, X) -> float:
-        x0 = X[:,0]
-        x1 = X[:,1]
-        return np.exp(-(x0/x1)**2 / 2.0) / (np.sqrt(2.0 * np.pi) * x1)
+        sigma = X[:,0]
+        theta = X[:,1]
+        return np.exp(-(theta/sigma)**2 / 2.0) / (np.sqrt(2.0 * np.pi) * sigma)
     
     def get_sympy(self, evaluated:bool=False):
-        x0 = sympy.Symbol('theta')
-        x1 = sympy.Symbol('sigma')
-        return sympy.exp(-(x0/x1)**2 / 2.0) / (sympy.sqrt(2.0 * sympy.pi) * x1)
+        sigma = sympy.Symbol('sigma')
+        theta = sympy.Symbol('theta')
+        return sympy.exp(-(theta/sigma)**2 / 2.0) / (sympy.sqrt(2.0 * sympy.pi) * sigma)
     
     def get_name(self) -> str:
         return 'feynman-i.6.20'
+    
+    def get_varnames(self) -> dict[int,str]:
+        return {0: 'sigma', 1: 'theta'}

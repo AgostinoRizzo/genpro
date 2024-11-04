@@ -536,8 +536,7 @@ class Dataset:
         return ''
     
     def get_xlabel(self, xidx:int=0) -> str:
-        if self.nvars == 1: return 'x'
-        return f"x{xidx}"
+        return self.get_varnames()[xidx]
 
     def get_ylabal(self) -> str:
         return 'y'
