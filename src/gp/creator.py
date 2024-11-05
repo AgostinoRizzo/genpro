@@ -124,8 +124,13 @@ class PTC2RandomSolutionCreator(SolutionCreator):
     def create_population(self, popsize:int, max_depth:int, max_length:int, create_consts:bool=True, parent_opt:str=None) -> list[SyntaxTree]:
         assert popsize > 0 and max_depth >= 0 and max_length > 0
         population = []
-        for _ in range(popsize):
+        population_set = set()
+        while len(population) < popsize:
             target_len = random.randint(1, max_length)
             stree = ptc2(target_len, max_depth, self.cl, self.cu, self.nvars, create_consts, parent_opt, const_prob=self.const_prob)
-            population.append(stree.simplify() if self.simplify else stree)
+            stree = stree.simplify() if self.simplify else stree
+            stree_hash = stree.get_hash()
+            if stree_hash not in population_set:
+                population.append(stree)
+                population_set.add(stree_hash)
         return population

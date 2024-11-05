@@ -7,6 +7,7 @@ from dataclasses import dataclass
 
 import dataset
 from symbols.syntax_tree import SyntaxTree
+from symbols.const import ConstantSyntaxTree
 from symbols.binop import BinaryOperatorSyntaxTree
 from symbols.unaop import UnaryOperatorSyntaxTree
 from symbols.misc  import UnknownSyntaxTree
@@ -114,6 +115,7 @@ class GP:
         self.stats      = args.evaluator.create_stats()
         self.genidx     = 0
         self.fea_front_tracker = None
+        self.visualizer = None
 
         if self.corrector is not None:
             self.stats = CorrectorGPStats(self.stats)
@@ -129,7 +131,7 @@ class GP:
         self._evaluate_all()
         self._on_initial_generation()
         self.stats.update(self)
-        
+
         for self.genidx in range(1, self.ngen):
 
             if newgen_callback is not None:
@@ -144,17 +146,20 @@ class GP:
         for p in self.population:
             print(p, self.eval_map[id(p)].fea_ratio, self.eval_map[id(p)].data_r2, self.eval_map[id(p)].know_mse)
         """
-        print()
+        """print()
         for p in self.population:
             f  = "{:.2f}".format(self.eval_map[id(p)].fea_ratio)
             r2 = "{:.2f}".format(self.eval_map[id(p)].data_eval.value)
-            print(f, r2, p)
+            print(f, r2, p)"""
         
         profiling.disable()
         return self.population[0], self.eval_map[id(self.population[0])]
     
     def _on_initial_generation(self):
         self.population = utils.sort_population(self.population, self.eval_map)
+        if self.visualizer is not None:
+            for p in self.population:
+                self.visualizer.track(p, 'Initial population')
         
     def _evaluate_all(self):
         self.eval_map.clear()
@@ -177,18 +182,26 @@ class GP:
                 if child.validate(): #TODO: and child not in children:
                     
                     child = child.simplify()
+                    
+                    if self.visualizer is not None:
+                        self.visualizer.track(child, 'After Crossover/Mutation')
 
                     if self.corrector is not None:
+                        
                         try:
-                            child, new_node, C_pulled, _ = self.corrector.correct(child)
-                            child = child.simplify()
-                            
-                            self.stats.on_correction(C_pulled)
+                            corrected_child, new_node, C_pulled, _ = self.corrector.correct(child)
+                            corrected_child = corrected_child.simplify()
+                            if type(corrected_child) is not ConstantSyntaxTree:
+                                child = corrected_child
+                                self.stats.on_correction(C_pulled)
 
                         except BackpropError as backprop_e:
                             self.stats.on_backprop_error(backprop_e)
                         except LibraryError as lib_e:
                             self.stats.on_library_error(lib_e)
+
+                    if self.visualizer is not None:
+                        self.visualizer.track(child, 'After Correction')
 
                     child_eval = self.evaluator.evaluate(child)
 

@@ -88,6 +88,9 @@ class UnaryOperatorSyntaxTree(SyntaxTree):
             self.operator == other.operator and \
             self.inner == other.inner
     
+    def get_hash(self):
+        return hash((self.inner.get_hash(), self.operator))
+    
     """
     def diff(self, varidx:int=0) -> SyntaxTree:
         if self.is_const_wrt(varidx):

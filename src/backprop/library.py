@@ -141,7 +141,7 @@ class Library:
             X_extra = []
             for x_val in [0.0, 1.0, -1.0]:
                 x = [x_val] * data.nvars
-                if (x >= data.xl).all() and (x <= data.xu).all():
+                if np.greater_equal(x, data.xl).all() and np.less_equal(x, data.xu).all():
                     X_extra.append(x)
             X_extra = np.array(X_extra)
 

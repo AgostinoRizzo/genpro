@@ -36,6 +36,9 @@ class VariableSyntaxTree(SyntaxTree):
         if type(other) is not VariableSyntaxTree: return False
         return self.idx == other.idx
     
+    def get_hash(self):
+        return hash(self.idx)
+    
     def at(self, x):
         return x[:,self.idx] if x.ndim == 2 else x
     

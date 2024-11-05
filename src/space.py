@@ -74,8 +74,8 @@ class MultidimSpaceSampler(SpaceSampler):
 
 
 class MeshSpace:
-    def __init__(self, data, know, mesh_size:int):
-        self.X = data.spsampler.meshspace(data.xl, data.xu, mesh_size)
+    def __init__(self, data, know, mesh_size:int, datamesh:bool=False):
+        self.X = data.X if datamesh else data.spsampler.meshspace(data.xl, data.xu, mesh_size)
         self.symm_Y_Ids = None
         
         if know.has_symmvars():

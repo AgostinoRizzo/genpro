@@ -116,6 +116,9 @@ class BinaryOperatorSyntaxTree(SyntaxTree):
             self.operator == other.operator and \
             self.left == other.left and self.right == other.right
     
+    def get_hash(self):
+        return hash((self.left.get_hash(), self.operator, self.right.get_hash()))
+    
     """
     def diff(self, varidx:int=0) -> SyntaxTree:
         if self.is_const_wrt(varidx):

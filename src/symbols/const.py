@@ -44,6 +44,9 @@ class ConstantSyntaxTree(SyntaxTree):
         if type(other) is not ConstantSyntaxTree: return False
         return self.val == other.val or np.isnan(self.val) and np.isnan(other.val)
     
+    def get_hash(self):
+        return hash(self.val)
+    
     def diff(self, varidx:int=0) -> SyntaxTree:
         return ConstantSyntaxTree(0.0)
     
