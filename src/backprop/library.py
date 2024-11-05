@@ -137,11 +137,13 @@ class Library:
 
         if ext_strees is None:
             extra_trees = size
-            X_extra = np.array([
-                [ 0.0] * data.nvars,
-                [ 1.0] * data.nvars,
-                [-1.0] * data.nvars,
-            ])
+
+            X_extra = []
+            for x_val in [0.0, 1.0, -1.0]:
+                x = [x_val] * data.nvars
+                if (x >= data.xl).all() and (x <= data.xu).all():
+                    X_extra.append(x)
+            X_extra = np.array(X_extra)
 
             def_st_idx = np.full(data.X.shape[0], True, dtype=bool)
             def_st_extra_idx = np.full(X_extra.shape[0], True, dtype=bool)
@@ -151,7 +153,8 @@ class Library:
                 if know.is_undef_at(X_extra[i]): def_st_extra_idx[i] = False
 
             all_semantics = {}
-            max_trials = 1
+            std_min = data.y.std() * 0.001  # at least 1% of the variance of the dataset.
+            max_trials = 2
             ntrials = 0
 
             while extra_trees > 0 and ntrials < max_trials:
@@ -164,10 +167,6 @@ class Library:
                     st = t(data.X)
                     st_extra = t.at(X_extra)
                     st_key = tuple(st.tolist())
-
-                    """if (st <= 0.).any():
-                        extra_trees += 1
-                        continue"""
                     
                     if symm is not None and symm != is_symmetric(t[(mesh.X, ())], mesh.symm_Y_Ids):
                         extra_trees += 1
@@ -182,7 +181,7 @@ class Library:
                         extra_trees += 1
                         continue
                     
-                    if st.std() < 0.0001:
+                    if st.std() < std_min:
                         extra_trees += 1
                         continue
                     
