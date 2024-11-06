@@ -129,6 +129,8 @@ class PTC2RandomSolutionCreator(SolutionCreator):
             target_len = random.randint(1, max_length)
             stree = ptc2(target_len, max_depth, self.cl, self.cu, self.nvars, create_consts, parent_opt, const_prob=self.const_prob)
             stree = stree.simplify() if self.simplify else stree
+            if not create_consts and type(stree) is ConstantSyntaxTree:
+                continue
             stree_hash = stree.get_hash()
             if stree_hash not in population_set:
                 population.append(stree)

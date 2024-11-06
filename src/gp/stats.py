@@ -16,6 +16,14 @@ class GPStats:
         if self.next is not None:
             self.next.update(gp)
     
+    def get_qualities_stats(self):
+        if self.next is not None:
+            return self.next.get_qualities_stats()
+    
+    def get_feasibility_stats(self):
+        if self.next is not None:
+            return self.next.get_feasibility_stats()
+    
     def plot(self):
         if self.next is not None:
             self.next.plot()
@@ -73,6 +81,9 @@ class QualitiesGPStats(GPStats):
         self.qualities['currWorst'].append(currWorst)
         #self.qualities['best'     ].append(self.bests_eval_map[id(self.bests[0])].get_value())
 
+    def get_qualities_stats(self):
+        return self
+    
     def plot(self):
         super().plot()
 
@@ -116,6 +127,9 @@ class FeasibilityGPStats(GPStats):
         self.fea_ratio['currWorst'].append(fea_ratio_worst)
         #self.fea_ratio['best'     ].append(self.bests_eval_map[id(self.bests[0])].fea_ratio)
 
+    def get_feasibility_stats(self):
+        return self
+    
     def plot(self):
         super().plot()
 

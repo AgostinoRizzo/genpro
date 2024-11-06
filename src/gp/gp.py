@@ -233,7 +233,7 @@ class GP:
         self.eval_map = new_eval_map
 
 
-class MOGP(GP):
+"""class MOGP(GP):
     def __init__(self, args:GPSettings):
         super().__init__(args)
         self.elitism = 0
@@ -260,6 +260,48 @@ class MOGP(GP):
         self.population = self.front_tracker.get_population(self.popsize)
         for stree in self.population:
             self.eval_map[id(stree)] = self.front_tracker.eval_map[id(stree)]
+        
+        remaining = self.popsize - len(self.population)
+        if remaining > 0:
+            self.population += utils.sort_population(duplicates, self.eval_map)[:remaining]
+        
+        assert len(self.population) == self.popsize"""
+
+
+class MOGP(GP):
+    def __init__(self, args:GPSettings):
+        args.track_fea_front = False
+        super().__init__(args)
+        self.elitism = 0
+        self.fea_fronts_size = 0
+
+        self.fea_front_tracker = MultiHeadFrontTracker(self.popsize)
+        assert type(self.evaluator) is evaluator.LayeredEvaluator
+    
+    def _on_initial_generation(self):
+        self.__update_population_from_fronts(self.population)
+    
+    def _replace(self, children:list[SyntaxTree]):
+        self.__update_population_from_fronts(children)
+
+        # update evaluation map based on new population.
+        self._update_evaluation()
+
+    def __update_population_from_fronts(self, children:list[SyntaxTree]):
+        duplicates = []
+        
+        for c in children:
+            c_eval = self.eval_map[id(c)]
+            try: self.fea_front_tracker.track(c, (c_eval.data_eval.value, c.cache.nnodes), c_eval)
+            except FrontDuplicateError:
+                duplicates.append(c)
+        
+        populations = self.fea_front_tracker.get_populations()
+        self.population = []
+        for h, p in populations:
+            for stree in p:
+                self.eval_map[id(stree)] = self.fea_front_tracker.heads[h].eval_map[id(stree)]
+            self.population += p
         
         remaining = self.popsize - len(self.population)
         if remaining > 0:

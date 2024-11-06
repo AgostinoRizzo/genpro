@@ -8,6 +8,9 @@ class SpaceVisualizerDataset(Dataset1d):
         super().__init__(xl=-5., xu=5.)
         assert len(optimal_y) == 2
 
+        self.yl = -5.
+        self.yu =  5.
+
         # known positivity/negativity
         self.knowledge.add_sign(0, self.xl, self.xu, '+')
     
@@ -16,6 +19,9 @@ class SpaceVisualizerDataset(Dataset1d):
 
         self.data.append(DataPoint(-2., optimal_y[0]))
         self.data.append(DataPoint( 3., optimal_y[1]))
+    
+    def func(self, x: float) -> float:
+        return np.exp(0.3*x)
 
 
 class SpaceVisualizer:

@@ -66,19 +66,21 @@ for S, datafile in SYMBREG_BENCHMARKS:
             best_stree.clear_output()
 
             best_test_eval = symbreg_config.test_evaluator.evaluate(best_stree)
+            qualities_stats = symb_regressor.stats.get_qualities_stats()
+            fesibility_stats = symb_regressor.stats.get_feasibility_stats()
 
             perftable.append([
                 S.get_name(),  # Problem
                 data_conf,  # Config
                 constrained,  # Constrained
-                best_eval.r2,  # Train-R2
-                best_test_eval.r2,  # Test-R2
+                best_eval.data_eval.value,  # Train-R2
+                best_test_eval.data_eval.value,  # Test-R2
                 best_eval.fea_ratio,  # Fea-Ratio
                 extra_eval['r2'],  # Extra-R2
-                max(symb_regressor.stats.qualities['currAvg']),    # BestAvg-Train-R2
-                max(symb_regressor.stats.qualities['currWorst']),  # BestWorst-Train-R2
-                max(symb_regressor.stats.fea_ratio['currAvg']),    # BestAvg-Fea-Ratio
-                max(symb_regressor.stats.fea_ratio['currWorst']),  # BestWorst-Fea-Ratio
+                max(qualities_stats.qualities['currAvg']),    # BestAvg-Train-R2
+                max(qualities_stats.qualities['currWorst']),  # BestWorst-Train-R2
+                max(fesibility_stats.fea_ratio['currAvg']),    # BestAvg-Fea-Ratio
+                max(fesibility_stats.fea_ratio['currWorst']),  # BestWorst-Fea-Ratio
                 best_stree.cache.nnodes,  # Size
                 end_time - start_time,  # Time
                 str(best_stree.simplify())  # Model

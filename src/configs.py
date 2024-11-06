@@ -1,4 +1,5 @@
 import dataset
+import space
 from gp import gp
 from gp import creator as gp_creator
 from gp import evaluator as gp_evaluator, selector as gp_selector
@@ -14,7 +15,7 @@ class SymbregConfig:
 
 
 class GPConfig(SymbregConfig):
-    SAMPLE_SIZE        = 20
+    SAMPLE_SIZE        = 100
     SAMPLE_TRAIN_SIZE  = 0.5
     DATASET_TRAIN_SIZE = 0.7
     NOISE              = 0.05
@@ -28,7 +29,7 @@ class GPConfig(SymbregConfig):
     MUTATION_RATE    = 0.15
     ELITISM          = 1
 
-    LIBSIZE       = 2000
+    LIBSIZE       = 10000
     LIB_MAXDEPTH  = 3
     LIB_MAXLENGTH = 10
 
@@ -64,10 +65,8 @@ class GPConfig(SymbregConfig):
         know_evaluator      = gp_evaluator.KnowledgeEvaluator(self.S.knowledge, mesh)
         r2_evaluator        = gp_evaluator.R2Evaluator(self.S_train)
         r2_test_evaluator   = gp_evaluator.R2Evaluator(self.S_test)
-        self.evaluator      = gp_evaluator.LayeredEvaluator(know_evaluator, r2_evaluator) if constrained else \
-                              gp_evaluator.UnconstrainedLayeredEvaluator(know_evaluator, r2_evaluator)
-        self.test_evaluator = gp_evaluator.LayeredEvaluator(know_evaluator, r2_test_evaluator) if constrained else \
-                              gp_evaluator.UnconstrainedLayeredEvaluator(know_evaluator, r2_test_evaluator)
+        self.evaluator      = gp_evaluator.LayeredEvaluator(know_evaluator, r2_evaluator, know_pressure=(1.0 if constrained else 0.0))
+        self.test_evaluator = gp_evaluator.LayeredEvaluator(know_evaluator, r2_test_evaluator, know_pressure=(1.0 if constrained else 0.0))
 
         self.selector  = gp_selector.TournamentSelector(GPConfig.GROUP_SIZE)
         self.crossover = gp_crossover.SubTreeCrossover(GPConfig.MAX_STREE_DEPTH, GPConfig.MAX_STREE_LENGTH)
@@ -100,6 +99,7 @@ class GPConfig(SymbregConfig):
 
 import dataset_feynman1d
 import dataset_feynman2d
+import dataset_feynmannd
 import dataset_misc1d
 import dataset_misc2d
 import dataset_misc3d
@@ -111,39 +111,39 @@ SYMBREG_BENCHMARKS = \
     # problem, dataset filename (sampled data if None)
 
     # feynman 1d (partial domain definition for all).
-    (dataset_feynman1d.FeynmanICh6Eq20a (), None),
-    (dataset_feynman1d.FeynmanICh29Eq4  (), None),  # can be remove x/speed_of_light (same as FeynmanICh34Eq27)
-    (dataset_feynman1d.FeynmanICh34Eq27 (), None),
-    (dataset_feynman1d.FeynmanIICh8Eq31 (), None),
-    (dataset_feynman1d.FeynmanIICh27Eq16(), None),  # almost same as FeynmanIICh8Eq31 but less "scaling" needed
+    #(dataset_feynman1d.FeynmanICh6Eq20a (), None),
+    #(dataset_feynman1d.FeynmanICh29Eq4  (), None),  # can be remove x/speed_of_light (same as FeynmanICh34Eq27)
+    #(dataset_feynman1d.FeynmanICh34Eq27 (), None),
+    #(dataset_feynman1d.FeynmanIICh8Eq31 (), None),
+    #(dataset_feynman1d.FeynmanIICh27Eq16(), None),  # almost same as FeynmanIICh8Eq31 but less "scaling" needed
     
     # misc 1d.
     (dataset_misc1d.MagmanDatasetScaled(), None),  # partial domain definition.
     (dataset_misc1d.MagmanDatasetScaled(), 'data/magman.csv'),
 
     # misc 2d.
-    (dataset_misc2d.Resistance2(), None),  # partial domain definition.
+    #(dataset_misc2d.Resistance2(), None),  # partial domain definition.
 
     # misc 3d.
     (dataset_misc3d.Gravity    (), None),  # partial domain definition.
     (dataset_misc3d.Resistance3(), None),  # partial domain definition.
 
     # from counterexample-driven GP.
-    (dataset_misc2d.Keijzer14(), None),  # partial domain definition.
+    #(dataset_misc2d.Keijzer14(), None),  # partial domain definition.
     # nguyen1 + nguyen3 + nguyen4 (1dim + even/odd symm).
-    (dataset_misc2d.Pagie1(), None),
+    #(dataset_misc2d.Pagie1(), None),
 
     # from hlab (physics).
     (dataset_physics.AircraftLift(), None),
     (dataset_physics.RocketFuelFlow(), None),
 
     # from shape-constrained SR.
-    (dataset_miscnd.WavePower            (), None),
+    #(dataset_miscnd.WavePower            (), None),
     (dataset_feynman2d.FeynmanICh6Eq20   (), None),
-    (dataset_feynman2d.FeynmanICh41Eq16  (), None),
-    (dataset_feynman2d.FeynmanICh48Eq20  (), None),
-    (dataset_feynman2d.FeynmanIICh6Eq15a (), None),
-    (dataset_feynman2d.FeynmanIICh11Eq27 (), None),
-    (dataset_feynman2d.FeynmanIICh11Eq28 (), None),
-    (dataset_feynman2d.FeynmanIIICh10Eq19(), None),
+    (dataset_feynmannd.FeynmanICh41Eq16  (), None),
+    (dataset_feynmannd.FeynmanICh48Eq20  (), None),
+    (dataset_feynmannd.FeynmanIICh6Eq15a (), None),
+    (dataset_feynmannd.FeynmanIICh11Eq27 (), None),
+    (dataset_feynmannd.FeynmanIICh11Eq28 (), None),
+    (dataset_feynmannd.FeynmanIIICh10Eq19(), None),
 ]

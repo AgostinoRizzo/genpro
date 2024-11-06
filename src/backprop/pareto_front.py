@@ -324,7 +324,7 @@ class DataLengthFrontTracker:
         yu += y_margin
 
         #plt.colorbar()
-        plt.xlabel('R2-score')
+        plt.xlabel('R²-score')
         plt.ylabel('Length')
         plt.xlim((xl, xu))
         plt.ylim((yl, yu))
