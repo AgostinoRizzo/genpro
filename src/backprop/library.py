@@ -120,6 +120,9 @@ class LibraryError(RuntimeError):
 class LibraryLookupError(LibraryError):
     pass
 
+class LibraryKnowledgeLookupError(LibraryError):
+    pass
+
 
 class Library:
     def __init__(self, size:int, max_depth:int, max_length:int, data, know, solutionCreator, mesh=None, symm:bool=None, ext_strees:list=None):
@@ -503,6 +506,8 @@ class HierarchicalConstrainedLibrary(Library):
             k_t = np.concatenate( [np.sign(t[(mesh.X, d)]) for d in sorted(derivs)] )
             t_extra = t.at(X_extra)
             t.clear_output()
+
+            k_t_image[~mesh.sign_defspace[()]] = np.nan
 
             noroot = (k_t_image[def_k_t_image_idx] != 0.0).all() and \
                      (t_extra[def_k_t_extra_idx] != 0.0).all() and \

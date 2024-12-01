@@ -1,7 +1,7 @@
 import random
 import numpy as np
 import math
-from backprop import library, constraints
+from backprop import library, clibrary, constraints
 from backprop import bperrors
 from backprop.utils import is_symmetric
 from gp import utils
@@ -11,6 +11,8 @@ from symbols.grammar import can_nest
 
 from backprop.bperrors import BackpropError
 from backprop.library import LibraryError
+
+import profiling
 
 
 class Corrector:
@@ -29,11 +31,13 @@ class Corrector:
                 self.S_know_derivs[deriv] = know.synth_dataset(mesh.X, deriv=deriv)
 
         derivs = [()] + list(self.S_know_derivs.keys())
+        profiling.enable()
         if know.has_symmvars():
-            self.symm_lib  = library.HierarchicalConstrainedLibrary(libsize, lib_maxdepth, lib_maxlength, S_data, know, mesh, derivs, solutionCreator, True)
-            self.asymm_lib = library.HierarchicalConstrainedLibrary(libsize, lib_maxdepth, lib_maxlength, S_data, know, mesh, derivs, solutionCreator, False)
-        self.lib = library.HierarchicalConstrainedLibrary(libsize, lib_maxdepth, lib_maxlength, S_data, know, mesh, derivs, solutionCreator)
-        
+            self.symm_lib  = clibrary.ConstrainedLibrary(libsize, lib_maxdepth, lib_maxlength, S_data, know, mesh, derivs, solutionCreator, True)
+            self.asymm_lib = clibrary.ConstrainedLibrary(libsize, lib_maxdepth, lib_maxlength, S_data, know, mesh, derivs, solutionCreator, False)
+        self.lib = clibrary.ConstrainedLibrary(libsize, lib_maxdepth, lib_maxlength, S_data, know, mesh, derivs, solutionCreator)
+        profiling.disable()
+
         """print(f"SYMM SIZE: {len(self.symm_lib.stree_index)}")
         for i in range(10): print(self.symm_lib.stree_index[i])
         print(f"ASYMM SIZE: {len(self.asymm_lib.stree_index)}")
@@ -144,12 +148,20 @@ class Corrector:
         image_track = {}
         symm = None if self.mesh.symm_Y_Ids is None else (True, self.mesh.symm_Y_Ids)
         k_image_pulled, noroot_pulled, symm_pulled = backprop_node.pull_know(self.S_know.y, symm_target=symm, track=image_track)
+        
+        # overloading...
+        overload_ids = np.isnan(k_image_pulled) & self.mesh.sign_defspace[()]
+        k_image_pulled[overload_ids] = np.sign(backprop_node.y_know[()])[overload_ids]
         k_pulled[()] = k_image_pulled
 
         # backprop derivative knowledge.
         for deriv, S_know_deriv in self.S_know_derivs.items():
             stree[(S_know_deriv.X, deriv)]  # needed for 'pull_know_deriv'.
             k_deriv_pulled = backprop_node.pull_know_deriv(image_track, deriv[0], S_know_deriv.y)
+
+            # overloading...
+            overload_ids = np.isnan(k_deriv_pulled) & self.mesh.sign_defspace[deriv]
+            k_deriv_pulled[overload_ids] = np.sign(backprop_node.y_know[deriv])[overload_ids]
             k_pulled[deriv] = k_deriv_pulled
 
         return constraints.BackpropConstraints(max_nesting_depth, max_nesting_length, k_pulled, noroot_pulled, symm_pulled)

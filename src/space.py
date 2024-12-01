@@ -77,6 +77,7 @@ class MeshSpace:
     def __init__(self, data, know, mesh_size:int, datamesh:bool=False):
         self.X = data.X if datamesh else data.spsampler.meshspace(data.xl, data.xu, mesh_size)
         self.symm_Y_Ids = None
+        self.sign_defspace = {}
         
         if know.has_symmvars():
             self.symm_Y_Ids = []
@@ -88,7 +89,19 @@ class MeshSpace:
                     if idx < 0: raise RuntimeError('X_mesh is not a mesh.')
                     symm_Y_Ids_row.append(idx)
                 self.symm_Y_Ids.append(symm_Y_Ids_row)
-            self.symm_Y_Ids = np.array(self.symm_Y_Ids) 
+            self.symm_Y_Ids = np.array(self.symm_Y_Ids)
+        
+        all_derivs = [()] + [(varidx,) for varidx in range(know.nvars)]
+        for deriv in all_derivs:
+            self.sign_defspace[deriv] = np.full(self.X.shape, False)
+            if deriv not in know.sign: continue
+            for i in range(self.X.shape[0]):
+                x = self.X[i]
+                for l,u,sign,th in know.sign[deriv]:
+                    if (x >= l).all() and (x <= u).all():
+                        self.sign_defspace[deriv][i] = True
+                
+
 
 
 def get_all_derivs(nvars:int=1, max_derivdeg:int=2) -> list:

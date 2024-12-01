@@ -36,4 +36,4 @@ def test_evaluator(data, expr, request):
 
     assert r2 == 1.0
     assert nv == 0
-    assert leval.fea_ratio == 1.0 and leval.r2 == 1.0
+    assert leval.fea_ratio == 1.0 and leval.data_eval.value == 1.0

@@ -516,7 +516,6 @@ class Dataset:
         X = X[~np.isnan(Y)]  # remove nan values (where self.func is not defined).
         Y = Y[~np.isnan(Y)]
         Y_pred = model(X)
-        Y_pred = model.at(X)
 
         ssr = np.sum((Y_pred - Y) ** 2)
         sst = np.sum((Y - Y.mean()) ** 2)

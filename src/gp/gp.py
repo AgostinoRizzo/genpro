@@ -127,7 +127,7 @@ class GP:
         """
         returns best syntax tree and its evaluation.
         """
-        profiling.enable()
+        
         self._evaluate_all()
         self._on_initial_generation()
         self.stats.update(self)
@@ -152,7 +152,6 @@ class GP:
             r2 = "{:.2f}".format(self.eval_map[id(p)].data_eval.value)
             print(f, r2, p)"""
         
-        profiling.disable()
         return self.population[0], self.eval_map[id(self.population[0])]
     
     def _on_initial_generation(self):
@@ -189,7 +188,9 @@ class GP:
                     if self.corrector is not None:
                         
                         try:
+                            #profiling.enable()
                             corrected_child, new_node, C_pulled, _ = self.corrector.correct(child)
+                            #profiling.disable()
                             corrected_child = corrected_child.simplify()
                             if type(corrected_child) is not ConstantSyntaxTree:
                                 child = corrected_child
