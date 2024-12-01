@@ -225,3 +225,20 @@ class Corrector:
                 max_dist = dist
         
         return max_dist_backprop_node
+
+    def tune_consts(self, stree):
+        stree.set_parent()
+        
+        consts = []
+        for n in stree.cache.nodes:
+            if type(n) is ConstantSyntaxTree:
+                consts.append(n)
+
+        y = stree(self.S_data.X)  # needed for 'pull_output'.
+
+        for _ in range(10):
+            for c in consts:
+                # backprop data...
+                y_pulled = c.pull_output(self.S_data.y)
+                if np.isfinite(y_pulled).all():
+                    c.val = y_pulled.mean()
