@@ -146,6 +146,7 @@ class GP:
         for p in self.population:
             print(p, self.eval_map[id(p)].fea_ratio, self.eval_map[id(p)].data_r2, self.eval_map[id(p)].know_mse)
         """
+        
         """print()
         for p in self.population:
             f  = "{:.2f}".format(self.eval_map[id(p)].fea_ratio)
@@ -183,7 +184,7 @@ class GP:
                     child = child.simplify()
                     
                     if self.visualizer is not None:
-                        self.visualizer.track(child, 'After Crossover/Mutation')
+                        self.visualizer.track(child, 'After Crossover&Mutation')
 
                     if self.corrector is not None:
                         

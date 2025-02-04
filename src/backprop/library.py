@@ -12,6 +12,8 @@ from backprop.utils import is_symmetric
 
 
 def compute_distance(p1:np.array, p2:np.array):
+    if np.isnan(p1).any() or np.isnan(p2).any():
+        return np.inf
     return np.linalg.norm(p1 - p2)
 
 def compute_mse(p1:np.array, p2:np.array):
@@ -228,9 +230,9 @@ class Library:
         
         d, idx = self.sem_index.query(sem, max_dist=max_dist)
         
-        if d == np.infty and const_fit_d > max_dist:
+        if not np.isfinite(d) and not np.isfinite(const_fit_d):
             raise LibraryLookupError()
-        if const_fit is not None and const_fit_d <= d:
+        if np.isfinite(const_fit_d) and const_fit_d <= d:
             return ConstantSyntaxTree(const_fit)
 
         stree = self.stree_provider.get_stree(idx)

@@ -38,7 +38,7 @@ class SpaceVisualizer:
 
         self.spaces[group].append((y[0], y[1]))
     
-    def plot(self):
+    def plot(self, savename=None):
 
         for group, space in self.spaces.items():
             xs = [x for x, _ in space]
@@ -70,8 +70,12 @@ class SpaceVisualizer:
             plt.gca().grid(linestyle='dashed', linewidth=0.7)
             plt.gca().tick_params(direction='in', length=5, top=True, right=True)
 
-            plt.title(f"{group} ({n_visualized}/{len(xs)})")
+            #plt.title(f"{group} ({n_visualized}/{len(xs)})")
+
             plt.xlabel('y1')
             plt.ylabel('y2')
+
+            if savename is not None:
+                plt.savefig(savename + str(group) + '.pdf', bbox_inches='tight')
 
             plt.show()

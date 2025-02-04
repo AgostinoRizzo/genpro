@@ -32,20 +32,21 @@ class RealEvaluation(Evaluation):
 
 class LayeredEvaluation(Evaluation):
     def __init__(self, n, nv, data_eval, stree, know_pressure:float=1.0):
-        self.fea_ratio = (1.0 - (nv / n)) if data_eval.isfeasible else 0.0
+        self.fea_ratio = (1.0 - (nv / n))
+        self.actual_fea_ratio = self.fea_ratio if data_eval.isfeasible else 0.0
         self.data_eval = data_eval
         self.stree = stree
         self.know_pressure = know_pressure
     
     def better_than(self, other) -> bool:
         if self.know_pressure > 0:  # TODO: add probability.
-            if self.fea_ratio > other.fea_ratio: return True
-            if self.fea_ratio < other.fea_ratio: return False
+            if self.actual_fea_ratio > other.actual_fea_ratio: return True
+            if self.actual_fea_ratio < other.actual_fea_ratio: return False
 
         if self.data_eval.better_than(other.data_eval): return True
         if other.data_eval.better_than(self.data_eval): return False
-
-        return self.stree.get_nnodes() < other.stree.get_nnodes()
+        
+        return False #self.stree.get_nnodes() < other.stree.get_nnodes()
     
     def get_value(self):
         return self.data_eval.value
@@ -54,5 +55,5 @@ class LayeredEvaluation(Evaluation):
         return self.data_eval
     
     def __str__(self) -> str:
-        return f"fea: {self.fea_ratio}\n" + \
+        return f"fea: {self.actual_fea_ratio}\n" + \
                f"{self.data_eval}"

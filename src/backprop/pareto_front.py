@@ -102,6 +102,7 @@ class DataLengthFrontTracker:
             self.front[frontidx] = []
         
         stree_data, stree_length = datalength_eval
+        stree_data = 1-stree_data # adjustment for now
 
         to_remove = []
         is_dominated = False
@@ -344,7 +345,8 @@ class MultiHeadFrontTracker:
     
     def track(self, stree, datalength_eval:tuple, evaluation):
         fea_ratio = evaluation.fea_ratio if type(evaluation) is LayeredEvaluation else 1.0
-        if fea_ratio < self.min_fea_ratio: return
+        #if fea_ratio < self.min_fea_ratio: return
+        if fea_ratio < 1.0: fea_ratio = 0.0
         if fea_ratio not in self.heads:
             self.heads[fea_ratio] = DataLengthFrontTracker(self.popsize, self.max_fronts)
         self.heads[fea_ratio].track(stree, datalength_eval, evaluation)

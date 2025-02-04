@@ -7,6 +7,7 @@ from sklearn.model_selection import train_test_split
 import numlims
 import space
 import plotting
+from symbols.syntax_tree import SyntaxTree
 
 
 class DataPoint:
@@ -509,12 +510,16 @@ class Dataset:
             compute_measures(self.test, self.test_sst) # TODO(take derivatives of model): self.knowledge.evaluate(model)
         )
     
-    def evaluate_extra(self, model) -> dict:
+    def evaluate_extra(self, model, meshsize:int=200) -> dict:
         dx = 0.0 #TODO: (self.xu - self.xl) / 2
-        X = self.spsampler.meshspace(self.xl - dx, self.xu + dx, 500)  # TODO: factorize sample size.
+        X = self.spsampler.meshspace(self.xl - dx, self.xu + dx, meshsize)
         Y = self.func(X)
         X = X[~np.isnan(Y)]  # remove nan values (where self.func is not defined).
         Y = Y[~np.isnan(Y)]
+
+        if isinstance(model, SyntaxTree):
+            model.clear_output()
+        
         Y_pred = model(X)
 
         ssr = np.sum((Y_pred - Y) ** 2)
@@ -523,8 +528,9 @@ class Dataset:
         mse  = ssr / Y.size
         rmse = math.sqrt(mse)
         r2   = 1 - (ssr / sst)
+        nmse = ssr / (Y.size * np.var(Y))
 
-        return {'mse': mse, 'rmse': rmse, 'r2': r2}
+        return {'mse': mse, 'rmse': rmse, 'r2': r2, 'nmse': nmse}
     
     def get_plotter(self) -> plotting.DatasetPlotter:
         if self.plotter is None:

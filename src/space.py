@@ -93,7 +93,7 @@ class MeshSpace:
         
         all_derivs = [()] + [(varidx,) for varidx in range(know.nvars)]
         for deriv in all_derivs:
-            self.sign_defspace[deriv] = np.full(self.X.shape, False)
+            self.sign_defspace[deriv] = np.full(self.X.shape[0], False)
             if deriv not in know.sign: continue
             for i in range(self.X.shape[0]):
                 x = self.X[i]

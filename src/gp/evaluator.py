@@ -77,8 +77,8 @@ class R2Evaluator(DataEvaluator):
             r2  = 1 - (ssr / self.data.sst)
             if not np.isfinite(r2):
                 r2 = -np.inf
-        #r2 = max(r2,0.0)
-        return RealEvaluation(r2, minimize=False, name=self.name, isfeasible=r2>0.0)
+        r2 = max(r2,0.0)
+        return RealEvaluation(r2, minimize=False, name=self.name, isfeasible=(r2>0.0))
     
     def create_stats(self):
         return QualitiesGPStats(1.0, 0.0, self.name)
@@ -146,8 +146,8 @@ class NMSEEvaluator(DataEvaluator):
             nmse = np.sum((y - self.data.y) ** 2) / (self.n * self.data_y_var)
             if not np.isfinite(nmse):
                 nmse = np.inf
-        
-        return RealEvaluation(nmse, minimize=True, name=self.name)
+        nmse = min(nmse, 1.0)
+        return RealEvaluation(nmse, minimize=True, name=self.name, isfeasible=(nmse<1.0))
     
     def create_stats(self):
         return QualitiesGPStats(0.0, 1.0, self.name)

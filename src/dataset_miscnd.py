@@ -23,8 +23,8 @@ class WavePower(Datasetnd):
             self.knowledge.add_sign((i,), self.xl, self.xu, '+')
         
         # symmetry (w.r.t. variables).
-        self.knowledge.add_symmvars((0,1,2,3,4))
-        self.knowledge.add_symmvars((0,1,3,2,4))  # m2, m1
+        #self.knowledge.add_symmvars((0,1,2,3,4))
+        #self.knowledge.add_symmvars((0,1,3,2,4))  # m2, m1
         #self.knowledge.add_symmvars((0,4,2,3,1))  # r, c
         #self.knowledge.add_symmvars((0,4,3,2,1))  # m2, m1, r, c
 

@@ -193,9 +193,13 @@ def test_corrector(data, stree, noroot, symm, k_image, k_deriv, partial, none, r
     assert C_pulled.symm is None or C_pulled.symm[0] is None or C_pulled.symm[0] == is_symmetric(new_stree[mesh.X, ()], C_pulled.symm[1])
     assert set(C_pulled.origin_pconstrs.keys()) == set([()] + list(k_deriv.keys()))
 
-    assert np.array_equal(C_pulled.origin_pconstrs[()], np.array(k_image), equal_nan=True)
+    k_image = np.array(k_image)
+    k_image[np.isnan(k_image)] = 1.0  # since backprop_node = 2.0
+    assert np.array_equal(C_pulled.origin_pconstrs[()], k_image, equal_nan=True)
     for d in k_deriv.keys():
-        assert np.array_equal(C_pulled.origin_pconstrs[d], np.array(k_deriv[d]), equal_nan=True)
+        k_deriv[d] = np.array(k_deriv[d])
+        k_deriv[d][np.isnan(k_deriv[d])] = 0.0  # since backprop_node = 2.0
+        assert np.array_equal(C_pulled.origin_pconstrs[d], k_deriv[d], equal_nan=True)
 
     assert C_pulled.partial == partial
     assert C_pulled.none == none

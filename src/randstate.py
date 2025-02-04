@@ -7,4 +7,4 @@ def setstate(state=None):
     np.random.seed(state)
 
 def getstate():
-    return {'random': random.getstate(), 'numpy.random': np.random.getstate()}
+    return {'random': random.getstate(), 'numpy.random': np.random.get_state()}

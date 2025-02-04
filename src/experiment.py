@@ -1,6 +1,7 @@
 from configs import SYMBREG_BENCHMARKS, GPConfig
 import randstate
 from time import time
+import statistics
 import numpy as np
 import csv
 import sys
@@ -11,17 +12,22 @@ APPEND_MODE = True
 perftable_header = [
     'Problem',
     'Data-Config',
-    'Constrained',
+    'Algo-Config',
+    'Train-NMSE',
     'Train-R2',
+    'Test-NMSE',
     'Test-R2',
-    'Fea-Ratio',
+    'Train-Fea-Ratio',
+    'Test-Fea-Ratio',
+    'Extra-NMSE',
     'Extra-R2',
-    'BestAvg-Train-R2',
-    'BestWorst-Train-R2',
-    'BestAvg-Fea-Ratio',
-    'BestWorst-Fea-Ratio',
-    'Size',
-    'Time',
+    'Avg-Train-NMSE',
+    'Avg-Train-Fea-Ratio',
+    'Ext-Conv-Fea',
+    'Ext-Conv-Unfea',
+    'Preproc-Time',
+    'Evo-Time',
+    'Model-Length',
     'Model'
 ]
 perftable = []
@@ -42,18 +48,20 @@ for S, datafile in SYMBREG_BENCHMARKS:
 
         for constrained in [True, False]:
             
-            constrained_str = 'constrained' if constrained else 'unconstrained'
-            print(f"Testing {S.get_name()}-{data_conf}-{constrained_str}...")
+            algo_config = 'KBP-GP' if constrained else 'GP'
+            print(f"Testing {S.get_name()}-{data_conf}-{algo_config}...")
 
+            preproc_start_time = time()
             symbreg_config = GPConfig(S, datafile=datafile, noisy=(data_conf=='noisy'), constrained=constrained)
             symb_regressor = symbreg_config.create_symbreg()
+            preproc_end_time = time()
 
             try:
                 start_time = time()
                 best_stree, best_eval = symb_regressor.evolve()
                 end_time = time()
             except Exception as e:
-                error_header = f"Exception on {S.get_name()}-{data_conf}-{constrained_str} [RState={randstate.getstate()}]"
+                error_header = f"Exception on {S.get_name()}-{data_conf}-{algo_config} [RState={randstate.getstate()}]"
                 print(f"  └─── {error_header}. See results/perf.log for details.")
                 logfile = open('results/perf.log', 'a')
                 logfile.write(f"{error_header}\n")
@@ -64,25 +72,39 @@ for S, datafile in SYMBREG_BENCHMARKS:
             best_stree.clear_output()
             extra_eval = S.evaluate_extra(best_stree)
             best_stree.clear_output()
+            train_r2 = symbreg_config.r2_evaluator.evaluate(best_stree).value
+            best_stree.clear_output()
+            test_r2 = symbreg_config.r2_test_evaluator.evaluate(best_stree).value
+
 
             best_test_eval = symbreg_config.test_evaluator.evaluate(best_stree)
             qualities_stats = symb_regressor.stats.get_qualities_stats()
             fesibility_stats = symb_regressor.stats.get_feasibility_stats()
+            
+            fea_front, _ = symb_regressor.fea_front_tracker.get_head(0)
+            unfea_front, _ = symb_regressor.fea_front_tracker.get_head(1)
+            data_lu = (0.0,1.0)
+            length_lu = (1,symbreg_config.MAX_STREE_LENGTH)
 
             perftable.append([
                 S.get_name(),  # Problem
-                data_conf,  # Config
-                constrained,  # Constrained
-                best_eval.data_eval.value,  # Train-R2
-                best_test_eval.data_eval.value,  # Test-R2
-                best_eval.fea_ratio,  # Fea-Ratio
+                data_conf,  # Data-Config
+                algo_config,  # Algo-Config
+                best_eval.data_eval.value,  # Train-NMSE
+                train_r2,  # Train-R2
+                best_test_eval.data_eval.value,  # Test-NMSE
+                test_r2,  # Test-R2
+                best_eval.fea_ratio,  # Train-Fea-Ratio
+                best_test_eval.fea_ratio,  # Test-Fea-Ratio
+                extra_eval['nmse'],  # Extra-NMSE
                 extra_eval['r2'],  # Extra-R2
-                max(qualities_stats.qualities['currAvg']),    # BestAvg-Train-R2
-                max(qualities_stats.qualities['currWorst']),  # BestWorst-Train-R2
-                max(fesibility_stats.fea_ratio['currAvg']),    # BestAvg-Fea-Ratio
-                max(fesibility_stats.fea_ratio['currWorst']),  # BestWorst-Fea-Ratio
-                best_stree.cache.nnodes,  # Size
-                end_time - start_time,  # Time
+                statistics.mean(qualities_stats.qualities['currAvg']),    # Avg-Train-NMSE
+                statistics.mean(fesibility_stats.fea_ratio['currAvg']),    # Avg-Train-Fea-Ratio
+                fea_front.compute_extend_of_convergence(data_lu, length_lu),  # Ext-Conv-Fea
+                unfea_front.compute_extend_of_convergence(data_lu, length_lu),  # Ext-Conv-unfea
+                preproc_end_time - preproc_start_time,  # Preproc-Time
+                end_time - start_time,  # Evo-Time
+                best_stree.cache.nnodes,  # Model-Length
                 str(best_stree.simplify())  # Model
             ])
 

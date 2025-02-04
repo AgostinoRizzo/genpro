@@ -14,7 +14,7 @@ class SymbregConfig:
         return None
 
 
-class GPConfig(SymbregConfig):
+"""
     SAMPLE_SIZE        = 100
     SAMPLE_TRAIN_SIZE  = 0.5
     DATASET_TRAIN_SIZE = 0.7
@@ -34,9 +34,37 @@ class GPConfig(SymbregConfig):
     LIB_MAXLENGTH = 10
 
     RANDSTATE = None #124
+"""
+
+class GPConfig(SymbregConfig):
+    SAMPLE_SIZE = 150
+    SAMPLE_TRAIN_SIZE  = 1.0/3.0
+    DATASET_TRAIN_SIZE = 0.7
+    NOISE       = 0.05
+    MESH_SIZE   = 100
+    TEST_MESH_SIZE   = 200
+
+    POPSIZE          = 500
+    MAX_STREE_DEPTH  = 8
+    MAX_STREE_LENGTH = 20
+    GENERATIONS      = 50 #20
+    GROUP_SIZE       = 3  # tournament selector.
+    MUTATION_RATE    = 0.15
+    ELITISM          = 1
+
+    LIBSIZE       = 20000
+    LIB_MAXDEPTH  = 3 #5
+    LIB_MAXLENGTH = 10 #15
+
+    BACKPROP_TRIALS = 2
+
+    RANDSTATE = None #1245
 
     def __init__(self, S:dataset.Dataset, datafile:str=None, noisy:bool=False, constrained:bool=True):
         randstate.setstate(GPConfig.RANDSTATE)
+
+        if constrained:
+            self.GENERATIONS = 20
 
         if datafile is None:
             S.sample(size=GPConfig.SAMPLE_SIZE, noise=(GPConfig.NOISE if noisy else 0.0), mesh=False)
@@ -58,21 +86,29 @@ class GPConfig(SymbregConfig):
             gp_mutator.SubtreeReplacerMutator(GPConfig.MAX_STREE_DEPTH, GPConfig.MAX_STREE_LENGTH, self.solutionCreator),
             gp_mutator.FunctionSymbolMutator(),
             gp_mutator.NumericParameterMutator(all=True),
-            #gp.NumericParameterMutator(all=False, y_iqr=y_iqr)
+            gp_mutator.NumericParameterMutator(all=False)
             )
 
         mesh                = space.MeshSpace(self.S_train, self.S.knowledge, GPConfig.MESH_SIZE)
+        test_mesh           = space.MeshSpace(self.S_train, self.S.knowledge, GPConfig.TEST_MESH_SIZE)
         know_evaluator      = gp_evaluator.KnowledgeEvaluator(self.S.knowledge, mesh)
-        r2_evaluator        = gp_evaluator.R2Evaluator(self.S_train)
-        r2_test_evaluator   = gp_evaluator.R2Evaluator(self.S_test)
-        self.evaluator      = gp_evaluator.LayeredEvaluator(know_evaluator, r2_evaluator, know_pressure=(1.0 if constrained else 0.0))
-        self.test_evaluator = gp_evaluator.LayeredEvaluator(know_evaluator, r2_test_evaluator, know_pressure=(1.0 if constrained else 0.0))
+        test_know_evaluator = gp_evaluator.KnowledgeEvaluator(self.S.knowledge, test_mesh)
+        
+        nmse_evaluator      = gp_evaluator.NMSEEvaluator(self.S_train)
+        nmse_test_evaluator = gp_evaluator.NMSEEvaluator(self.S_test)
+        self.r2_evaluator        = gp_evaluator.R2Evaluator(self.S_train)
+        self.r2_test_evaluator   = gp_evaluator.R2Evaluator(self.S_test)
+        
+        self.evaluator      = gp_evaluator.LayeredEvaluator(know_evaluator, nmse_evaluator, know_pressure=(0.0 if constrained else 1.0))
+        self.test_evaluator = gp_evaluator.LayeredEvaluator(test_know_evaluator, nmse_test_evaluator, know_pressure=(0.0 if constrained else 1.0))
 
         self.selector  = gp_selector.TournamentSelector(GPConfig.GROUP_SIZE)
         self.crossover = gp_crossover.SubTreeCrossover(GPConfig.MAX_STREE_DEPTH, GPConfig.MAX_STREE_LENGTH)
         self.corrector = gp_corrector.Corrector(
             self.S_train, self.S.knowledge, GPConfig.MAX_STREE_DEPTH, GPConfig.MAX_STREE_LENGTH, mesh, GPConfig.LIBSIZE, GPConfig.LIB_MAXDEPTH, GPConfig.LIB_MAXLENGTH, self.solutionCreator) \
             if constrained else None
+        if self.corrector is not None:
+            self.corrector.backprop_trials = self.BACKPROP_TRIALS
 
     def create_symbreg(self):
         settings = gp.GPSettings \
@@ -111,34 +147,34 @@ SYMBREG_BENCHMARKS = \
     # problem, dataset filename (sampled data if None)
 
     # feynman 1d (partial domain definition for all).
-    #(dataset_feynman1d.FeynmanICh6Eq20a (), None),
-    #(dataset_feynman1d.FeynmanICh29Eq4  (), None),  # can be remove x/speed_of_light (same as FeynmanICh34Eq27)
-    #(dataset_feynman1d.FeynmanICh34Eq27 (), None),
-    #(dataset_feynman1d.FeynmanIICh8Eq31 (), None),
-    #(dataset_feynman1d.FeynmanIICh27Eq16(), None),  # almost same as FeynmanIICh8Eq31 but less "scaling" needed
+    (dataset_feynman1d.FeynmanICh6Eq20a (), None),
+    (dataset_feynman1d.FeynmanICh29Eq4  (), None),  # can be remove x/speed_of_light (same as FeynmanICh34Eq27)
+    (dataset_feynman1d.FeynmanICh34Eq27 (), None),
+    (dataset_feynman1d.FeynmanIICh8Eq31 (), None),
+    (dataset_feynman1d.FeynmanIICh27Eq16(), None),  # almost same as FeynmanIICh8Eq31 but less "scaling" needed
     
     # misc 1d.
     (dataset_misc1d.MagmanDatasetScaled(), None),  # partial domain definition.
     (dataset_misc1d.MagmanDatasetScaled(), 'data/magman.csv'),
 
     # misc 2d.
-    #(dataset_misc2d.Resistance2(), None),  # partial domain definition.
+    (dataset_misc2d.Resistance2(), None),  # partial domain definition.
 
     # misc 3d.
     (dataset_misc3d.Gravity    (), None),  # partial domain definition.
     (dataset_misc3d.Resistance3(), None),  # partial domain definition.
 
     # from counterexample-driven GP.
-    #(dataset_misc2d.Keijzer14(), None),  # partial domain definition.
+    (dataset_misc2d.Keijzer14(), None),  # partial domain definition.
     # nguyen1 + nguyen3 + nguyen4 (1dim + even/odd symm).
-    #(dataset_misc2d.Pagie1(), None),
+    (dataset_misc2d.Pagie1(), None),
 
     # from hlab (physics).
     (dataset_physics.AircraftLift(), None),
     (dataset_physics.RocketFuelFlow(), None),
 
     # from shape-constrained SR.
-    #(dataset_miscnd.WavePower            (), None),
+    (dataset_miscnd.WavePower            (), None),
     (dataset_feynman2d.FeynmanICh6Eq20   (), None),
     (dataset_feynmannd.FeynmanICh41Eq16  (), None),
     (dataset_feynmannd.FeynmanICh48Eq20  (), None),

@@ -31,12 +31,14 @@ class Corrector:
                 self.S_know_derivs[deriv] = know.synth_dataset(mesh.X, deriv=deriv)
 
         derivs = [()] + list(self.S_know_derivs.keys())
-        profiling.enable()
+        #profiling.enable()
         if know.has_symmvars():
             self.symm_lib  = clibrary.ConstrainedLibrary(libsize, lib_maxdepth, lib_maxlength, S_data, know, mesh, derivs, solutionCreator, True)
             self.asymm_lib = clibrary.ConstrainedLibrary(libsize, lib_maxdepth, lib_maxlength, S_data, know, mesh, derivs, solutionCreator, False)
-        self.lib = clibrary.ConstrainedLibrary(libsize, lib_maxdepth, lib_maxlength, S_data, know, mesh, derivs, solutionCreator)
-        profiling.disable()
+            self.lib = clibrary.ConstrainedLibrary(libsize, lib_maxdepth, lib_maxlength, S_data, know, mesh, derivs, solutionCreator, ext_strees=(self.symm_lib.stree_index+self.asymm_lib.stree_index))
+        else:
+            self.lib = clibrary.ConstrainedLibrary(libsize, lib_maxdepth, lib_maxlength, S_data, know, mesh, derivs, solutionCreator)
+        #profiling.disable()
 
         """print(f"SYMM SIZE: {len(self.symm_lib.stree_index)}")
         for i in range(10): print(self.symm_lib.stree_index[i])
@@ -57,6 +59,12 @@ class Corrector:
         
         if backprop_node is None:
             backprop_nodes = stree.cache.backprop_nodes
+
+            for bpn in backprop_nodes:
+                if id(bpn) == id(stree):
+                    backprop_nodes.remove(stree)
+                    break
+            
             if len(backprop_nodes) == 0:
                 raise bperrors.NoBackpropPathError()
         else:
@@ -73,13 +81,6 @@ class Corrector:
             max_nesting_length = self.max_length - (stree.get_nnodes() - backprop_node.get_nnodes())
             
             try:
-
-                # backprop knowledge...
-                C_pulled = None
-                if relax:
-                    C_pulled = self.__get_relaxed_constraints(max_nesting_depth, max_nesting_length)
-                else:
-                    C_pulled = self.backprop_know(stree, backprop_node, max_nesting_depth, max_nesting_length)
                 
                 # backprop data...
                 y = stree(self.S_data.X)  # needed for 'pull_output'.
@@ -87,11 +88,19 @@ class Corrector:
                 if id(y_pulled) == id(self.S_data.y):
                     y_pulled = np.copy(self.S_data.y)
                 y_pulled_origin = np.copy(y_pulled)
-                C_pulled.project(y_pulled)
+                #C_pulled.project(y_pulled)
                 
                 y_backprop_node = backprop_node(self.S_data.X)
                 max_dist = library.compute_distance(y_backprop_node, y_pulled)
                 new_node = None
+
+                # backprop knowledge...
+                target_backprop_node = self.lib.query(y_pulled, max_dist=max_dist)
+                C_pulled = None
+                if relax:
+                    C_pulled = self.__get_relaxed_constraints(max_nesting_depth, max_nesting_length)
+                else:
+                    C_pulled = self.backprop_know(stree, backprop_node, target_backprop_node, max_nesting_depth, max_nesting_length)
 
                 check_constfit = True
                 if self.know.has_symmvars() and backprop_node.has_parent() and type(backprop_node.parent) is BinaryOperatorSyntaxTree:
@@ -139,7 +148,7 @@ class Corrector:
         
         raise last_error
     
-    def backprop_know(self, stree, backprop_node, max_nesting_depth, max_nesting_length) -> constraints.BackpropConstraints:
+    def backprop_know(self, stree, backprop_node, target_backprop_node, max_nesting_depth, max_nesting_length) -> constraints.BackpropConstraints:
         k_pulled = {}
         stree.clear_output()
         
@@ -151,7 +160,7 @@ class Corrector:
         
         # overloading...
         overload_ids = np.isnan(k_image_pulled) & self.mesh.sign_defspace[()]
-        k_image_pulled[overload_ids] = np.sign(backprop_node.y_know[()])[overload_ids]
+        k_image_pulled[overload_ids] = np.sign(target_backprop_node[(self.mesh.X, ())])[overload_ids]
         k_pulled[()] = k_image_pulled
 
         # backprop derivative knowledge.
@@ -161,7 +170,7 @@ class Corrector:
 
             # overloading...
             overload_ids = np.isnan(k_deriv_pulled) & self.mesh.sign_defspace[deriv]
-            k_deriv_pulled[overload_ids] = np.sign(backprop_node.y_know[deriv])[overload_ids]
+            k_deriv_pulled[overload_ids] = np.sign(target_backprop_node[(self.mesh.X, deriv)])[overload_ids]
             k_pulled[deriv] = k_deriv_pulled
 
         return constraints.BackpropConstraints(max_nesting_depth, max_nesting_length, k_pulled, noroot_pulled, symm_pulled)

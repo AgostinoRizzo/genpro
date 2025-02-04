@@ -101,7 +101,7 @@ class FeasibilityGPStats(GPStats):
     def __init__(self, next=None):
         super().__init__(next)
         self.buckets = {}
-        self.fea_ratio = {'currBest': [], 'currAvg': [], 'currWorst': [], 'best': []}
+        self.fea_ratio = {'currBest': [], 'currAvg': [], 'currWorst': [], 'best': [], 'prop': []}
     
     def update(self, gp):
         super().update(gp)
@@ -112,6 +112,7 @@ class FeasibilityGPStats(GPStats):
         fea_ratio_best  = 0.0
         fea_ratio_avg   = 0.0
         fea_ratio_worst = 1.0
+        fea_prop        = 0.0
         
         for stree in population:
             fea_ratio = eval_map[id(stree)].fea_ratio
@@ -119,12 +120,15 @@ class FeasibilityGPStats(GPStats):
             fea_ratio_best   = max(fea_ratio_best, fea_ratio)
             fea_ratio_avg   += fea_ratio
             fea_ratio_worst  = min(fea_ratio_worst, fea_ratio)
+            if fea_ratio == 1.0: fea_prop += 1
         
         fea_ratio_avg /= len(population)
+        fea_prop /= len(population)
 
         self.fea_ratio['currBest' ].append(fea_ratio_best)    
         self.fea_ratio['currAvg'  ].append(fea_ratio_avg)
         self.fea_ratio['currWorst'].append(fea_ratio_worst)
+        self.fea_ratio['prop'     ].append(fea_prop)
         #self.fea_ratio['best'     ].append(self.bests_eval_map[id(self.bests[0])].fea_ratio)
 
     def get_feasibility_stats(self):

@@ -35,9 +35,10 @@ class DatasetPlotter(Plotter):
 
         if plot_data:
             def plot_data_points(data:list, marker:str, color:str, label:str):
-                self.impl.plot_datapoints(data, marker, color, markersize=2, label=label)
+                if len(data) > 0:
+                    self.impl.plot_datapoints(data, marker, color, markersize=2, label=label)
             plot_data_points(self.dataset.data, 'o', 'b', 'Training data')
-            plot_data_points(self.dataset.test, 'o', 'm', 'Test data')
+            #plot_data_points(self.dataset.test, 'o', 'm', 'Test data')
         
         if plot_knowldege:
             self.dataset.knowledge.plot()
@@ -62,7 +63,8 @@ class DatasetPlotter(Plotter):
         self.impl.set_grid()
         self.impl.set_tick()
 
-        ax.legend(loc='upper right', fontsize=14)
+        #ax.legend(loc='upper right', fontsize=14)
+        ax.legend(fontsize=18)
         self.impl.set_labels()
 
         if savename is not None:
@@ -80,7 +82,8 @@ class NumpyDatasetPlotter(Plotter):
     def plot(self,
              width:int=10,
              height:int=8,
-             model=None):
+             model=None,
+             savename:str=None):
         """
         acts as a template method w.r.t the implementation.
         """
@@ -93,9 +96,13 @@ class NumpyDatasetPlotter(Plotter):
             self.impl.plot_model(model, self.dataset.xl, self.dataset.xu, 1.0, linewidth=2, color='green', label='Model')
         self.impl.flush_content()
 
-        self.impl.set_limits(self.dataset.xl, self.dataset.xu, self.dataset.yl, self.dataset.yu)
+        #self.impl.set_limits(self.dataset.xl, self.dataset.xu, self.dataset.yl, self.dataset.yu)
         self.impl.set_grid()
         self.impl.set_tick()
+
+        if savename is not None:
+            plt.savefig(savename, bbox_inches='tight')
+        
         plt.show()
 
 
@@ -201,10 +208,13 @@ class Dataset2dPlotterImpl(PlotterImpl):
         z = np.array(model(X))
         z = z.reshape(x.shape)
         #self.ax.plot_surface(x, y, z, color=color, alpha=0.3, linewidth=0, antialiased=True)
-        self.ax.plot_surface(x, y, z, color=color, edgecolor=color, lw=0.05, alpha=0.3)
+        color='lightgray'
+        self.ax.plot_surface(x, y, z, color=color, edgecolor=color, lw=0.05, alpha=1)
         #self.ax.contour(x, y, z, zdir='z', offset= 0, cmap='coolwarm')
         #self.ax.contour(x, y, z, zdir='x', offset=20, cmap='coolwarm')
         #self.ax.contour(x, y, z, zdir='y', offset=20, cmap='coolwarm')
+
+        self.ax.scatter3D(0, 0, -100000, c=color, label=label, s=200, marker='s', alpha=1)
     
     def flush_content(self):
         for x1, x2, y, marker, color, markersize, label in self.top_scatter:
@@ -221,14 +231,13 @@ class Dataset2dPlotterImpl(PlotterImpl):
             self.ax.tick_params(axis=axis, pad=-1)
 
     def set_limits(self, xl, xu, yl, yu):
-        pass
         #self.ax.set_xlim(xl[0], xu[0])
         #self.ax.set_ylim(xl[1], xu[1])
-        #self.ax.set_zlim(yl, yu)
+        self.ax.set_zlim(yl, yu)
         
     
     def set_labels(self):
-        self.ax.set_xlabel(self.dataset.get_xlabel(xidx=0))
-        self.ax.set_ylabel(self.dataset.get_xlabel(xidx=1))
+        self.ax.set_xlabel(f"$${self.dataset.get_xlabel(xidx=0)}$$")
+        self.ax.set_ylabel(f"$${self.dataset.get_xlabel(xidx=1)}$$")
         self.ax.set_zlabel(self.dataset.get_ylabal())
 
