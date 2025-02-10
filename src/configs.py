@@ -7,6 +7,7 @@ from gp import crossover as gp_crossover, mutator as gp_mutator
 from gp import corrector as gp_corrector
 from symbols import syntax_tree
 import randstate
+from enum import Enum
 
 
 class SymbregConfig:
@@ -36,6 +37,15 @@ class SymbregConfig:
     RANDSTATE = None #124
 """
 
+class FitnessConfig(Enum):
+    DATA_ONLY = 1
+    LAYERED   = 2
+
+class CorrectorConfig(Enum):
+    ON  = 1
+    OFF = 2
+
+
 class GPConfig(SymbregConfig):
     SAMPLE_SIZE = 150
     SAMPLE_TRAIN_SIZE  = 1.0/3.0
@@ -60,10 +70,13 @@ class GPConfig(SymbregConfig):
 
     RANDSTATE = None #1245
 
-    def __init__(self, S:dataset.Dataset, datafile:str=None, noisy:bool=False, constrained:bool=True):
+    def __init__(self, S:dataset.Dataset, datafile:str=None, noisy:bool=False,
+                 fitness_config:FitnessConfig=FitnessConfig.DATA_ONLY,
+                 corrector_config:CorrectorConfig=CorrectorConfig.OFF):
+
         randstate.setstate(GPConfig.RANDSTATE)
 
-        if constrained:
+        if corrector_config == CorrectorConfig.ON:
             self.GENERATIONS = 20
 
         if datafile is None:
@@ -99,14 +112,14 @@ class GPConfig(SymbregConfig):
         self.r2_evaluator        = gp_evaluator.R2Evaluator(self.S_train)
         self.r2_test_evaluator   = gp_evaluator.R2Evaluator(self.S_test)
         
-        self.evaluator      = gp_evaluator.LayeredEvaluator(know_evaluator, nmse_evaluator, know_pressure=(0.0 if constrained else 1.0))
-        self.test_evaluator = gp_evaluator.LayeredEvaluator(test_know_evaluator, nmse_test_evaluator, know_pressure=(0.0 if constrained else 1.0))
+        self.evaluator      = gp_evaluator.LayeredEvaluator(know_evaluator, nmse_evaluator, know_pressure=(0.0 if fitness_config==FitnessConfig.DATA_ONLY else 1.0))
+        self.test_evaluator = gp_evaluator.LayeredEvaluator(test_know_evaluator, nmse_test_evaluator, know_pressure=(0.0 if fitness_config==FitnessConfig.DATA_ONLY else 1.0))
 
         self.selector  = gp_selector.TournamentSelector(GPConfig.GROUP_SIZE)
         self.crossover = gp_crossover.SubTreeCrossover(GPConfig.MAX_STREE_DEPTH, GPConfig.MAX_STREE_LENGTH)
         self.corrector = gp_corrector.Corrector(
             self.S_train, self.S.knowledge, GPConfig.MAX_STREE_DEPTH, GPConfig.MAX_STREE_LENGTH, mesh, GPConfig.LIBSIZE, GPConfig.LIB_MAXDEPTH, GPConfig.LIB_MAXLENGTH, self.solutionCreator) \
-            if constrained else None
+            if corrector_config == CorrectorConfig.ON else None
         if self.corrector is not None:
             self.corrector.backprop_trials = self.BACKPROP_TRIALS
 

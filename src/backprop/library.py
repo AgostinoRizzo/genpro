@@ -1,6 +1,6 @@
 import numpy as np
 from scipy.spatial import KDTree
-import nmslib
+#import nmslib
 from multiprocessing import Process, Lock, Condition
 import random
 
@@ -26,6 +26,9 @@ class SyntaxTreeCloneProvider:
     
     def get_stree(self, idx:int):
         return self.stree_index[idx].clone()
+    
+    def draw_stree(self):
+        return random.choice(self.stree_index).clone()
 
 
 class MultiprocSyntaxTreeCloneProvider:
@@ -244,6 +247,9 @@ class Library:
         if d[0] == np.infty: raise LibraryLookupError()  # nearest firts.
         return [ (self.lib_data[__idx], self.stree_provider.get_stree(__idx)) for __idx in idx ]
     
+    def draw(self) -> SyntaxTree:
+        return self.stree_provider.draw_stree()
+
     def find_best_similarity(self):
         min_d = None
         min_i = None

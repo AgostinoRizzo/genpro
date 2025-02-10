@@ -5,6 +5,13 @@ from backprop.bperrors import BackpropError
 from backprop.library import LibraryError
 
 
+def series_float_to_string(series, ndecimals:int=4, sep:str=':'):
+    return sep.join(format(x, f".{ndecimals}f") for x in series)
+
+def series_int_to_string(series, sep:str=':'):
+    return sep.join(str(x) for x in series)
+
+
 """
 this class acts according to the Chain of Responsibility pattern.
 """
@@ -24,6 +31,10 @@ class GPStats:
         if self.next is not None:
             return self.next.get_feasibility_stats()
     
+    def get_properties_stats(self):
+        if self.next is not None:
+            return self.next.get_properties_stats()
+    
     def plot(self):
         if self.next is not None:
             self.next.plot()
@@ -39,7 +50,7 @@ class QualitiesGPStats(GPStats):
         self.qual_name = qual_name
         self.best = None
         self.best_eval = None
-        self.qualities = {'currBest': [], 'currAvg': [], 'currWorst': [], 'best': []}
+        self.qualities = {'currBest': [], 'currAvg': [], 'currWorst': [], 'best': [], 'currTop': []}
     
     def update(self, gp):
         super().update(gp)
@@ -76,9 +87,12 @@ class QualitiesGPStats(GPStats):
         if count > 0: currAvg /= count
         else: currAvg = np.nan
 
+        currTop = eval_map[id(population[0])].get_quality().get_value()  # best according to the fitness function (population[0]).
+
         self.qualities['currBest' ].append(currBest)    
         self.qualities['currAvg'  ].append(currAvg)
         self.qualities['currWorst'].append(currWorst)
+        self.qualities['currTop'  ].append(currTop)  
         #self.qualities['best'     ].append(self.bests_eval_map[id(self.bests[0])].get_value())
 
     def get_qualities_stats(self):
@@ -101,7 +115,7 @@ class FeasibilityGPStats(GPStats):
     def __init__(self, next=None):
         super().__init__(next)
         self.buckets = {}
-        self.fea_ratio = {'currBest': [], 'currAvg': [], 'currWorst': [], 'best': [], 'prop': []}
+        self.fea_ratio = {'currBest': [], 'currAvg': [], 'currWorst': [], 'best': [], 'prop': [], 'currTop': []}
     
     def update(self, gp):
         super().update(gp)
@@ -125,10 +139,13 @@ class FeasibilityGPStats(GPStats):
         fea_ratio_avg /= len(population)
         fea_prop /= len(population)
 
+        fea_ratio_top = eval_map[id(population[0])].fea_ratio  # best according to the fitness function (population[0]).
+
         self.fea_ratio['currBest' ].append(fea_ratio_best)    
         self.fea_ratio['currAvg'  ].append(fea_ratio_avg)
         self.fea_ratio['currWorst'].append(fea_ratio_worst)
         self.fea_ratio['prop'     ].append(fea_prop)
+        self.fea_ratio['currTop'  ].append(fea_ratio_top)
         #self.fea_ratio['best'     ].append(self.bests_eval_map[id(self.bests[0])].fea_ratio)
 
     def get_feasibility_stats(self):
@@ -145,6 +162,32 @@ class FeasibilityGPStats(GPStats):
         plt.xlabel('Generation')
         plt.ylabel('Ratio')
         plt.title('Feasibility')
+        plt.show()
+
+
+class PropertiesGPStats(GPStats):
+    def __init__(self, next=None):
+        super().__init__(next)
+        self.lengths = {'currTop': []}
+    
+    def update(self, gp):
+        super().update(gp)
+        currTop = gp.population[0].get_nnodes()  # best according to the fitness function (population[0]).
+        self.lengths['currTop'].append(currTop)
+    
+    def get_properties_stats(self):
+        return self
+    
+    def plot(self):
+        super().plot()
+
+        for lengths, lseries in self.lengths.items():
+            plt.plot(lseries, label=lengths)
+
+        plt.legend()
+        plt.xlabel('Generation')
+        plt.ylabel('#nodes')
+        plt.title('Length')
         plt.show()
 
 

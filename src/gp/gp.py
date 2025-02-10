@@ -18,7 +18,7 @@ from backprop.bperrors import BackpropError
 from backprop.library import LibraryError
 from backprop.pareto_front import DataLengthFrontTracker, MultiHeadFrontTracker, FrontDuplicateError
 from gp import utils, creator, evaluation, evaluator, selector, crossover, mutator, corrector
-from gp.stats import CorrectorGPStats
+from gp.stats import CorrectorGPStats, PropertiesGPStats
 
 from symbols import syntax_tree
 import profiling
@@ -117,6 +117,7 @@ class GP:
         self.fea_front_tracker = None
         self.visualizer = None
 
+        self.stats = PropertiesGPStats(self.stats)
         if self.corrector is not None:
             self.stats = CorrectorGPStats(self.stats)
         
