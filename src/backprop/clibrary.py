@@ -1,7 +1,8 @@
 import numpy as np
 import itertools
+import random
 
-from backprop.library import Library, ExactKnnIndex, LibraryLookupError, LibraryKnowledgeLookupError, compute_distance
+from backprop.library import Library, StochasticSemanticIndex, ExactKnnIndex, LibraryLookupError, LibraryKnowledgeLookupError, compute_distance
 from symbols.syntax_tree import SyntaxTree
 from symbols.const import ConstantSyntaxTree
 
@@ -9,9 +10,10 @@ from symbols.const import ConstantSyntaxTree
 class ConstrainedLibrary(Library):
     def __init__(self,
             size:int, max_depth:int, max_length:int, data, know, mesh, derivs:list[tuple[int]],
-            solutionCreator, symm:bool=None, ext_strees:list=None):
+            solutionCreator, symm:bool=None, ext_strees:list=None, stochastic:bool=False):
         super().__init__(size, max_depth, max_length, data, know, solutionCreator, mesh, symm, ext_strees)
         self.max_depth = max_depth
+        self.stochastic = stochastic
 
         #print(f"---> ACTUAL LIB SIZE: {len(self.stree_index)}")
 
@@ -71,14 +73,18 @@ class ConstrainedLibrary(Library):
                         self.clib_idxmap[K_t].append(i)
         
         for K in self.clib_idxmap.keys():
-            self.clib[K] = ExactKnnIndex(self.lib_data[self.clib_idxmap[K]])
+            self.clib[K] = self._create_index(self.lib_data[self.clib_idxmap[K]])
         
         self.mesh = mesh
+    
+    def _create_index(self, data):
+        if self.stochastic: return StochasticSemanticIndex(data)
+        return ExactKnnIndex(data)
 
     def cquery(self, y, C, max_dist=np.inf, check_constfit:bool=True) -> SyntaxTree:
         # constant fit (when compliant w.r.t. C).
         const_fit = None
-        if check_constfit:
+        if check_constfit and (not self.stochastic or random.random() < 0.05):
             const_fit = y.mean()
             if np.isnan(const_fit): const_fit = None
             const_fit_dist = np.inf

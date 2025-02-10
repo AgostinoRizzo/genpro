@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 import csv
 import sys
+import traceback
 
 
 APPEND_MODE = True
@@ -15,10 +16,12 @@ PERF_FILENAME = 'results/perf.csv'
 algo_configs = \
 [
     # Algorith Configuration: (Name, Fitness-Config, Corrector-Config).
-    ('GP'       , FitnessConfig.DATA_ONLY, CorrectorConfig.OFF),
-    #('GP-L'     , FitnessConfig.LAYERED  , CorrectorConfig.OFF),
-    #('KBP-GP'   , FitnessConfig.DATA_ONLY, CorrectorConfig.ON ),
-    #('KBP-GP-L' , FitnessConfig.LAYERED  , CorrectorConfig.ON )
+    ('GP'         , FitnessConfig.DATA_ONLY, CorrectorConfig.OFF       ),
+    ('GP-L'       , FitnessConfig.LAYERED  , CorrectorConfig.OFF       ),
+    ('KBP-GP'     , FitnessConfig.DATA_ONLY, CorrectorConfig.IMPROVE   ),
+    ('KBP-GP-L'   , FitnessConfig.LAYERED  , CorrectorConfig.IMPROVE   ),
+    ('S-KBP-GP'   , FitnessConfig.DATA_ONLY, CorrectorConfig.STOCHASTIC),
+    ('S-KBP-GP-L' , FitnessConfig.LAYERED  , CorrectorConfig.STOCHASTIC)
 ]
 
 perftable_header = [
@@ -82,11 +85,12 @@ for S, datafile in SYMBREG_BENCHMARKS:
                 best_stree, best_eval = symb_regressor.evolve()
                 end_time = time()
             except Exception as e:
-                error_header = f"Exception on {S.get_name()}-{data_conf}-{algo_config_name} [RState={randstate.getstate()}]"
+                error_header = f"Exception on {S.get_name()}-{data_conf}-{algo_config_name}"# [RState={randstate.getstate()}]"
                 print(f"  └─── {error_header}. See results/perf.log for details.")
                 logfile = open('results/perf.log', 'a')
                 logfile.write(f"{error_header}\n")
-                logfile.write(f"{str(e)}\n\n")
+                logfile.write(f"{str(e)}\n")
+                logfile.write(f"{traceback.format_exc()}\n\n")
                 logfile.close()
                 i_algo_config -= 1
                 continue

@@ -15,14 +15,22 @@ from backprop.library import LibraryError
 import profiling
 
 
+class AlreadyCorrectedError(RuntimeError):
+    def __init__(self, stree_eval):
+        super().__init__()
+        self.stree_eval = stree_eval
+
+
 class Corrector:
-    def __init__(self, S_data, know, max_depth:int, max_length:int, mesh, libsize:int, lib_maxdepth:int, lib_maxlength:int, solutionCreator):
+    def __init__(self, S_data, know, max_depth:int, max_length:int, mesh, libsize:int, lib_maxdepth:int, lib_maxlength:int, solutionCreator, stochastic:bool=False):
         self.S_data = S_data
         self.know = know
         self.max_depth = max_depth
         self.max_length = max_length
         self.mesh = mesh
         self.backprop_trials = 1
+        self.stochastic = stochastic
+        self.evaluator = None
         
         self.S_know = know.synth_dataset(mesh.X)
         self.S_know_derivs = {}
@@ -33,9 +41,9 @@ class Corrector:
         derivs = [()] + list(self.S_know_derivs.keys())
         #profiling.enable()
         if know.has_symmvars():
-            self.symm_lib  = clibrary.ConstrainedLibrary(libsize, lib_maxdepth, lib_maxlength, S_data, know, mesh, derivs, solutionCreator, True)
-            self.asymm_lib = clibrary.ConstrainedLibrary(libsize, lib_maxdepth, lib_maxlength, S_data, know, mesh, derivs, solutionCreator, False)
-            self.lib = clibrary.ConstrainedLibrary(libsize, lib_maxdepth, lib_maxlength, S_data, know, mesh, derivs, solutionCreator, ext_strees=(self.symm_lib.stree_index+self.asymm_lib.stree_index))
+            self.symm_lib  = clibrary.ConstrainedLibrary(libsize, lib_maxdepth, lib_maxlength, S_data, know, mesh, derivs, solutionCreator, True, stochastic=self.stochastic)
+            self.asymm_lib = clibrary.ConstrainedLibrary(libsize, lib_maxdepth, lib_maxlength, S_data, know, mesh, derivs, solutionCreator, False, stochastic=self.stochastic)
+            self.lib = clibrary.ConstrainedLibrary(libsize, lib_maxdepth, lib_maxlength, S_data, know, mesh, derivs, solutionCreator, ext_strees=(self.symm_lib.stree_index+self.asymm_lib.stree_index), stochastic=self.stochastic)
         else:
             self.lib = clibrary.ConstrainedLibrary(libsize, lib_maxdepth, lib_maxlength, S_data, know, mesh, derivs, solutionCreator)
         #profiling.disable()
@@ -263,3 +271,15 @@ class Corrector:
                 y_pulled = c.pull_output(self.S_data.y)
                 if np.isfinite(y_pulled).all():
                     c.val = y_pulled.mean()
+
+
+class StochasticCorrector(Corrector):
+    def __init__(self, S_data, know, max_depth:int, max_length:int, mesh, libsize:int, lib_maxdepth:int, lib_maxlength:int, solutionCreator):
+        super().__init__(S_data, know, max_depth, max_length, mesh, libsize, lib_maxdepth, lib_maxlength, solutionCreator, stochastic=True)
+    
+    def correct(self, stree, backprop_node=None, relax:bool=False):
+        assert self.evaluator is not None
+        stree_eval = self.evaluator.evaluate(stree)
+        if stree_eval.fea_ratio == 1.0:
+            raise AlreadyCorrectedError(stree_eval)
+        return super().correct(stree, backprop_node, relax)

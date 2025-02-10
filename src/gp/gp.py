@@ -119,6 +119,7 @@ class GP:
 
         self.stats = PropertiesGPStats(self.stats)
         if self.corrector is not None:
+            self.corrector.evaluator = self.evaluator
             self.stats = CorrectorGPStats(self.stats)
         
         if args.track_fea_front:
@@ -187,6 +188,7 @@ class GP:
                     if self.visualizer is not None:
                         self.visualizer.track(child, 'After Crossover&Mutation')
 
+                    child_eval = None
                     if self.corrector is not None:
                         
                         try:
@@ -202,11 +204,14 @@ class GP:
                             self.stats.on_backprop_error(backprop_e)
                         except LibraryError as lib_e:
                             self.stats.on_library_error(lib_e)
+                        except corrector.AlreadyCorrectedError as corr_e:
+                            child_eval = corr_e.stree_eval
 
                     if self.visualizer is not None:
                         self.visualizer.track(child, 'After Correction')
 
-                    child_eval = self.evaluator.evaluate(child)
+                    if child_eval is None:
+                        child_eval = self.evaluator.evaluate(child)
 
                     children.append(child)
                     self.eval_map[id(child)] = child_eval

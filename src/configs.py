@@ -42,8 +42,9 @@ class FitnessConfig(Enum):
     LAYERED   = 2
 
 class CorrectorConfig(Enum):
-    ON  = 1
-    OFF = 2
+    OFF        = 1
+    IMPROVE    = 2
+    STOCHASTIC = 3
 
 
 class GPConfig(SymbregConfig):
@@ -76,7 +77,7 @@ class GPConfig(SymbregConfig):
 
         randstate.setstate(GPConfig.RANDSTATE)
 
-        if corrector_config == CorrectorConfig.ON:
+        if corrector_config != CorrectorConfig.OFF:  # when corrector is active...
             self.GENERATIONS = 20
 
         if datafile is None:
@@ -117,9 +118,16 @@ class GPConfig(SymbregConfig):
 
         self.selector  = gp_selector.TournamentSelector(GPConfig.GROUP_SIZE)
         self.crossover = gp_crossover.SubTreeCrossover(GPConfig.MAX_STREE_DEPTH, GPConfig.MAX_STREE_LENGTH)
-        self.corrector = gp_corrector.Corrector(
-            self.S_train, self.S.knowledge, GPConfig.MAX_STREE_DEPTH, GPConfig.MAX_STREE_LENGTH, mesh, GPConfig.LIBSIZE, GPConfig.LIB_MAXDEPTH, GPConfig.LIB_MAXLENGTH, self.solutionCreator) \
-            if corrector_config == CorrectorConfig.ON else None
+        self.corrector = None
+        if corrector_config == CorrectorConfig.IMPROVE:
+            self.corrector = gp_corrector.Corrector(
+                self.S_train, self.S.knowledge, GPConfig.MAX_STREE_DEPTH, GPConfig.MAX_STREE_LENGTH, mesh,
+                GPConfig.LIBSIZE, GPConfig.LIB_MAXDEPTH, GPConfig.LIB_MAXLENGTH, self.solutionCreator)
+        elif corrector_config == CorrectorConfig.STOCHASTIC:
+            self.corrector = gp_corrector.StochasticCorrector(
+                self.S_train, self.S.knowledge, GPConfig.MAX_STREE_DEPTH, GPConfig.MAX_STREE_LENGTH, mesh,
+                GPConfig.LIBSIZE, GPConfig.LIB_MAXDEPTH, GPConfig.LIB_MAXLENGTH, self.solutionCreator)
+        
         if self.corrector is not None:
             self.corrector.backprop_trials = self.BACKPROP_TRIALS
 

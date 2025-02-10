@@ -72,9 +72,23 @@ class MultiprocSyntaxTreeCloneProvider:
                 self.cloned_cond.notify()
 
 
-class KnnIndex:
+class SemanticIndex:
     def query(self, point, k:int=1, max_dist=np.inf):
         pass
+
+class StochasticSemanticIndex(SemanticIndex):
+    def __init__(self, points):
+        self.points = points
+        self.npoints = points.shape[0]
+    
+    def query(self, point, k:int=1, max_dist=np.inf):
+        assert k == 1
+        idx = random.randrange(self.npoints)
+        dist = compute_distance(self.points[idx], point)
+        return dist, idx
+
+class KnnIndex(SemanticIndex):
+    pass
 
 class ExactKnnIndex(KnnIndex):
     def __init__(self, points):
@@ -82,6 +96,7 @@ class ExactKnnIndex(KnnIndex):
     
     def query(self, point, k:int=1, max_dist=np.inf):
         return self.index.query(point, k=k, p=2, distance_upper_bound=max_dist)
+    
 
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
@@ -246,9 +261,6 @@ class Library:
         d, idx = self.sem_index.query(sem, k=k, max_dist=max_dist)
         if d[0] == np.infty: raise LibraryLookupError()  # nearest firts.
         return [ (self.lib_data[__idx], self.stree_provider.get_stree(__idx)) for __idx in idx ]
-    
-    def draw(self) -> SyntaxTree:
-        return self.stree_provider.draw_stree()
 
     def find_best_similarity(self):
         min_d = None
