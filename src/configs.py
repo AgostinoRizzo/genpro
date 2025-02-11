@@ -108,9 +108,11 @@ class GPConfig(SymbregConfig):
         know_evaluator      = gp_evaluator.KnowledgeEvaluator(self.S.knowledge, mesh)
         test_know_evaluator = gp_evaluator.KnowledgeEvaluator(self.S.knowledge, test_mesh)
         
-        nmse_evaluator      = gp_evaluator.NMSEEvaluator(self.S_train)
+        linscaler           = None #gp_evaluator.LinearScaler(self.S_train.y) if corrector_config == CorrectorConfig.OFF else \
+                              #gp_evaluator.ConstraintsPassLinearScaler(self.S_train.y)
+        nmse_evaluator      = gp_evaluator.NMSEEvaluator(self.S_train, linscale=linscaler)
         nmse_test_evaluator = gp_evaluator.NMSEEvaluator(self.S_test)
-        self.r2_evaluator        = gp_evaluator.R2Evaluator(self.S_train)
+        self.r2_evaluator        = gp_evaluator.R2Evaluator(self.S_train, linscale=linscaler)
         self.r2_test_evaluator   = gp_evaluator.R2Evaluator(self.S_test)
         
         self.evaluator      = gp_evaluator.LayeredEvaluator(know_evaluator, nmse_evaluator, know_pressure=(0.0 if fitness_config==FitnessConfig.DATA_ONLY else 1.0))
@@ -160,7 +162,6 @@ import dataset_feynmannd
 import dataset_misc1d
 import dataset_misc2d
 import dataset_misc3d
-import dataset_miscnd
 import dataset_physics
 
 SYMBREG_BENCHMARKS = \
@@ -169,14 +170,14 @@ SYMBREG_BENCHMARKS = \
 
     # feynman 1d (partial domain definition for all).
     (dataset_feynman1d.FeynmanICh6Eq20a (), None),
-    (dataset_feynman1d.FeynmanICh29Eq4  (), None),  # can be remove x/speed_of_light (same as FeynmanICh34Eq27)
-    (dataset_feynman1d.FeynmanICh34Eq27 (), None),
     (dataset_feynman1d.FeynmanIICh8Eq31 (), None),
-    (dataset_feynman1d.FeynmanIICh27Eq16(), None),  # almost same as FeynmanIICh8Eq31 but less "scaling" needed
     
     # misc 1d.
-    (dataset_misc1d.MagmanDatasetScaled(), None),  # partial domain definition.
-    (dataset_misc1d.MagmanDatasetScaled(), 'data/magman.csv'),
+    (dataset_misc1d.MagmanDataset(), None),  # partial domain definition.
+    (dataset_misc1d.MagmanDataset(), 'data/magman.csv'),
+    (dataset_misc1d.Nguyen7(), None),  # partial domain definition.
+    (dataset_misc1d.R1(), None),  # partial domain definition.
+    (dataset_misc1d.R2(), None),  # partial domain definition.
 
     # misc 2d.
     (dataset_misc2d.Resistance2(), None),  # partial domain definition.
@@ -195,7 +196,6 @@ SYMBREG_BENCHMARKS = \
     (dataset_physics.RocketFuelFlow(), None),
 
     # from shape-constrained SR.
-    (dataset_miscnd.WavePower            (), None),
     (dataset_feynman2d.FeynmanICh6Eq20   (), None),
     (dataset_feynmannd.FeynmanICh41Eq16  (), None),
     (dataset_feynmannd.FeynmanICh48Eq20  (), None),

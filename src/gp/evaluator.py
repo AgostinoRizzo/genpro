@@ -18,11 +18,11 @@ class LinearScaler:
     
     def scale(self, y):
         # return a + by
-        a, b = self.__compute_coeffs(y)
+        a, b = self._compute_coeffs(y)
         return a + b * y
     
     def scale_stree(self, stree, y):
-        a, b = self.__compute_coeffs(y)
+        a, b = self._compute_coeffs(y)
         return BinaryOperatorSyntaxTree('+',
             ConstantSyntaxTree(a),
             BinaryOperatorSyntaxTree('*',
@@ -34,14 +34,26 @@ class LinearScaler:
     def create_stats(self):
         return QualitiesGPStats(0.0, 1.0, self.name)
     
-    def __compute_coeffs(self, y):
+    def _compute_coeffs(self, y):
         y_mean = y.mean()
         y_err = y - y_mean
         b = np.sum(self.t_err * y_err) / np.sum(y_err ** 2)
-        if np.isnan(b): b = 0
+        if np.isnan(b): b = 1.0
         a = self.t_mean - b * y_mean
         return a, b
 
+
+class ConstraintsPassLinearScaler(LinearScaler):
+    def __init__(self, t):
+        super().__init__(t)
+
+    def _compute_coeffs(self, y):
+        y_mean = y.mean()
+        y_err = y - y_mean
+        b = np.sum(self.t_err * y_err) / np.sum(y_err ** 2)
+        if np.isnan(b) or b < 0: b = 1.0
+        a = 0.0
+        return a, b
 
 
 class Evaluator:
@@ -50,11 +62,10 @@ class Evaluator:
 
 
 class DataEvaluator(Evaluator):
-    def __init__(self, data, linscale:bool=False):
+    def __init__(self, data, linscaler:LinearScaler=None):
         assert np.isfinite(data.y).all()
         self.data = data
-        self.linscaler = None
-        if linscale: self.linscaler = LinearScaler(data.y)
+        self.linscaler = linscaler
     
     def evaluate(self, stree:SyntaxTree):
         if self.data.sst <= 0: return None
@@ -65,8 +76,8 @@ class DataEvaluator(Evaluator):
         return None
     
 class R2Evaluator(DataEvaluator):
-    def __init__(self, data, linscale:bool=False):
-        super().__init__(data, linscale)
+    def __init__(self, data, linscaler:LinearScaler=None):
+        super().__init__(data, linscaler)
         self.name = 'R²'
         
     def evaluate(self, stree:SyntaxTree):
@@ -85,8 +96,8 @@ class R2Evaluator(DataEvaluator):
 
 
 class PearsonR2Evaluator(DataEvaluator):
-    def __init__(self, data, linscale:bool=False):
-        super().__init__(data, linscale)
+    def __init__(self, data, linscaler:LinearScaler=None):
+        super().__init__(data, linscaler)
         data_y_mean = data.y.mean()
         self.data_y_err = data.y - data_y_mean
         self.data_y_sst = np.sum(self.data_y_err ** 2)
@@ -111,8 +122,8 @@ class PearsonR2Evaluator(DataEvaluator):
 
 
 class MSEEvaluator(DataEvaluator):
-    def __init__(self, data, linscale:bool=False):
-        super().__init__(data, linscale)
+    def __init__(self, data, linscaler:LinearScaler=None):
+        super().__init__(data, linscaler)
         self.n = data.y.size
         self.name = 'MSE'
     
@@ -130,8 +141,8 @@ class MSEEvaluator(DataEvaluator):
 
 
 class NMSEEvaluator(DataEvaluator):
-    def __init__(self, data, linscale:bool=False):
-        super().__init__(data, linscale)
+    def __init__(self, data, linscaler:LinearScaler=None):
+        super().__init__(data, linscaler)
         self.n = data.y.size
         self.data_y_var = data.y.var()
         self.name = 'NMSE'

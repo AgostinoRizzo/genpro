@@ -61,38 +61,22 @@ class MagmanDataset(Dataset1d):
         self.yl = -0.25
         self.yu =  0.25
         
-        self.c1 = .00032
-        self.c2 = .000305
-        self.i  = .000004
-        peak_x  = 0.00788845
-        
-        # intersection points
-        """self.knowledge.add_deriv(0, DataPoint( 0., 0.))
-        self.knowledge.add_deriv(0, DataPoint(-peak_x, self.func(-peak_x)))
-        self.knowledge.add_deriv(0, DataPoint( peak_x, self.func( peak_x)))
-        self.knowledge.add_deriv(0, DataPoint(self.xl, self.func(self.xl)))
-        self.knowledge.add_deriv(0, DataPoint(self.xu, self.func(self.xu)))"""
-
-        # known (first) derivatives
-        """self.knowledge.add_deriv(1, DataPoint(-peak_x,  0.))
-        self.knowledge.add_deriv(1, DataPoint( peak_x,  0.))"""
+        self.c1 = 0.00032
+        self.c2 = 0.000305
+        self.i  = 0.000004
 
         #
         # positivity/negativity contraints
         #
+        INFTY = self.numlims.INFTY
         
         # known positivity/negativity
-        self.knowledge.add_sign(0, self.xl, -0.00001, '+')
-        self.knowledge.add_sign(0, 0.00001, self.xu, '-')
+        self.knowledge.add_sign(0, -INFTY, 0, '+')
+        self.knowledge.add_sign(0, 0, INFTY, '-')
     
         # monotonically increasing/decreasing
-        """self.knowledge.add_sign(1, self.xl, -0.01, '+')
-        #self.knowledge.add_sign(1, -peak_x+0.1, peak_x-0.1, '-')
-        self.knowledge.add_sign(1, -0.01, self.xu, '+')"""
-
-        # concavity/convexity
-        """self.knowledge.add_sign(2, self.xl, -0.01, '+')
-        self.knowledge.add_sign(2, 0.01, self.xu, '-')"""
+        self.knowledge.add_sign(1, -INFTY, -0.008, '+')
+        self.knowledge.add_sign(1, 0.008, INFTY, '+')
 
     def func(self, x: float) -> float:
         return -self.i*self.c1*x / (x**2 + self.c2)**3
@@ -105,10 +89,9 @@ class MagmanDataset(Dataset1d):
         expr = -i*c1*x / (x**2 + c2)**3
         if evaluated: return expr.subs( {i:self.i, c1:self.c1, c2:self.c2} )
         return expr
-        #return '-\frac{i \cdot c_1 \cdot x}{\left(x^2 + c_2\right)^3}'
     
     def get_name(self) -> str:
-        return 'magman'
+        return 'Magman'
     
     def get_xlabel(self, xidx:int=0) -> str:
         return 'distance [m] (x)'
@@ -214,7 +197,7 @@ class MagmanDatasetScaled(Dataset1d):
         return self._ymap(y)
     
     def get_name(self) -> str:
-        return 'magman'
+        return 'Magman'
     
     def get_xlabel(self, xidx:int=0) -> str:
         return 'distance [m] (x)'
@@ -429,3 +412,110 @@ class OneOverXDataset(Dataset1d):
     
     def get_name(self) -> str:
         return '1/x'
+
+
+#
+# Additional problems.
+#
+
+class Nguyen7(Dataset1d):
+    def __init__(self) -> None:
+        super().__init__(xl=-0.9999, xu=4.)
+        self.def_xl = 0.
+        self.def_xu = 2.
+        self.yl = -8.52
+        self.yu =  4.45
+
+        #
+        # prior knowledge
+        #
+        
+        # known positivity/negativity
+        self.knowledge.add_sign(0, 0.0, self.numlims.INFTY, '+')
+        self.knowledge.add_sign(0, self.xl, 0.0, '-')
+
+        # monotonically increasing/decreasing
+        self.knowledge.add_sign(1, -self.numlims.INFTY, self.numlims.INFTY, '+')
+    
+    def func(self, x: float) -> float:
+        return np.log(x + 1) + np.log(x**2 + 1)
+    
+    def get_sympy(self, evaluated:bool=False):
+        x = sympy.Symbol(self.get_varnames()[0])
+        return sympy.log(x + 1) + sympy.log(x**2 + 1)
+    
+    def get_name(self) -> str:
+        return 'Nguyen-7'
+
+
+class R1(Dataset1d):
+    def __init__(self) -> None:
+        super().__init__(xl=-4., xu=4.)
+        self.def_xl = -1.
+        self.def_xu =  1.
+        self.yl = -1.29
+        self.yu =  9.62
+
+        #
+        # prior knowledge
+        #
+        
+        # known positivity/negativity
+        self.knowledge.add_sign(0, -1.0, self.numlims.INFTY, '+')
+        self.knowledge.add_sign(0, -self.numlims.INFTY, -1.0, '-')
+
+        # monotonically increasing/decreasing
+        self.knowledge.add_sign(1, -self.numlims.INFTY, self.numlims.INFTY, '+')
+    
+    def func(self, x: float) -> float:
+        return ((x + 1)**3) / (x**2 -x + 1)
+    
+    def get_sympy(self, evaluated:bool=False):
+        x = sympy.Symbol(self.get_varnames()[0])
+        return ((x + 1)**3) / (x**2 -x + 1)
+    
+    def get_name(self) -> str:
+        return 'R1'
+
+
+class R2(Dataset1d):
+    def __init__(self) -> None:
+        super().__init__(xl=-2., xu=2.)
+        self.def_xl = -1.
+        self.def_xu =  1.
+        self.yl = -1.4
+        self.yu =  1.8
+
+        #
+        # prior knowledge
+        #
+        
+        # known positivity/negativity
+        x1 = -1.782309
+        x2 =  0.741814
+        x3 =  1.668778
+        self.knowledge.add_sign(0, -self.numlims.INFTY, x1, '-')
+        self.knowledge.add_sign(0, x1, x2, '+')
+        self.knowledge.add_sign(0, x2, x3, '-')
+        self.knowledge.add_sign(0, x3, self.numlims.INFTY, '+')
+
+        # monotonically increasing/decreasing
+        xx1 = -1.119236
+        xx2 = -0.224944
+        xx3 =  0.0
+        xx4 =  1.255049
+        self.knowledge.add_sign(1, -self.numlims.INFTY, xx1, '+')
+        self.knowledge.add_sign(1, xx1, xx2, '-')
+        self.knowledge.add_sign(1, xx2, xx3, '+')
+        self.knowledge.add_sign(1, xx3, xx4, '-')
+        self.knowledge.add_sign(1, xx4, self.numlims.INFTY, '+')
+    
+    def func(self, x: float) -> float:
+        return (x**5 - 3*x**3 + 1) / (x**2 + 1)
+    
+    def get_sympy(self, evaluated:bool=False):
+        x = sympy.Symbol(self.get_varnames()[0])
+        return (x**5 - 3*x**3 + 1) / (x**2 + 1)
+    
+    def get_name(self) -> str:
+        return 'R2'
