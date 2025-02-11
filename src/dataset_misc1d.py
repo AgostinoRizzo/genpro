@@ -58,6 +58,8 @@ class TrigonDataset(Dataset1d):
 class MagmanDataset(Dataset1d):
     def __init__(self) -> None:
         super().__init__(xl=-0.075, xu=0.075)
+        self.def_xl = -0.02
+        self.def_xu =  0.02
         self.yl = -0.25
         self.yu =  0.25
         

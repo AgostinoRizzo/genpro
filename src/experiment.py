@@ -34,8 +34,8 @@ perftable_header = [
     'Test-R2',
     'Train-Fea-Ratio',
     'Test-Fea-Ratio',
-    'Extra-NMSE',
-    'Extra-R2',
+    'Test-Extra-NMSE',
+    'Test-Extra-R2',
     'Avg-Train-NMSE',
     'Avg-Train-Fea-Ratio',
     'Ext-Conv-Fea',
@@ -95,15 +95,23 @@ for S, datafile in SYMBREG_BENCHMARKS:
                 i_algo_config -= 1
                 continue
 
-            best_stree.clear_output()
-            extra_eval = S.evaluate_extra(best_stree)
+            # R2 train, test, test_extra.
             best_stree.clear_output()
             train_r2 = symbreg_config.r2_evaluator.evaluate(best_stree).value
             best_stree.clear_output()
             test_r2 = symbreg_config.r2_test_evaluator.evaluate(best_stree).value
+            best_stree.clear_output()
+            text_extra_r2 = symbreg_config.r2_test_extra_evaluator.evaluate(best_stree).value
+            best_stree.clear_output()
 
+            # NMSE test_extra
+            test_extra_nmse = symbreg_config.nmse_test_extra_evaluator.evaluate(best_stree).value
+            best_stree.clear_output()
 
+            # (best) test.
             best_test_eval = symbreg_config.test_evaluator.evaluate(best_stree)
+
+            # stats.
             qualities_stats = symb_regressor.stats.get_qualities_stats()
             fesibility_stats = symb_regressor.stats.get_feasibility_stats()
             properties_stats = symb_regressor.stats.get_properties_stats()
@@ -123,8 +131,8 @@ for S, datafile in SYMBREG_BENCHMARKS:
                 test_r2,  # Test-R2
                 best_eval.fea_ratio,  # Train-Fea-Ratio
                 best_test_eval.fea_ratio,  # Test-Fea-Ratio
-                extra_eval['nmse'],  # Extra-NMSE
-                extra_eval['r2'],  # Extra-R2
+                test_extra_nmse,  # Test-Extra-NMSE
+                text_extra_r2,  # Test-Extra-R2
                 statistics.mean(qualities_stats.qualities['currAvg']),    # Avg-Train-NMSE
                 statistics.mean(fesibility_stats.fea_ratio['currAvg']),    # Avg-Train-Fea-Ratio
                 fea_front.compute_extend_of_convergence(data_lu, length_lu),  # Ext-Conv-Fea

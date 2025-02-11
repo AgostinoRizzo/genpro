@@ -90,6 +90,7 @@ class GPConfig(SymbregConfig):
         self.S = S
         self.S_train = dataset.NumpyDataset(S)
         self.S_test  = dataset.NumpyDataset(S, test=True)
+        self.S_test_extra  = dataset.NumpyDataset(S, test_extra=True)
 
         syntax_tree.SyntaxTreeInfo.set_problem(self.S_train)
 
@@ -110,13 +111,16 @@ class GPConfig(SymbregConfig):
         
         linscaler           = None #gp_evaluator.LinearScaler(self.S_train.y) if corrector_config == CorrectorConfig.OFF else \
                               #gp_evaluator.ConstraintsPassLinearScaler(self.S_train.y)
-        nmse_evaluator      = gp_evaluator.NMSEEvaluator(self.S_train, linscale=linscaler)
-        nmse_test_evaluator = gp_evaluator.NMSEEvaluator(self.S_test)
-        self.r2_evaluator        = gp_evaluator.R2Evaluator(self.S_train, linscale=linscaler)
-        self.r2_test_evaluator   = gp_evaluator.R2Evaluator(self.S_test)
+        nmse_evaluator            = gp_evaluator.NMSEEvaluator(self.S_train, linscaler=linscaler)
+        nmse_test_evaluator       = gp_evaluator.NMSEEvaluator(self.S_test)
+        self.nmse_test_extra_evaluator = gp_evaluator.NMSEEvaluator(self.S_test_extra)
+        self.r2_evaluator              = gp_evaluator.R2Evaluator(self.S_train, linscaler=linscaler)
+        self.r2_test_evaluator         = gp_evaluator.R2Evaluator(self.S_test)
+        self.r2_test_extra_evaluator   = gp_evaluator.R2Evaluator(self.S_test_extra)
         
         self.evaluator      = gp_evaluator.LayeredEvaluator(know_evaluator, nmse_evaluator, know_pressure=(0.0 if fitness_config==FitnessConfig.DATA_ONLY else 1.0))
         self.test_evaluator = gp_evaluator.LayeredEvaluator(test_know_evaluator, nmse_test_evaluator, know_pressure=(0.0 if fitness_config==FitnessConfig.DATA_ONLY else 1.0))
+        self.test_extra_evaluator = gp_evaluator.LayeredEvaluator(test_know_evaluator, self.nmse_test_extra_evaluator, know_pressure=(0.0 if fitness_config==FitnessConfig.DATA_ONLY else 1.0))
 
         self.selector  = gp_selector.TournamentSelector(GPConfig.GROUP_SIZE)
         self.crossover = gp_crossover.SubTreeCrossover(GPConfig.MAX_STREE_DEPTH, GPConfig.MAX_STREE_LENGTH)

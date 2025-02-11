@@ -309,6 +309,7 @@ class Dataset:
                  plotter:plotting.DatasetPlotter=None) -> None:
         self.data = []
         self.test = []
+        self.test_extra = []
         self.nvars = nvars
         self.xl = xl
         self.xu = xu
@@ -327,6 +328,8 @@ class Dataset:
         self.knowledge = DataKnowledge(self)
         self.data_sst = 0.
         self.test_sst = 0.
+        self.test_extra_sst = 0.
+        self.noise = 0.
         """self.__sorted_data__ = None  # TODO: remove index?!
         self.__x_map__ = None"""
     
@@ -343,6 +346,7 @@ class Dataset:
         for i in range(y.size):
             self.data.append(DataPoint(X[i], y[i]))
         
+        self.noise = noise
         self._on_data_changed()
     
     def load(self, filename:str):
@@ -370,6 +374,16 @@ class Dataset:
             train, test = train_test_split(self.data, train_size=train_size, random_state=randstate)
             self.data = list(train)
             self.test = list(test)
+
+            # create extra test dataset (on all the input domain!).
+            X = self.spsampler.randspace(self.xl, self.xu, len(self.test))
+            y = self.func(X)
+            if self.noise > 0.:
+                y_std = y.std()
+                y += np.random.normal(scale=self.noise*y_std, size=X.shape[0])
+            for i in range(y.size):
+                self.test_extra.append(DataPoint(X[i], y[i]))
+
             self._on_data_changed()
     
     def clear(self):
@@ -465,6 +479,7 @@ class Dataset:
     def _on_data_changed(self):
         self.data_sst = compute_sst(self.data)
         self.test_sst = compute_sst(self.test)
+        self.test_extra_sst = compute_sst(self.test_extra)
     
     def func(self, x:float) -> float:
         pass
@@ -558,9 +573,11 @@ class NumpyDataset:
     def __init__(self,
                  S:Dataset=None,
                  test:bool=False,
+                 test_extra:bool=False,
                  nvars:int=None):
         
         assert (S is None) != (nvars is None)
+        assert not test or not test_extra
         self.nvars = nvars if S is None else S.nvars
         
         if S is None:
@@ -575,7 +592,9 @@ class NumpyDataset:
                 space.UnidimSpaceSampler(randstate=0) if self.nvars == 1 else \
                 space.MultidimSpaceSampler(randstate=0)  # TODO: factorize randstate.
         else:
-            XY = S.test if test else S.data
+            XY = S.data
+            if test: XY = S.test
+            if test_extra: XY = S.test_extra
             self.X = np.array( [dp.x for dp in XY] )
             self.y = np.array( [dp.y for dp in XY] )
             self.xl = S.xl; self.xu = S.xu
