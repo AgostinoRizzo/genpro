@@ -37,7 +37,7 @@ class Corrector:
         for deriv in know.sign.keys():
             if len(deriv) == 1:
                 self.S_know_derivs[deriv] = know.synth_dataset(mesh.X, deriv=deriv)
-
+        
         derivs = [()] + list(self.S_know_derivs.keys())
         #profiling.enable()
         if know.has_symmvars():

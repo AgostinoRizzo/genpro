@@ -121,13 +121,13 @@ class PTC2RandomSolutionCreator(SolutionCreator):
         self.simplify = simplify
         self.const_prob = const_prob
     
-    def create_population(self, popsize:int, max_depth:int, max_length:int, create_consts:bool=True, parent_opt:str=None) -> list[SyntaxTree]:
+    def create_population(self, popsize:int, max_depth:int, max_length:int, create_consts:bool=True, parent_opt:str=None, min_length:int=1) -> list[SyntaxTree]:
         create_consts = False
         assert popsize > 0 and max_depth >= 0 and max_length > 0
         population = []
         population_set = set()
         while len(population) < popsize:
-            target_len = random.randint(1, max_length)
+            target_len = random.randint(min_length, max_length)
             stree = ptc2(target_len, max_depth, self.cl, self.cu, self.nvars, create_consts, parent_opt, const_prob=self.const_prob)
             stree = stree.simplify() if self.simplify else stree
             if not create_consts and type(stree) is ConstantSyntaxTree:

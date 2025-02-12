@@ -291,6 +291,8 @@ class Library:
         print(f"{self.stree_index[min_i]} => {self.stree_index[min_idx]} [{min_d}]")
         return self.stree_index[min_i], self.stree_index[min_idx], min_d
 
+    def get_size(self) -> int:
+        return self.lib_data.shape[0]
 
 class ConstrainedLibrary(Library):
     def __init__(self, size:int, max_depth:int, max_length:int, data, know, mesh, derivs:list[tuple[int]], solutionCreator):

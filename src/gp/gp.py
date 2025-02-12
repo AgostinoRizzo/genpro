@@ -98,7 +98,7 @@ class GPSettings:
 
 class GP:
     def __init__(self, args:GPSettings):
-        self.population = args.creator.create_population(args.popsize, args.max_depth, args.max_length)
+        self.population = args.creator.create_population(args.popsize, args.max_depth, args.max_length, min_length=3)
         self.eval_map   = {}
         self.popsize    = args.popsize
         self.ngen       = args.ngen

@@ -42,6 +42,7 @@ perftable_header = [
     'Ext-Conv-Unfea',
     'Preproc-Time',
     'Evo-Time',
+    'Actual-Libsize',
     'Model-Length',
     'Model',
     'Popstat-CurrTop-NMSE',
@@ -139,6 +140,7 @@ for S, datafile in SYMBREG_BENCHMARKS:
                 unfea_front.compute_extend_of_convergence(data_lu, length_lu),  # Ext-Conv-unfea
                 preproc_end_time - preproc_start_time,  # Preproc-Time
                 end_time - start_time,  # Evo-Time
+                0 if corrector_config == CorrectorConfig.OFF else symbreg_config.corrector.lib.get_size(),  # Actual-Libsize
                 best_stree.cache.nnodes,  # Model-Length
                 str(best_stree.simplify()),  # Model
                 series_float_to_string(qualities_stats.qualities ['currTop']),  # Popstat-CurrTop-NMSE

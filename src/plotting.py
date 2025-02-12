@@ -38,7 +38,7 @@ class DatasetPlotter(Plotter):
                 if len(data) > 0:
                     self.impl.plot_datapoints(data, marker, color, markersize=2, label=label)
             plot_data_points(self.dataset.data, 'o', 'b', 'Training data')
-            #plot_data_points(self.dataset.test, 'o', 'm', 'Test data')
+            plot_data_points(self.dataset.test, 'o', 'm', 'Test data')
         
         if plot_knowldege:
             self.dataset.knowledge.plot()
