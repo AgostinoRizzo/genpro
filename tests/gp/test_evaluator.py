@@ -4,6 +4,7 @@ import dataset
 import dataset_misc2d
 import space
 from gp.evaluator import R2Evaluator, KnowledgeEvaluator, LayeredEvaluator
+from gp.evaluation import LinearScaling
 from symbols.parsing import parse_syntax_tree
 
 
@@ -31,7 +32,7 @@ def test_evaluator(data, expr, request):
     
     stree = parse_syntax_tree(expr)
     r2    = r2_evaluator.evaluate(stree).value
-    n, nv = know_evaluator.evaluate(stree)
+    n, nv = know_evaluator.evaluate(stree, LinearScaling())
     leval = layered_evaluator.evaluate(stree)
 
     assert r2 == 1.0

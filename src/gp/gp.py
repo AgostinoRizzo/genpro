@@ -146,7 +146,7 @@ class GP:
         """
         print()
         for p in self.population:
-            print(p, self.eval_map[id(p)].fea_ratio, self.eval_map[id(p)].data_r2, self.eval_map[id(p)].know_mse)
+            print(p, self.eval_map[id(p)].fea_ratio, self.eval_map[id(p)].data_eval.value, self.eval_map[id(p)].know_mse)
         """
         
         """print()
@@ -176,7 +176,7 @@ class GP:
             for _ in range(self.popsize - len(children)):
 
                 parents = self.selector.select(self.population, self.eval_map, 2)
-                child = self.crossover.cross(parents[0], parents[1])  # 100% crossover rate (child must be a new object!)
+                child, cp1, cp2 = self.crossover.cross(parents[0], parents[1])  # 100% crossover rate (child must be a new object!)
 
                 if random.random() < self.mutrate:
                     child = self.mutator.mutate(child)

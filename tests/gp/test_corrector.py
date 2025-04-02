@@ -78,8 +78,8 @@ backprop_node = ConstantSyntaxTree(2.0)
         ),
         True,
         None,
-        [np.nan] * 100,  # natural (lossless) softening.
-        {(0,): [np.nan] * 100},  # lossy softening.
+        [1.] * 100,  # natural (lossless) softening (backprop_node overriding).
+        {(0,): [-1.] * 42 + [np.nan] * 16 + [1.] * 42},  # lossy softening (backprop_node overriding).
         True,
         False
     ),
@@ -95,8 +95,8 @@ backprop_node = ConstantSyntaxTree(2.0)
         ),
         True,
         None,  # symm
-        [np.nan] * 10 + ([np.nan] + [1.] * 9) * 9,
-        {(0,): [np.nan] * 100, (1,): [np.nan] * 100},
+        [1.] * 100,
+        {(0,): [0.] * 100, (1,): [0.] * 100},
         True,
         False
     ),
@@ -184,7 +184,7 @@ def test_corrector(data, stree, noroot, symm, k_image, k_deriv, partial, none, r
     solutionCreator = creator.RandomSolutionCreator(nvars=S.nvars, y_iqr=y_iqr)
 
     corr = corrector.Corrector(S_train, S.knowledge, max_depth, max_length, mesh, libsize, lib_maxdepth, lib_maxlength, solutionCreator)
-    new_stree, new_node, C_pulled, y_pulled = corr.correct(stree, backprop_node)
+    new_stree, new_node, C_pulled, y_pulled = corr.correct(stree, backprop_node, target_backprop_node=backprop_node)
 
     assert new_stree.get_max_depth() <= max_depth
 
@@ -194,11 +194,11 @@ def test_corrector(data, stree, noroot, symm, k_image, k_deriv, partial, none, r
     assert set(C_pulled.origin_pconstrs.keys()) == set([()] + list(k_deriv.keys()))
 
     k_image = np.array(k_image)
-    k_image[np.isnan(k_image)] = 1.0  # since backprop_node = 2.0
+    #k_image[np.isnan(k_image) & mesh.sign_defspace[()]] = 1.0  # since backprop_node = 2.0
     assert np.array_equal(C_pulled.origin_pconstrs[()], k_image, equal_nan=True)
     for d in k_deriv.keys():
         k_deriv[d] = np.array(k_deriv[d])
-        k_deriv[d][np.isnan(k_deriv[d])] = 0.0  # since backprop_node = 2.0
+        #k_deriv[d][np.isnan(k_deriv[d]) & mesh.sign_defspace[d]] = 0.0  # since backprop_node = 2.0
         assert np.array_equal(C_pulled.origin_pconstrs[d], k_deriv[d], equal_nan=True)
 
     assert C_pulled.partial == partial

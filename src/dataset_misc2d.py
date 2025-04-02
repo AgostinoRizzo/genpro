@@ -49,7 +49,7 @@ class Resistance2(Datasetnd):
         return (x0*x1) / (x0+x1)
     
     def get_name(self) -> str:
-        return 'resistance2'
+        return 'Resistance2'
     
     def get_varnames(self) -> dict[int,str]:
         return {0: 'r_1', 1: 'r_2'}

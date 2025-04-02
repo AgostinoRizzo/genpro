@@ -46,7 +46,7 @@ class SubTreeCrossover:
         child.set_parent()
         if cross_point2.has_parent():
             cross_point2.parent.invalidate_output()
-        return child
+        return child, cross_point1, cross_point2
     
     def __select_cross_point(self, nodes):
         terminal_nodes = []

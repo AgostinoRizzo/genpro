@@ -42,7 +42,7 @@ class AircraftLift(Datasetnd):
         return C_La * (a - self.a0) + C_Ld_e * d_e * S_HT / S_ref
     
     def get_name(self) -> str:
-        return 'Aircraft lift'
+        return 'Aircraft Lift'
 
 
 class RocketFuelFlow(Datasetnd):
@@ -83,4 +83,4 @@ class RocketFuelFlow(Datasetnd):
         return ((p0 * A) / sympy.sqrt(T0)) * self.c
     
     def get_name(self) -> str:
-        return 'Rocket fuel flow'
+        return 'Rocket Fuel Flow'

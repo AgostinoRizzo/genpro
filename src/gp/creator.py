@@ -78,7 +78,7 @@ def ptc2(target_len:int, max_depth:int, cl:float, cu:float, nvars:int, create_co
         target_len -= 1
 
         if extpoint.parent.get_depth() == max_depth - 1:
-            extpoint.extend(createRandomTerminal(cl, cu, nvars, const_prob=const_prob))
+            extpoint.extend(createRandomTerminal(cl, cu, nvars, create_consts, const_prob=const_prob))
             continue
         
         child, __Q = createRandomNonTerminal(target_len - len(Q), extpoint.parent.operator)
@@ -87,7 +87,7 @@ def ptc2(target_len:int, max_depth:int, cl:float, cu:float, nvars:int, create_co
         Q += __Q
 
     for extpoint in Q:
-        extpoint.extend(createRandomTerminal(cl, cu, nvars, const_prob=const_prob))
+        extpoint.extend(createRandomTerminal(cl, cu, nvars, create_consts, const_prob=const_prob))
     
     return root
 
@@ -122,7 +122,6 @@ class PTC2RandomSolutionCreator(SolutionCreator):
         self.const_prob = const_prob
     
     def create_population(self, popsize:int, max_depth:int, max_length:int, create_consts:bool=True, parent_opt:str=None, min_length:int=1) -> list[SyntaxTree]:
-        create_consts = False
         assert popsize > 0 and max_depth >= 0 and max_length > 0
         population = []
         population_set = set()

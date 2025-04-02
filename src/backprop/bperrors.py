@@ -12,3 +12,6 @@ class BackpropGrammarError(BackpropError):
 
 class BackpropMaxLengthError(BackpropError):
     pass
+
+class BackpropMaxDepthError(BackpropError):
+    pass

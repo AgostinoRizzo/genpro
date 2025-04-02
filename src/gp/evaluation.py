@@ -1,5 +1,8 @@
 import numpy as np
 
+from symbols.const import ConstantSyntaxTree
+from symbols.binop import BinaryOperatorSyntaxTree
+
 
 class Evaluation:
     def __init__(self, minimize:bool=True):
@@ -8,12 +11,32 @@ class Evaluation:
     def get_quality(self): return self
 
 
+class LinearScaling:
+    def __init__(self, translation:float=0.0, scaling:float=1.0):
+        self.translation = translation
+        self.scaling = scaling
+    
+    def scale_stree(self, stree):
+        a = ConstantSyntaxTree(self.translation)
+        if self.scaling == 0.0: return a
+        if self.scaling == 1.0:
+            if self.translation == 0.0: return stree
+            return BinaryOperatorSyntaxTree('+', a, stree).simplify()
+        
+        b = ConstantSyntaxTree(self.scaling)
+        if self.translation == 0.0:
+            return BinaryOperatorSyntaxTree('*', b, stree).simplify()
+    
+        return BinaryOperatorSyntaxTree('+', a, BinaryOperatorSyntaxTree('*', b, stree)).simplify()
+
+
 class RealEvaluation(Evaluation):
-    def __init__(self, value, minimize:bool=True, name:str='', isfeasible:bool=True):
+    def __init__(self, value, minimize:bool=True, name:str='', isfeasible:bool=True, scaling=None):
         super().__init__(minimize)
         self.value = value
         self.isfeasible = isfeasible
         self.name = name
+        self.scaling = scaling
     
     def better_than(self, other) -> bool:
         if np.isnan(other.value):
@@ -42,6 +65,8 @@ class LayeredEvaluation(Evaluation):
         if self.know_pressure > 0:  # TODO: add probability.
             if self.actual_fea_ratio > other.actual_fea_ratio: return True
             if self.actual_fea_ratio < other.actual_fea_ratio: return False
+            #if self.actual_fea_ratio == 1.0 and other.actual_fea_ratio < 1.0: return True
+            #if other.actual_fea_ratio == 1.0 and self.actual_fea_ratio < 1.0: return False
 
         if self.data_eval.better_than(other.data_eval): return True
         if other.data_eval.better_than(self.data_eval): return False

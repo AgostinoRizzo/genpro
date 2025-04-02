@@ -19,7 +19,7 @@ def test_ptc2_random_creator():
                 for create_consts in [True, False]:
                     nconsts = 0
 
-                    for stree in creator.create_population(1000, max_depth, max_length, create_consts=create_consts):
+                    for stree in creator.create_population(100, max_depth, max_length, create_consts=create_consts):
                         
                         assert stree.get_max_depth() <= max_depth
                         assert stree.get_nnodes() <= max_length

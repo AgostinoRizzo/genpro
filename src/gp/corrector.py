@@ -5,6 +5,7 @@ from backprop import library, clibrary, constraints
 from backprop import bperrors
 from backprop.utils import is_symmetric
 from gp import utils
+from gp.evaluator import LinearScaler, ConstraintsPassLinearScaler
 from symbols.unaop import UnaryOperatorSyntaxTree
 from symbols.binop import BinaryOperatorSyntaxTree
 from symbols.grammar import can_nest
@@ -22,7 +23,8 @@ class AlreadyCorrectedError(RuntimeError):
 
 
 class Corrector:
-    def __init__(self, S_data, know, max_depth:int, max_length:int, mesh, libsize:int, lib_maxdepth:int, lib_maxlength:int, solutionCreator, stochastic:bool=False):
+    def __init__(self, S_data, know, max_depth:int, max_length:int, mesh, libsize:int, lib_maxdepth:int, lib_maxlength:int,
+                 solutionCreator, stochastic:bool=False, linscaling:bool=False):
         self.S_data = S_data
         self.know = know
         self.max_depth = max_depth
@@ -31,6 +33,7 @@ class Corrector:
         self.backprop_trials = 1
         self.stochastic = stochastic
         self.evaluator = None
+        self.linscaling = linscaling
         
         self.S_know = know.synth_dataset(mesh.X)
         self.S_know_derivs = {}
@@ -58,7 +61,7 @@ class Corrector:
         self.lib_n = 0
         self.acc_n = 0
     
-    def correct(self, stree, backprop_node=None, relax:bool=False):
+    def correct(self, stree, backprop_node=None, target_backprop_node=None, relax:bool=False):  # target_backprop_node used for overrinding (when none, take from lib).
             
         stree.cache.clear()
         stree.set_parent()
@@ -88,6 +91,9 @@ class Corrector:
             max_nesting_depth = self.max_depth - backprop_node.get_depth()
             max_nesting_length = self.max_length - (stree.get_nnodes() - backprop_node.get_nnodes())
             
+            if self.linscaling:
+                max_nesting_depth -= 1
+            
             try:
                 
                 # backprop data...
@@ -99,11 +105,12 @@ class Corrector:
                 #C_pulled.project(y_pulled)
                 
                 y_backprop_node = backprop_node(self.S_data.X)
-                max_dist = library.compute_distance(y_backprop_node, y_pulled)
+                max_dist = np.inf if self.linscaling else library.compute_distance(y_backprop_node, y_pulled)
                 new_node = None
 
                 # backprop knowledge...
-                target_backprop_node = self.lib.query(y_pulled, max_dist=max_dist)
+                if target_backprop_node is None:
+                    target_backprop_node = self.lib.query(y_pulled, max_dist=max_dist)
                 C_pulled = None
                 if relax:
                     C_pulled = self.__get_relaxed_constraints(max_nesting_depth, max_nesting_length)
@@ -127,6 +134,15 @@ class Corrector:
                     new_node = self.asymm_lib.cquery(y_pulled, C_pulled, max_dist=max_dist, check_constfit=check_constfit)
                     self.asymm_n += 1
                 
+                if self.linscaling:
+                    new_node = ConstraintsPassLinearScaler(y_pulled).scale_stree(new_node, new_node(self.S_data.X))
+                    y_new_node = new_node(self.S_data.X)
+                    if new_node.get_max_depth() > max_nesting_depth + 1:  # + 1 because of linear scaling
+                        raise bperrors.BackpropMaxDepthError()
+                    if library.compute_distance(y_new_node, y_pulled) > library.compute_distance(y_backprop_node, y_pulled):
+                        raise library.LibraryLookupError()
+                    # TODO: check image positivity and no-root constraints.
+
                 if new_node.get_nnodes() > max_nesting_length:
                     raise bperrors.BackpropMaxLengthError()
                 

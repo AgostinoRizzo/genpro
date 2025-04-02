@@ -26,7 +26,7 @@ class FeynmanICh6Eq20(dataset.Datasetnd):
         return sympy.exp(-(theta/sigma)**2 / 2.0) / (sympy.sqrt(2.0 * sympy.pi) * sigma)
     
     def get_name(self) -> str:
-        return 'feynman-i.6.20'
+        return 'I.6.20'
     
     def get_varnames(self) -> dict[int,str]:
         return {0: 'sigma', 1: 'theta'}

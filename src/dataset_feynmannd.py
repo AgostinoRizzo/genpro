@@ -35,7 +35,7 @@ class FeynmanICh41Eq16(dataset.Datasetnd):
         return (h * omega**3) / (sympy.pi**2 * c**2 * (sympy.exp((h*omega)/(kb*T))-1))
     
     def get_name(self) -> str:
-        return 'feynman-i.41.16'
+        return 'I.41.16'
     
     def get_varnames(self) -> dict[int,str]:
         return {0: 'omega', 1: 'T', 2: 'h', 3: 'kb', 4: 'c'}
@@ -67,7 +67,7 @@ class FeynmanICh48Eq20(dataset.Datasetnd):
         return (m * c**2) / sympy.sqrt(1 - ((v**2)/(c**2)))
     
     def get_name(self) -> str:
-        return 'feynman-i.48.20'
+        return 'I.48.20'
     
     def get_varnames(self) -> dict[int,str]:
         return {0: 'm', 1: 'v', 2: 'c'}
@@ -107,7 +107,7 @@ class FeynmanIICh6Eq15a(dataset.Datasetnd):
         return ( (p_d*3*z/(4*sympy.pi*epsilon)) / r**5 ) * sympy.sqrt(x**2 + y**2)
     
     def get_name(self) -> str:
-        return 'feynman-ii.6.15a'
+        return 'II.6.15a'
     
     def get_varnames(self) -> dict[int,str]:
         return {0: 'epsilon', 1: 'p_d', 2: 'r', 3: 'x', 4: 'y', 5: 'z'}
@@ -141,7 +141,7 @@ class FeynmanIICh11Eq27(dataset.Datasetnd):
         return (n*alpha/(1-n*alpha/3)) * epsilon * Ef
     
     def get_name(self) -> str:
-        return 'feynman-ii.11.27'
+        return 'II.11.27'
     
     def get_varnames(self) -> dict[int,str]:
         return {0: 'n', 1: 'alpha', 2: 'epsilon', 3: 'Ef'}
@@ -171,7 +171,7 @@ class FeynmanIICh11Eq28(dataset.Datasetnd):
         return 1 + (n*alpha/(1-n*alpha/3))
     
     def get_name(self) -> str:
-        return 'feynman-ii.11.28'
+        return 'II.11.28'
     
     def get_varnames(self) -> dict[int,str]:
         return {0: 'n', 1: 'alpha'}
@@ -205,7 +205,7 @@ class FeynmanIIICh10Eq19(dataset.Datasetnd):
         return mom * np.sqrt(Bx**2 + By**2 + Bz**2)
     
     def get_name(self) -> str:
-        return 'feynman-iii.10.19'
+        return 'III.10.19'
     
     def get_varnames(self) -> dict[int,str]:
         return {0: 'mom', 1: 'Bx', 2: 'By', 3: 'Bz'}

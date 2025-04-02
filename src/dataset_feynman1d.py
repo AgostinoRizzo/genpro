@@ -53,7 +53,7 @@ class FeynmanICh6Eq20a(dataset.Dataset1d):
         return sympy.exp(-((x**2) / 2)) / sympy.sqrt(2 * sympy.pi)
     
     def get_name(self) -> str:
-        return 'feynman-i.6.20a'
+        return 'I.6.20a'
     
     def get_xlabel(self, xidx:int=0) -> str:
         return 'theta (x)'
@@ -182,7 +182,7 @@ class FeynmanIICh8Eq31(dataset.Dataset1d):
         return expr
     
     def get_name(self) -> str:
-        return 'feynman-ii.8.31'
+        return 'II.8.31'
     
     def get_xlabel(self, xidx:int=0) -> str:
         return 'Ef (x)'

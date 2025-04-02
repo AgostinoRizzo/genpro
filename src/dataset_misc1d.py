@@ -73,12 +73,12 @@ class MagmanDataset(Dataset1d):
         INFTY = self.numlims.INFTY
         
         # known positivity/negativity
-        self.knowledge.add_sign(0, -INFTY, 0, '+')
-        self.knowledge.add_sign(0, 0, INFTY, '-')
+        self.knowledge.add_sign(0, self.xl, 0, '+')
+        self.knowledge.add_sign(0, 0, self.xu, '-')
     
         # monotonically increasing/decreasing
-        self.knowledge.add_sign(1, -INFTY, -0.008, '+')
-        self.knowledge.add_sign(1, 0.008, INFTY, '+')
+        self.knowledge.add_sign(1, self.xl, -0.008, '+')
+        self.knowledge.add_sign(1, 0.008, self.xu, '+')
 
     def func(self, x: float) -> float:
         return -self.i*self.c1*x / (x**2 + self.c2)**3
@@ -423,8 +423,8 @@ class OneOverXDataset(Dataset1d):
 class Nguyen7(Dataset1d):
     def __init__(self) -> None:
         super().__init__(xl=-0.9999, xu=4.)
-        self.def_xl = 0.
-        self.def_xu = 2.
+        #self.def_xl = 0.
+        #self.def_xu = 2.
         self.yl = -8.52
         self.yu =  4.45
 
@@ -453,8 +453,8 @@ class Nguyen7(Dataset1d):
 class R1(Dataset1d):
     def __init__(self) -> None:
         super().__init__(xl=-4., xu=4.)
-        self.def_xl = -1.
-        self.def_xu =  1.
+        #self.def_xl = -1.
+        #self.def_xu =  1.
         self.yl = -1.29
         self.yu =  9.62
 
@@ -483,8 +483,8 @@ class R1(Dataset1d):
 class R2(Dataset1d):
     def __init__(self) -> None:
         super().__init__(xl=-2., xu=2.)
-        self.def_xl = -1.
-        self.def_xu =  1.
+        #self.def_xl = -1.
+        #self.def_xu =  1.
         self.yl = -1.4
         self.yu =  1.8
 

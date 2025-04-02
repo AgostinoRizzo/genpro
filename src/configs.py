@@ -179,9 +179,9 @@ SYMBREG_BENCHMARKS = \
     # misc 1d.
     (dataset_misc1d.MagmanDataset(), None),  # partial domain definition.
     (dataset_misc1d.MagmanDataset(), 'data/magman.csv'),
-    (dataset_misc1d.Nguyen7(), None),  # partial domain definition.
-    (dataset_misc1d.R1(), None),  # partial domain definition.
-    (dataset_misc1d.R2(), None),  # partial domain definition.
+    (dataset_misc1d.Nguyen7(), None),
+    (dataset_misc1d.R1(), None),
+    (dataset_misc1d.R2(), None),
 
     # misc 2d.
     (dataset_misc2d.Resistance2(), None),  # partial domain definition.
