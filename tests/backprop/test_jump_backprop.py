@@ -13,7 +13,7 @@ from backprop import utils
 def test_jump_backprop():
     # setup dataset.
     S = dataset_misc1d.MagmanDatasetScaled()
-    S.load('../data/magman.csv')
+    S.load('data/magman.csv')
     S.split(train_size=0.7, randstate=0)
 
     S_train = dataset.NumpyDataset(S)

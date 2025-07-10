@@ -1,22 +1,27 @@
 import dataset
 import dataset_misc1d
+import randstate
 from symbols.binop import BinaryOperatorSyntaxTree
 from symbols.var import VariableSyntaxTree
 from symbols.misc import UnknownSyntaxTree
+from gp.creator import PTC2RandomSolutionCreator
 from backprop import gp_backprop
 
 
 def test_gp_backprop_lpeval():
+    randstate.setstate(0)
+
     # setup dataset.
     S = dataset_misc1d.ABSDataset()
-    S.load('../data/abs-noise.csv')
-    S.split(train_size=0.7, randstate=0)
+    S.load('data/abs-noise.csv')
+    S.split(train_size=0.7)
 
     S_train = dataset.NumpyDataset(S)
     S_test  = dataset.NumpyDataset(S, test=True)
 
     # generate random population.
-    population = gp_backprop.random_population(popsize=10, max_depth=2, randstate=0)
+    creator = PTC2RandomSolutionCreator(S.nvars, simplify=False, unique=False)
+    population = creator.create_population(popsize=10, max_depth=2, max_length=10)
     assert len(population) == 10
     for stree in population: assert stree.get_max_depth() <= 2
 
