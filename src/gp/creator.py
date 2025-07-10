@@ -114,25 +114,34 @@ class RandomSolutionCreator(SolutionCreator):
 
 
 class PTC2RandomSolutionCreator(SolutionCreator):
-    def __init__(self, nvars:int, cl:float=-1.0, cu:float=1.0, simplify:bool=True, const_prob:float=0.5):
+    def __init__(self, nvars:int, cl:float=-1.0, cu:float=1.0, simplify:bool=True, const_prob:float=0.5, unique:bool=True):
         assert nvars > 0
         self.nvars = nvars
         self.cl, self.cu = cl, cu
         self.simplify = simplify
         self.const_prob = const_prob
+        self.unique = unique
     
     def create_population(self, popsize:int, max_depth:int, max_length:int, create_consts:bool=True, parent_opt:str=None, min_length:int=1) -> list[SyntaxTree]:
         assert popsize > 0 and max_depth >= 0 and max_length > 0
+        
         population = []
         population_set = set()
+        
         while len(population) < popsize:
             target_len = random.randint(min_length, max_length)
             stree = ptc2(target_len, max_depth, self.cl, self.cu, self.nvars, create_consts, parent_opt, const_prob=self.const_prob)
             stree = stree.simplify() if self.simplify else stree
+            
             if not create_consts and type(stree) is ConstantSyntaxTree:
                 continue
-            stree_hash = stree.get_hash()
-            if stree_hash not in population_set:
+            
+            if self.unique:
+                stree_hash = stree.get_hash()
+                if stree_hash not in population_set:
+                    population.append(stree)
+                    population_set.add(stree_hash)
+            else:
                 population.append(stree)
-                population_set.add(stree_hash)
+        
         return population

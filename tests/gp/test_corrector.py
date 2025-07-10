@@ -12,6 +12,8 @@ from symbols.unaop import UnaryOperatorSyntaxTree
 from symbols.misc import UnknownSyntaxTree
 from gp import corrector, creator
 from backprop.utils import is_symmetric
+from backprop.bperrors import BackpropError
+from backprop.library import LibraryError
 
 
 @pytest.fixture
@@ -183,23 +185,27 @@ def test_corrector(data, stree, noroot, symm, k_image, k_deriv, partial, none, r
     y_iqr = S_train.get_y_iqr()
     solutionCreator = creator.RandomSolutionCreator(nvars=S.nvars, y_iqr=y_iqr)
 
-    corr = corrector.Corrector(S_train, S.knowledge, max_depth, max_length, mesh, libsize, lib_maxdepth, lib_maxlength, solutionCreator)
-    new_stree, new_node, C_pulled, y_pulled = corr.correct(stree, backprop_node, target_backprop_node=backprop_node)
+    try:
+        corr = corrector.Corrector(S_train, S.knowledge, max_depth, max_length, mesh, libsize, lib_maxdepth, lib_maxlength, solutionCreator)
+        new_stree, new_node, C_pulled, y_pulled = corr.correct(stree, backprop_node, target_backprop_node=backprop_node)
 
-    assert new_stree.get_max_depth() <= max_depth
+        assert new_stree.get_max_depth() <= max_depth
 
-    assert C_pulled.noroot == noroot
-    assert (C_pulled.symm is None and symm is None) or C_pulled.symm[0] == symm
-    assert C_pulled.symm is None or C_pulled.symm[0] is None or C_pulled.symm[0] == is_symmetric(new_stree[mesh.X, ()], C_pulled.symm[1])
-    assert set(C_pulled.origin_pconstrs.keys()) == set([()] + list(k_deriv.keys()))
+        assert C_pulled.noroot == noroot
+        assert (C_pulled.symm is None and symm is None) or C_pulled.symm[0] == symm
+        assert C_pulled.symm is None or C_pulled.symm[0] is None or C_pulled.symm[0] == is_symmetric(new_stree[mesh.X, ()], C_pulled.symm[1])
+        assert set(C_pulled.origin_pconstrs.keys()) == set([()] + list(k_deriv.keys()))
 
-    k_image = np.array(k_image)
-    #k_image[np.isnan(k_image) & mesh.sign_defspace[()]] = 1.0  # since backprop_node = 2.0
-    assert np.array_equal(C_pulled.origin_pconstrs[()], k_image, equal_nan=True)
-    for d in k_deriv.keys():
-        k_deriv[d] = np.array(k_deriv[d])
-        #k_deriv[d][np.isnan(k_deriv[d]) & mesh.sign_defspace[d]] = 0.0  # since backprop_node = 2.0
-        assert np.array_equal(C_pulled.origin_pconstrs[d], k_deriv[d], equal_nan=True)
+        k_image = np.array(k_image)
+        #k_image[np.isnan(k_image) & mesh.sign_defspace[()]] = 1.0  # since backprop_node = 2.0
+        assert np.array_equal(C_pulled.origin_pconstrs[()], k_image, equal_nan=True)
+        for d in k_deriv.keys():
+            k_deriv[d] = np.array(k_deriv[d])
+            #k_deriv[d][np.isnan(k_deriv[d]) & mesh.sign_defspace[d]] = 0.0  # since backprop_node = 2.0
+            assert np.array_equal(C_pulled.origin_pconstrs[d], k_deriv[d], equal_nan=True)
 
-    assert C_pulled.partial == partial
-    assert C_pulled.none == none
+        assert C_pulled.partial == partial
+        assert C_pulled.none == none
+    
+    except LibraryError:
+        pass

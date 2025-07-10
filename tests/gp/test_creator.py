@@ -11,7 +11,7 @@ def is_nonterminal(stree) -> bool:
 
 def test_ptc2_random_creator():
     for nvars in [1, 2, 3, 5, 8]:
-        creator = PTC2RandomSolutionCreator(nvars, simplify=False)
+        creator = PTC2RandomSolutionCreator(nvars, simplify=False, unique=False)
         
         for max_depth in [0, 1, 2, 8, 20]:
             for max_length in [1, 2, 8, 20]:
