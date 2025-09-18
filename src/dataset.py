@@ -589,8 +589,8 @@ class NumpyDataset:
             self.numlims = numlims.NumericLimits()
             self.numlims.set_bounds(self.xl, self.xu)
             self.spsampler = \
-                space.UnidimSpaceSampler(randstate=0) if self.nvars == 1 else \
-                space.MultidimSpaceSampler(randstate=0)  # TODO: factorize randstate.
+                space.UnidimSpaceSampler() if self.nvars == 1 else \
+                space.MultidimSpaceSampler()
         else:
             XY = S.data
             if test: XY = S.test

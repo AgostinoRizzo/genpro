@@ -12,7 +12,6 @@ from symbols.binop import BinaryOperatorSyntaxTree
 from symbols.unaop import UnaryOperatorSyntaxTree
 from symbols.misc  import UnknownSyntaxTree
 from backprop import lpbackprop, jump_backprop
-from backprop import bpropagator
 from backprop import project
 from backprop.bperrors import BackpropError
 from backprop.library import LibraryError
@@ -316,3 +315,68 @@ class MOGP(GP):
             self.population += utils.sort_population(duplicates, self.eval_map)[:remaining]
         
         assert len(self.population) == self.popsize
+
+
+class SynthfitGP(GP):
+    def __init__(self, args:GPSettings):
+        args.track_fea_front = False
+        super().__init__(args)
+        assert type(self.evaluator) is evaluator.MSEEvaluator
+
+        self.data = self.evaluator.data
+        self.origin_evaluator = evaluator.MSEEvaluator(self.data, linscaler=evaluator.LinearScaler(self.data.y))
+        self.origin_norm_evaluator = evaluator.NMSEEvaluator(self.data, linscaler=evaluator.LinearScaler(self.data.y))
+        self.origin_eval_map = {}
+
+        self.synth_X = None
+        self.synth_y = None
+        self.synth_y_acc = None
+    
+    def _create_children(self) -> list[SyntaxTree]:
+        
+        self.origin_eval_map = {}
+        for p in self.population:
+            p.clear_output()
+            self.origin_eval_map[id(p)] = self.origin_evaluator.evaluate(p)
+            p.clear_output()
+        
+        self.synth_X = self.data.spsampler.randspace(self.data.xl, self.data.xu,300)
+        self.synth_y = []
+        self.synth_y_acc = []
+        for x in self.synth_X:
+            y, y_acc = self.__synth_output(x)
+            self.synth_y.append(y)
+            self.synth_y_acc.append(y_acc)
+        self.synth_y = np.array(self.synth_y)
+        self.synth_y_acc = np.array(self.synth_y_acc)
+
+        synth_data = dataset.NumpyDataset(nvars=self.evaluator.data.nvars)
+        synth_data.X = self.synth_X
+        synth_data.y = self.synth_y
+        synth_data.on_y_changed()
+        self.evaluator = evaluator.MSEEvaluator(synth_data, linscaler=evaluator.LinearScaler(self.synth_y))
+        
+        return super()._create_children()
+
+    def __synth_output(self, x):
+        x = np.array([x])
+        for _ in range(100):
+            
+            model = self.selector.select(self.population, self.origin_eval_map, 1)[0]
+            model_eval = self.eval_map[id(model)]
+            
+            model = model_eval.scaling.scale_stree(model)
+            model.clear_output()
+            y = model(x)[0]
+            model.clear_output()
+            if self.__check_spec(x, y):
+                origin_norm_eval = self.origin_norm_evaluator.evaluate(model).get_value()
+                model.clear_output()
+                return y, 1 - origin_norm_eval
+        
+        return 0, 0
+    
+    def __check_spec(self, x, y:float) -> bool:
+        return \
+            np.isfinite(y) and \
+            (y > 0 if x < 0 else y < 0)
