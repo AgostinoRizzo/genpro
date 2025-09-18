@@ -112,3 +112,29 @@ class SyntaxTreeNodeSelector(SyntaxTreeVisitor):
     def visitSemantic(self, stree:SemanticSyntaxTree):
         if self.i == self.ith: self.node = stree
         self.i += 1
+
+
+class BackscaleSparsityCalculator(SyntaxTreeVisitor):
+    def __init__(self):
+        self.nnodes = 0
+        self.backscales = 0
+    def visitUnaryOperator (self, stree:UnaryOperatorSyntaxTree):  self.__visit(stree)
+    def visitBinaryOperator(self, stree:BinaryOperatorSyntaxTree): self.__visit(stree)
+    def visitConstant      (self, stree:ConstantSyntaxTree):       self.__visit(stree)
+    def visitVariable      (self, stree:VariableSyntaxTree):       self.__visit(stree)
+    def visitFunction      (self, stree:FunctionSyntaxTree):       self.__visit(stree)
+    def visitUnknown       (self, stree:UnknownSyntaxTree):        self.__visit(stree)
+    def visitSemantic      (self, stree:SemanticSyntaxTree):       self.__visit(stree)
+
+    def get_sparsity(self) -> float:
+        if self.nnodes == 0: return 1
+        return 1 - (self.backscales / self.nnodes)
+
+    def reset(self):
+        self.nnodes = 0
+        self.backscales = 0
+
+    def __visit(self, stree):
+        self.nnodes += 1
+        if stree.w0 != 0 or stree.w1 != 1:
+            self.backscales += 1

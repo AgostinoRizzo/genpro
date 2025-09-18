@@ -17,7 +17,7 @@ from backprop.bperrors import BackpropError
 from backprop.library import LibraryError
 from backprop.pareto_front import DataLengthFrontTracker, MultiHeadFrontTracker, FrontDuplicateError
 from gp import utils, creator, evaluation, evaluator, selector, crossover, mutator, corrector
-from gp.stats import CorrectorGPStats, PropertiesGPStats
+from gp.stats import CorrectorGPStats, PropertiesGPStats, BackscaleGPStats
 
 from symbols import syntax_tree
 import profiling
@@ -328,3 +328,6 @@ class BackscaleGP(GP):
         assert type(args.crossover) is crossover.BackscaleSubTreeCrossover
 
         super().__init__(args)
+
+        # add backscale stats
+        self.stats = BackscaleGPStats(self.stats)

@@ -3,6 +3,7 @@ import numpy as np
 
 from backprop.bperrors import BackpropError
 from backprop.library import LibraryError
+from symbols import visitor
 
 
 def series_float_to_string(series, ndecimals:int=4, sep:str=':'):
@@ -260,4 +261,50 @@ class CorrectorGPStats(GPStats):
         plt.xlabel('Generation')
         plt.ylabel('Rate')
         plt.title('Correction Rate')
+        plt.show()
+
+
+class BackscaleGPStats(GPStats):
+    def __init__(self, next=None):
+        super().__init__(next)
+        self.sparsity = {'currMin': [], 'currAvg': [], 'currMax': []}
+        self.sparsity_calculator = visitor.BackscaleSparsityCalculator()
+    
+    def update(self, gp):
+        super().update(gp)
+
+        population = gp.population
+
+        sparsity_min = 1.0
+        sparsity_avg = 0.0
+        sparsity_max = 0.0
+        
+        for stree in population:
+            self.sparsity_calculator.reset()
+            stree.accept(self.sparsity_calculator)
+            stree_sparsity = self.sparsity_calculator.get_sparsity()
+
+            sparsity_min  = min(sparsity_min, stree_sparsity)
+            sparsity_avg += stree_sparsity
+            sparsity_max  = max(sparsity_max, stree_sparsity)
+        
+        sparsity_avg /= len(population)
+
+        self.sparsity['currMin'].append(sparsity_min)    
+        self.sparsity['currAvg'].append(sparsity_avg)
+        self.sparsity['currMax'].append(sparsity_max)
+
+    def get_backscale_stats(self):
+        return self
+    
+    def plot(self):
+        super().plot()
+
+        for stat, series in self.sparsity.items():
+            plt.plot(series, label=stat)
+
+        plt.legend()
+        plt.xlabel('Generation')
+        plt.ylabel('Proportion')
+        plt.title('Backscale Sparsity')
         plt.show()
