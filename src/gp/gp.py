@@ -12,7 +12,6 @@ from symbols.binop import BinaryOperatorSyntaxTree
 from symbols.unaop import UnaryOperatorSyntaxTree
 from symbols.misc  import UnknownSyntaxTree
 from backprop import lpbackprop, jump_backprop
-from backprop import bpropagator
 from backprop import project
 from backprop.bperrors import BackpropError
 from backprop.library import LibraryError
@@ -316,3 +315,16 @@ class MOGP(GP):
             self.population += utils.sort_population(duplicates, self.eval_map)[:remaining]
         
         assert len(self.population) == self.popsize
+
+
+class BackscaleGP(GP):
+
+    def __init__(self, args:GPSettings):
+
+        # personalize/assert arguments according to the backscale technique...
+        args.track_fea_front = False  # no feasibility fronts tracking
+        args.creator.const_prob = 0   # no constant nodes
+        assert type(args.evaluator) is evaluator.BackscaleMSEEvaluator
+        assert type(args.crossover) is crossover.BackscaleSubTreeCrossover
+
+        super().__init__(args)

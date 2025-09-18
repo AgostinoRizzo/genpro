@@ -7,7 +7,7 @@ from gp.evaluation import RealEvaluation, LayeredEvaluation, LinearScaling
 from backprop.utils import count_symmetric
 
 
-class LinearScaler:
+class LinearScaler:  # TODO: rename to MSELinearScaler
     def __init__(self, t):
         assert np.isfinite(t).all() and t.size > 0
         self.t = t
@@ -282,3 +282,21 @@ class LayeredEvaluator(Evaluator):
 class UnconstrainedLayeredEvaluator(LayeredEvaluator):
     def __init__(self, know_evaluator, data_evaluator):
         super().__init__(know_evaluator, data_evaluator, 0.0)
+
+
+class BackscaleMSEEvaluator(MSEEvaluator):
+    def __init__(self, data):
+        super().__init__(data, LinearScaler(data.y))
+        self.name = 'MSE-backscale'
+    
+    def evaluate(self, stree:SyntaxTree):
+        stree.w0 = 0
+        stree.w1 = 1
+        stree.clear_output()
+
+        eval = super().evaluate(stree)
+
+        stree.w0 = eval.scaling.translation
+        stree.w1 = eval.scaling.scaling
+
+        return eval

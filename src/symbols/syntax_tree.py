@@ -79,6 +79,10 @@ class SyntaxTree:
         self.best_match_r2 = 1.0
 
         self.cache = SyntaxTreeInfo(self)
+
+        # linear scaling coefficients
+        self.w0 = 0  # constant term
+        self.w1 = 1  # multiplicative constant
     
     def __call__(self, x): pass
     def __getitem__(self, x_d): pass
@@ -129,6 +133,10 @@ class SyntaxTree:
     def get_hash(self): return None
     
     def pull_output(self, target_output:np.array, child=None, flatten:bool=False) -> np.array:
+        # apply backscale technique...
+        if self.w1 != 0:
+            target_output = (target_output - self.w0) / self.w1
+
         if self.parent is None:
             return utils.flatten(target_output) if flatten else target_output
         return self.parent.pull_output(target_output, self, flatten)

@@ -18,11 +18,14 @@ class UnaryOperatorSyntaxTree(SyntaxTree):
     def clone(self):
         c = UnaryOperatorSyntaxTree(self.operator, self.inner.clone())
         c.copy_output_from(self)
+        c.w0 = self.w0
+        c.w1 = self.w1
         return c
     
     def __call__(self, x):
         if self.output is None:
             self.output = self.operate(self.inner(x))
+            self.output = self.output * self.w1 + self.w0
         return self.output
     
     def __getitem__(self, x_d):

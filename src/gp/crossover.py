@@ -13,7 +13,7 @@ from symbols.var   import VariableSyntaxTree
 from symbols.misc  import SemanticSyntaxTree
 from symbols.grammar import can_nest
 from backprop import models, library
-from gp import utils, gp, selector
+from gp import utils, gp, selector, evaluator
 
 
 class Crossover:
@@ -749,4 +749,32 @@ class ConstrainedSubTreeCrossover(Crossover):
         if cross_point2.has_parent():
             cross_point2.parent.invalidate_output()
         return child
+
+
+class BackscaleSubTreeCrossover(SubTreeCrossover):
+    def __init__(self, max_depth:int, max_length:int, evaluator:evaluator.BackscaleMSEEvaluator, internal_cross_prob:float=0.9):
+        super().__init__(max_depth, max_length, internal_cross_prob)
+        self.evaluator = evaluator
     
+    def cross(self, parent1:SyntaxTree, parent2:SyntaxTree) -> SyntaxTree:
+        child, crosspoint, subchild = super().cross(parent1, parent2)
+
+        # backprop data towards subchild...
+        child.set_parent()
+
+        subchild.w0 = 0
+        subchild.w1 = 1
+        subchild.clear_output()
+
+        y = child(self.evaluator.data.X)  # needed for 'pull_output'.
+        t_subchild = subchild.pull_output(self.evaluator.data.y)
+        
+        if np.isfinite(t_subchild).all():
+
+            y_origin = self.evaluator.data.y
+            self.evaluator.data.y = t_subchild
+            subchild_evaluator = evaluator.BackscaleMSEEvaluator(self.evaluator.data)
+            subchild_evaluator.evaluate(subchild)
+            self.evaluator.data.y = y_origin
+
+        return child, crosspoint, subchild
