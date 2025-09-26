@@ -5,6 +5,7 @@ from symbols.var   import VariableSyntaxTree
 from symbols.misc  import FunctionSyntaxTree
 from symbols.misc  import UnknownSyntaxTree
 from symbols.misc  import SemanticSyntaxTree
+from symbols.syntax_tree import SyntaxTree
 
 
 class SyntaxTreeVisitor:
@@ -115,9 +116,11 @@ class SyntaxTreeNodeSelector(SyntaxTreeVisitor):
 
 
 class BackscaleSparsityCalculator(SyntaxTreeVisitor):
-    def __init__(self):
+    def __init__(self, skip:SyntaxTree=None):
         self.nnodes = 0
         self.backscales = 0
+        self.skip = skip
+    
     def visitUnaryOperator (self, stree:UnaryOperatorSyntaxTree):  self.__visit(stree)
     def visitBinaryOperator(self, stree:BinaryOperatorSyntaxTree): self.__visit(stree)
     def visitConstant      (self, stree:ConstantSyntaxTree):       self.__visit(stree)
@@ -133,8 +136,23 @@ class BackscaleSparsityCalculator(SyntaxTreeVisitor):
     def reset(self):
         self.nnodes = 0
         self.backscales = 0
+        self.skip = None
 
     def __visit(self, stree):
-        self.nnodes += 1
-        if stree.w0 != 0 or stree.w1 != 1:
-            self.backscales += 1
+        if not stree.is_subtree(self.skip):
+            self.nnodes += 1
+            if stree.w0 != 0 or stree.w1 != 1:
+                self.backscales += 1
+
+
+class BackscalePrinter(SyntaxTreeVisitor):
+    def visitUnaryOperator (self, stree:UnaryOperatorSyntaxTree):  self.__visit(stree)
+    def visitBinaryOperator(self, stree:BinaryOperatorSyntaxTree): self.__visit(stree)
+    def visitConstant      (self, stree:ConstantSyntaxTree):       self.__visit(stree)
+    def visitVariable      (self, stree:VariableSyntaxTree):       self.__visit(stree)
+    def visitFunction      (self, stree:FunctionSyntaxTree):       self.__visit(stree)
+    def visitUnknown       (self, stree:UnknownSyntaxTree):        self.__visit(stree)
+    def visitSemantic      (self, stree:SemanticSyntaxTree):       self.__visit(stree)
+
+    def __visit(self, stree):
+        print(f"{stree.w0} + {stree.w1} * {stree}")

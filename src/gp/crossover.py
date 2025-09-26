@@ -12,6 +12,7 @@ from symbols.const import ConstantSyntaxTree
 from symbols.var   import VariableSyntaxTree
 from symbols.misc  import SemanticSyntaxTree
 from symbols.grammar import can_nest
+from symbols.visitor import BackscaleSparsityCalculator
 from backprop import models, library
 from gp import utils, gp, selector, evaluator
 
@@ -31,13 +32,13 @@ class SubTreeCrossover:
         child = parent1.clone()
         child.set_parent()
 
-        cross_point1 = self.__select_cross_point(child.cache.nodes)
+        cross_point1 = self._select_cross_point(child.cache.nodes)
         cross_point1_depth = cross_point1.get_depth()
         max_nesting_depth = self.max_depth - cross_point1_depth
         max_nesting_length = self.max_length - (child.get_nnodes() - cross_point1.get_nnodes())
         
         parent_opt = None if not cross_point1.has_parent() else cross_point1.parent.operator
-        cross_point2 = self.__select_cross_branch(parent2.cache.nodes, max_nesting_depth, max_nesting_length, parent_opt)
+        cross_point2 = self._select_cross_branch(parent2.cache.nodes, max_nesting_depth, max_nesting_length, parent_opt)
         if cross_point2 is None:
             return child
         
@@ -48,7 +49,7 @@ class SubTreeCrossover:
             cross_point2.parent.invalidate_output()
         return child, cross_point1, cross_point2
     
-    def __select_cross_point(self, nodes):
+    def _select_cross_point(self, nodes):
         terminal_nodes = []
         internal_nodes = []
         for n in nodes:
@@ -59,7 +60,7 @@ class SubTreeCrossover:
             return random.choice(internal_nodes) if len(internal_nodes) > 0 else random.choice(terminal_nodes)
         return random.choice(terminal_nodes) if len(terminal_nodes) > 0 else random.choice(internal_nodes)
     
-    def __select_cross_branch(self, nodes, max_nesting_depth, max_nesting_length, parent_opt):
+    def _get_allowed_cross_nodes(self, nodes, max_nesting_depth, max_nesting_length, parent_opt):
         allowedTerminalNodes = []
         allowedInternalNodes = []
         for node in nodes:
@@ -75,6 +76,10 @@ class SubTreeCrossover:
         else:
             allowedNodes = allowedTerminalNodes if len(allowedTerminalNodes) > 0 else allowedInternalNodes
 
+        return allowedNodes
+    
+    def _select_cross_branch(self, nodes, max_nesting_depth, max_nesting_length, parent_opt):
+        allowedNodes = self._get_allowed_cross_nodes(nodes, max_nesting_depth, max_nesting_length, parent_opt)
         if len(allowedNodes) == 0: return None
         return random.choice(allowedNodes).clone()
 
@@ -752,12 +757,82 @@ class ConstrainedSubTreeCrossover(Crossover):
 
 
 class BackscaleSubTreeCrossover(SubTreeCrossover):
-    def __init__(self, max_depth:int, max_length:int, evaluator:evaluator.BackscaleMSEEvaluator, internal_cross_prob:float=0.9):
+    def __init__(self,
+                 max_depth:int,
+                 max_length:int,
+                 evaluator:evaluator.BackscaleMSEEvaluator,
+                 min_sparsity:float=0,
+                 internal_cross_prob:float=0.9):
         super().__init__(max_depth, max_length, internal_cross_prob)
+        self.min_sparsity = min_sparsity
         self.evaluator = evaluator
+        assert self.max_length > 1  # to check sparsity contraint while applying the crossover
     
-    def cross(self, parent1:SyntaxTree, parent2:SyntaxTree) -> SyntaxTree:
-        child, crosspoint, subchild = super().cross(parent1, parent2)
+    def cross(self, parent1:SyntaxTree, parent2:SyntaxTree) -> tuple[SyntaxTree]:
+        child = parent1.clone()
+        child.set_parent()
+
+        cross_point1 = self._select_cross_point(child.cache.nodes)
+        cross_point1_depth = cross_point1.get_depth()
+        
+        # crossover constraints
+        sparsity_calculator = BackscaleSparsityCalculator(skip=cross_point1)
+        child.accept(sparsity_calculator)
+        context_length = child.get_nnodes() - cross_point1.get_nnodes()
+        context_backscales = sparsity_calculator.backscales
+        max_nesting_depth = self.max_depth - cross_point1_depth
+        max_nesting_length = self.max_length - context_length
+        
+        parent_opt = None if not cross_point1.has_parent() else cross_point1.parent.operator
+        cross_point2 = self._select_cross_branch(
+            parent2.cache.nodes,
+            max_nesting_depth,
+            max_nesting_length,
+            context_length,
+            context_backscales,
+            parent_opt)
+        if cross_point2 is None:
+            return child, child, child
+        
+        child = utils.replace_subtree(child, cross_point1, cross_point2)
+        child.cache.clear()
+        child.set_parent()
+        if cross_point2.has_parent():
+            cross_point2.parent.invalidate_output()
+        
+        # "tighten" subchild to its context via the backscale technique
+        self.__backscale_subchild(child, cross_point2)
+
+        return child, cross_point1, cross_point2
+    
+    def _select_cross_branch(self,
+                              nodes,
+                              max_nesting_depth,
+                              max_nesting_length,
+                              context_length,
+                              context_backscales,
+                              parent_opt):
+        
+        allowedNodes = self._get_allowed_cross_nodes(nodes, max_nesting_depth, max_nesting_length, parent_opt)
+        actualAllowedNodes = []  # according to backspace sparsity
+        sparsity_calculator = BackscaleSparsityCalculator()
+        
+        for n in allowedNodes:
+            sparsity_calculator.reset()
+            n.accept(sparsity_calculator)
+            n_backscales = sparsity_calculator.backscales
+            n_length = sparsity_calculator.nnodes
+            
+            total_length = n_length + context_length
+            total_sparsity = 1 - ((n_backscales + context_backscales) / total_length)
+            
+            if total_sparsity >= self.min_sparsity * ( (total_length-1) / (self.max_length-1) ):
+                actualAllowedNodes.append(n)
+        
+        if len(actualAllowedNodes) == 0: return None
+        return random.choice(actualAllowedNodes).clone()
+    
+    def __backscale_subchild(self, child:SyntaxTree, subchild:SyntaxTree) -> tuple[SyntaxTree]:
 
         # backprop data towards subchild...
         child.set_parent()
@@ -776,5 +851,3 @@ class BackscaleSubTreeCrossover(SubTreeCrossover):
             subchild_evaluator = evaluator.BackscaleMSEEvaluator(self.evaluator.data)
             subchild_evaluator.evaluate(subchild)
             self.evaluator.data.y = y_origin
-
-        return child, crosspoint, subchild
