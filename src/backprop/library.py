@@ -6,6 +6,8 @@ import random
 
 from symbols.syntax_tree import SyntaxTree
 from symbols.const import ConstantSyntaxTree
+from symbols.unaop import UnaryOperatorSyntaxTree
+from symbols.binop import BinaryOperatorSyntaxTree
 from symbols.visitor import SyntaxTreeIneqOperatorCollector
 from gp import creator, selector
 from backprop.utils import is_symmetric
@@ -685,6 +687,19 @@ class DynamicConstrainedLibrary:
                 best_d = d
         
         return self.strees[best_i].clone()
+
+
+class StaticLibrary(Library):
+    """
+    A static library is composed of all syntax trees down to a given max depth.
+    """
+    def __init__(self, max_depth:int, data, know):
+        unary_funcs = UnaryOperatorSyntaxTree.OPERATORS
+        binary_funcs = BinaryOperatorSyntaxTree.OPERATORS
+        trees = creator.create_all(data.nvars, unary_funcs, binary_funcs, max_depth)
+        super().__init__(size=-1, max_depth=-1, max_length=-1,
+                         data=data, know=know, solutionCreator=None,
+                         ext_strees=trees)
 
 
 def get_semiasymm_strees(symm_strees:list, mesh) -> list:

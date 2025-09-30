@@ -1,5 +1,6 @@
-from gp.creator import PTC2RandomSolutionCreator
+from gp.creator import PTC2RandomSolutionCreator, create_all
 from symbols.const import ConstantSyntaxTree
+from symbols.var import VariableSyntaxTree
 from symbols.unaop import UnaryOperatorSyntaxTree
 from symbols.binop import BinaryOperatorSyntaxTree
 from symbols.grammar import can_nest
@@ -37,3 +38,24 @@ def test_ptc2_random_creator():
                     
                     # we assume to find at least a constant in the population when create_consts is True.
                     assert max_length > 1 or (create_consts and nconsts > 0) or (not create_consts and nconsts == 0)
+
+
+def test_create_all():
+    unary_funcs = UnaryOperatorSyntaxTree.OPERATORS
+    binary_funcs = BinaryOperatorSyntaxTree.OPERATORS
+
+    for nvars in [1, 2, 3]:
+        # negative max_depth
+        for max_depth in [-1, -2, -15, -250]:
+            trees = create_all(nvars, unary_funcs, binary_funcs, max_depth)
+            assert len(trees) == 0
+        
+        # max_depth = 0
+        trees = create_all(nvars, unary_funcs, binary_funcs, max_depth=0)
+        assert len(trees) == nvars
+        for t in trees:
+            assert type(t) is VariableSyntaxTree
+        
+        # max_depth = 1
+        trees = create_all(nvars, unary_funcs, binary_funcs, max_depth=1)
+        assert len(trees) == nvars + len(unary_funcs) * nvars + len(binary_funcs) * nvars * nvars

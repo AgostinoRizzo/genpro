@@ -145,3 +145,35 @@ class PTC2RandomSolutionCreator(SolutionCreator):
                 population.append(stree)
         
         return population
+
+
+# exhaustive creation of all syntax trees down to a max depth (constants are not considered).
+def create_all(nvars:int, unary_funcs:list[str], binary_funcs:list[str], max_depth:int) -> list[SyntaxTree]:
+    """
+    max_depth: root node is at depth 0.
+    """
+    assert nvars > 0
+
+    if max_depth < 0:
+        return []
+    
+    trees = []
+
+    for i in range(nvars):
+        trees.append( VariableSyntaxTree(i) )
+    
+    if max_depth == 0:
+        return trees
+    
+    inners = create_all(nvars, unary_funcs, binary_funcs, max_depth-1)
+    
+    for f in unary_funcs:
+        for inner in inners:
+            trees.append( UnaryOperatorSyntaxTree(f, inner) )
+        
+    for f in binary_funcs:
+        for inner_left in inners:
+            for inner_right in inners:
+                trees.append( BinaryOperatorSyntaxTree(f, inner_left, inner_right) )
+    
+    return trees
