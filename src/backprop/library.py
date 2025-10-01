@@ -240,7 +240,7 @@ class Library:
         from backprop.pareto_front import SymbolicFrequencies
         self.symbfreq = SymbolicFrequencies()
     
-    def query(self, sem, max_dist=np.inf) -> SyntaxTree:
+    def query(self, sem, max_dist=np.inf, ret_dist:bool=False) -> SyntaxTree:
         const_fit = sem.mean()
         const_fit_d = np.inf
         if np.isnan(const_fit): const_fit = None
@@ -253,11 +253,12 @@ class Library:
         if not np.isfinite(d) and not np.isfinite(const_fit_d):
             raise LibraryLookupError()
         if np.isfinite(const_fit_d) and const_fit_d <= d:
-            return ConstantSyntaxTree(const_fit)
+            c = ConstantSyntaxTree(const_fit)
+            return (c, const_fit_d) if ret_dist else c
 
         stree = self.stree_provider.get_stree(idx)
         #self.symbfreq.add(stree)
-        return stree
+        return (stree, d) if ret_dist else stree
     
     def multiquery(self, sem, k=4, max_dist=np.inf) -> list[tuple[np.array, SyntaxTree]]:
         d, idx = self.sem_index.query(sem, k=k, max_dist=max_dist)
@@ -697,9 +698,41 @@ class StaticLibrary(Library):
         unary_funcs = UnaryOperatorSyntaxTree.OPERATORS
         binary_funcs = BinaryOperatorSyntaxTree.OPERATORS
         trees = creator.create_all(data.nvars, unary_funcs, binary_funcs, max_depth)
-        super().__init__(size=-1, max_depth=-1, max_length=-1,
-                         data=data, know=know, solutionCreator=None,
-                         ext_strees=trees)
+
+        sizetree_map = {}
+        for t in trees:
+            depth_t  = t.get_max_depth()
+            length_t = t.get_nnodes()
+
+            size_t = (depth_t, length_t)
+            if size_t not in sizetree_map:
+                sizetree_map[size_t] = []
+            sizetree_map[size_t].append(t)
+
+        self.libs = {}
+        for size, trees in sizetree_map.items():
+            self.libs[size] = Library(size=-1, max_depth=-1, max_length=-1,
+                                      data=data, know=know, solutionCreator=None,
+                                      ext_strees=trees)
+    
+    def cquery(self, sem, max_depth:int, max_length:int, max_dist=np.inf) -> SyntaxTree:
+        min_dist = np.inf
+        best_tree = None
+
+        for size, lib in self.libs.items():
+            depth, length = size
+            if depth <= max_depth and length <= max_length:
+                try:
+                    tree, dist = lib.query(sem, max_dist, ret_dist=True)
+                    if dist < min_dist:
+                        min_dist = dist
+                        best_tree = tree
+                except LibraryLookupError:
+                    pass
+        
+        if best_tree is None:
+            raise LibraryLookupError()
+        return best_tree
 
 
 def get_semiasymm_strees(symm_strees:list, mesh) -> list:

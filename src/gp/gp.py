@@ -12,7 +12,6 @@ from symbols.binop import BinaryOperatorSyntaxTree
 from symbols.unaop import UnaryOperatorSyntaxTree
 from symbols.misc  import UnknownSyntaxTree
 from backprop import lpbackprop, jump_backprop
-from backprop import bpropagator
 from backprop import project
 from backprop.bperrors import BackpropError
 from backprop.library import LibraryError

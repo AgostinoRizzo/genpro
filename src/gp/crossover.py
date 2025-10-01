@@ -13,7 +13,7 @@ from symbols.var   import VariableSyntaxTree
 from symbols.misc  import SemanticSyntaxTree
 from symbols.grammar import can_nest
 from backprop import models, library
-from gp import utils, gp, selector
+from gp import utils, selector
 
 
 class Crossover:
@@ -31,7 +31,7 @@ class SubTreeCrossover:
         child = parent1.clone()
         child.set_parent()
 
-        cross_point1 = self.__select_cross_point(child.cache.nodes)
+        cross_point1 = self._select_cross_point(child.cache.nodes)
         cross_point1_depth = cross_point1.get_depth()
         max_nesting_depth = self.max_depth - cross_point1_depth
         max_nesting_length = self.max_length - (child.get_nnodes() - cross_point1.get_nnodes())
@@ -48,7 +48,7 @@ class SubTreeCrossover:
             cross_point2.parent.invalidate_output()
         return child, cross_point1, cross_point2
     
-    def __select_cross_point(self, nodes):
+    def _select_cross_point(self, nodes):
         terminal_nodes = []
         internal_nodes = []
         for n in nodes:
@@ -443,7 +443,7 @@ class OptimalGeometricCrossover(Crossover):
     def __init__(self, maxdepth, data, know):
         self.data = data
         self.know = know
-        self.sx = gp.SubTreeCrossover(maxdepth)
+        self.sx = SubTreeCrossover(maxdepth)
     
     def cross(self, parent1:SyntaxTree, parent2:SyntaxTree) -> SyntaxTree:
         parent1_sem = parent1(self.data.X)
@@ -527,7 +527,7 @@ class ApproxGeometricCrossover(Crossover):
 
     def __init__(self, lib, max_depth, diversifier=None):
         self.lib = lib
-        self.fallback_crossover = gp.SubTreeCrossover(max_depth)
+        self.fallback_crossover = SubTreeCrossover(max_depth)
         self.diversifier = diversifier
     
     def cross(self, parent1:SyntaxTree, parent2:SyntaxTree) -> SyntaxTree:
@@ -605,7 +605,7 @@ class CrossNPushCrossover(Crossover):
 
     def __init__(self, lib, max_depth):
         self.lib = lib
-        self.main_crossover = gp.SubTreeCrossover(max_depth)
+        self.main_crossover = SubTreeCrossover(max_depth)
     
     def cross(self, parent1:SyntaxTree, parent2:SyntaxTree) -> SyntaxTree:
         
@@ -749,4 +749,40 @@ class ConstrainedSubTreeCrossover(Crossover):
         if cross_point2.has_parent():
             cross_point2.parent.invalidate_output()
         return child
-    
+
+
+class ApproximatelyGeometricCrossover(SubTreeCrossover):
+    def __init__(self, max_depth:int, max_length:int, data, lib:library.Library, internal_cross_prob:float=0.9):
+        super().__init__(max_depth, max_length, internal_cross_prob)
+        self.data = data
+        self.lib = lib
+
+    def cross(self, parent1:SyntaxTree, parent2:SyntaxTree) -> SyntaxTree:
+        s1 = parent1(self.data.X)
+        if not np.isfinite(s1).all(): return parent2.clone(), None, None
+
+        s2 = parent2(self.data.X)
+        if not np.isfinite(s2).all(): return parent1.clone(), None, None
+        
+        child = parent1.clone()
+        cross_point = self._select_cross_point(child.cache.nodes)
+        cross_point_depth = cross_point.get_depth()
+        max_nesting_depth = self.max_depth - cross_point_depth
+        max_nesting_length = self.max_length - (child.get_nnodes() - cross_point.get_nnodes())
+
+        m = (s1 + s2) / 2
+        child.set_parent()
+        child_y = child(self.data.X)  # needed for 'pull_output'.
+        try: pulled_m = cross_point.pull_output(m)
+        except Exception:
+            return parent1.clone(), None, None
+        if not np.isfinite(pulled_m).all():
+            return parent1.clone(), None, None
+
+        try:
+            l = self.lib.cquery(pulled_m, max_nesting_depth, max_nesting_length)
+            child = utils.replace_subtree(child, cross_point, l)
+        except library.LibraryLookupError:
+            return parent1.clone(), None, None
+        
+        return child, cross_point, None

@@ -4,7 +4,7 @@ from symbols.binop import BinaryOperatorSyntaxTree
 from symbols.unaop import UnaryOperatorSyntaxTree
 from symbols.visitor import ConstantSyntaxTreeCollector, NonTerminalSyntaxTreeCollector
 from symbols.grammar import get_nesting_operators, get_una_nesting_operators, get_bin_nesting_operators
-from gp import utils, gp
+from gp import utils
 
 
 class Mutator:
