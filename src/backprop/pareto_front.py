@@ -279,6 +279,12 @@ class DataLengthFrontTracker:
             if len(f) > 0: return False
         return True
     
+    def get_size(self) -> bool:
+        size = 0
+        for f in self.front.values():
+            size += len(f)
+        return size
+    
     def plot(self, data_lu:tuple[float,float], length_lu:tuple[float,float], frontids:list):
         
         def fcmp(a, b):

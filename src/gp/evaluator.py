@@ -3,7 +3,7 @@ from symbols.syntax_tree import SyntaxTree
 from symbols.binop import BinaryOperatorSyntaxTree
 from symbols.const import ConstantSyntaxTree
 from gp.stats import QualitiesGPStats, FeasibilityGPStats
-from gp.evaluation import RealEvaluation, LayeredEvaluation, LinearScaling
+from gp.evaluation import RealEvaluation, LayeredEvaluation, LinearScaling, PolynomialScaling
 from backprop.utils import count_symmetric
 
 
@@ -45,6 +45,37 @@ class LinearScaler:
         if np.isnan(b): b = 1.0
         a = self.t_mean - b * y_mean
         return a, b
+
+
+class PolynomialScaler:
+    def __init__(self, t, degree:int):
+        assert np.isfinite(t).all() and t.size > 0
+        assert degree > 0  # at least the input
+        self.t = t
+        self.degree = degree
+    
+    def scale(self, stree, y):
+        assert np.isfinite(y).all() and y.size == self.t.size
+        poly = self.__fit_poly(y)
+        y_scaled = poly(y)
+        return y_scaled, PolynomialScaling(poly)
+    
+    def scale_stree(self, stree, y):
+        poly = self.__fit_poly(y)
+        return PolynomialScaling(poly).scale_stree(stree)
+
+    def __fit_poly(self, y):
+        poly_coeffs = None
+
+        if np.unique(y).size == y.size:
+            try: poly_coeffs = np.polyfit(x=y, y=self.t, deg=self.degree)
+            except np.linalg.LinAlgError: pass
+        
+        if poly_coeffs is None:
+            poly_coeffs = [0] * (self.degree + 1)
+            poly_coeffs[-2] = 1
+        return np.poly1d(poly_coeffs)
+
 
 class ConstrainedLinearScaler(LinearScaler):
     def __init__(self, t, know_evaluator):

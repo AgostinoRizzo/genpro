@@ -1,4 +1,5 @@
 import sympy
+import numpy as np
 from symbols.syntax_tree import SyntaxTree
 from backprop import utils
 
@@ -51,6 +52,58 @@ class FunctionSyntaxTree(SyntaxTree):
     
     def match(self, trunk) -> bool:
         return False
+
+
+class PolynomialSyntaxTree(SyntaxTree):
+    def __init__(self, poly:np.poly1d, inner:SyntaxTree):
+        super().__init__()
+        self.poly = poly
+        self.inner = inner
+    
+    def clone(self):
+        c = PolynomialSyntaxTree(np.poly1d(self.poly.c), self.inner.clone())
+        c.copy_output_from(self)
+        return c
+    
+    def __call__(self, x):
+        if self.output is None:
+            self.output = self.poly(self.inner(x))
+        return self.output
+    
+    def __getitem__(self, x_d):
+        raise NotImplementedError()
+    
+    def at(self, x):
+        return self.poly(self.inner(x))
+    
+    def clear_output(self):
+        super().clear_output()
+        self.inner.clear_output()
+    
+    def __str__(self) -> str:
+        return f"P({str(self.inner)})"
+    
+    def __eq__(self, other) -> bool:
+        if type(other) is not PolynomialSyntaxTree: return False
+        return self.poly.c == other.poly.c and self.inner == other.inner
+    
+    def diff(self, varidx:int=0) -> SyntaxTree:
+        raise NotImplementedError()
+    
+    def is_const(self) -> bool:
+        return self.inner.is_const()
+    
+    def is_const_wrt(self, varidx):
+        return self.inner.is_const_wrt(varidx)
+    
+    def accept(self, visitor):
+        raise NotImplementedError()
+    
+    def to_sympy(self, dps:int=None):
+        raise NotImplementedError()
+    
+    def match(self, trunk) -> bool:
+        raise NotImplementedError()
 
 
 class SemanticSyntaxTree(SyntaxTree):

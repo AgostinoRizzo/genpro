@@ -16,7 +16,7 @@ from backprop import project
 from backprop.bperrors import BackpropError
 from backprop.library import LibraryError
 from backprop.pareto_front import DataLengthFrontTracker, MultiHeadFrontTracker, FrontDuplicateError
-from gp import utils, creator, evaluation, evaluator, selector, crossover, mutator, corrector
+from gp import utils, creator, evaluation, evaluator, selector, crossover, mutator, corrector, tracker
 from gp.stats import CorrectorGPStats, PropertiesGPStats
 
 from symbols import syntax_tree
@@ -93,6 +93,7 @@ class GPSettings:
     elitism:int=0
     knowledge:dataset.DataKnowledge=None
     track_fea_front:bool=True
+    evo_tracker:bool=False
 
 
 class GP:
@@ -123,6 +124,9 @@ class GP:
         
         if args.track_fea_front:
             self.fea_front_tracker = MultiHeadFrontTracker(self.popsize, max_fronts=1, min_fea_ratio=0.9)
+        
+        if args.evo_tracker:
+            self.evo_tracker = tracker.EvolutionTracker()
         
     def evolve(self, newgen_callback=None) -> tuple[list[SyntaxTree], dict]:
         """
@@ -218,6 +222,9 @@ class GP:
                     if self.fea_front_tracker is not None:
                         try: self.fea_front_tracker.track(child, (child_eval.data_eval.value, child.cache.nnodes), child_eval)
                         except FrontDuplicateError: pass
+                    
+                    if self.evo_tracker is not None:
+                        self.evo_tracker.track_crossover(parents[0], parents[1], child, self.eval_map)
         
         return children
     

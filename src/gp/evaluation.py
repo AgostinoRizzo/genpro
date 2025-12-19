@@ -1,7 +1,9 @@
 import numpy as np
+import random
 
 from symbols.const import ConstantSyntaxTree
 from symbols.binop import BinaryOperatorSyntaxTree
+from symbols.misc  import PolynomialSyntaxTree
 
 
 class Evaluation:
@@ -28,6 +30,14 @@ class LinearScaling:
             return BinaryOperatorSyntaxTree('*', b, stree).simplify()
     
         return BinaryOperatorSyntaxTree('+', a, BinaryOperatorSyntaxTree('*', b, stree)).simplify()
+
+
+class PolynomialScaling:
+    def __init__(self, poly:np.poly1d):
+        self.poly = poly
+    
+    def scale_stree(self, stree):
+        return PolynomialSyntaxTree(self.poly, stree)
 
 
 class RealEvaluation(Evaluation):
@@ -62,7 +72,7 @@ class LayeredEvaluation(Evaluation):
         self.know_pressure = know_pressure
     
     def better_than(self, other) -> bool:
-        if self.know_pressure > 0:  # TODO: add probability.
+        if self.know_pressure == 1 or random.random() < self.know_pressure:
             if self.actual_fea_ratio > other.actual_fea_ratio: return True
             if self.actual_fea_ratio < other.actual_fea_ratio: return False
             #if self.actual_fea_ratio == 1.0 and other.actual_fea_ratio < 1.0: return True

@@ -1,4 +1,5 @@
 import random
+import numpy as np
 from symbols.syntax_tree import SyntaxTree
 from symbols.binop import BinaryOperatorSyntaxTree
 from symbols.unaop import UnaryOperatorSyntaxTree
@@ -114,13 +115,14 @@ class RandomSolutionCreator(SolutionCreator):
 
 
 class PTC2RandomSolutionCreator(SolutionCreator):
-    def __init__(self, nvars:int, cl:float=-1.0, cu:float=1.0, simplify:bool=True, const_prob:float=0.5, unique:bool=True):
+    def __init__(self, nvars:int, cl:float=-1.0, cu:float=1.0, simplify:bool=True, const_prob:float=0.5, unique:bool=True, data=None):
         assert nvars > 0
         self.nvars = nvars
         self.cl, self.cu = cl, cu
         self.simplify = simplify
         self.const_prob = const_prob
         self.unique = unique
+        self.data = data  # used to skip solutions with a not valid semantics (when not None)
     
     def create_population(self, popsize:int, max_depth:int, max_length:int, create_consts:bool=True, parent_opt:str=None, min_length:int=1) -> list[SyntaxTree]:
         assert popsize > 0 and max_depth >= 0 and max_length > 0
@@ -136,6 +138,11 @@ class PTC2RandomSolutionCreator(SolutionCreator):
             if not create_consts and type(stree) is ConstantSyntaxTree:
                 continue
             
+            if self.data is not None:
+                stree_y = stree(self.data.X)
+                if not np.isfinite(stree_y).all():
+                    continue
+
             if self.unique:
                 stree_hash = stree.get_hash()
                 if stree_hash not in population_set:

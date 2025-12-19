@@ -64,7 +64,7 @@ class DatasetPlotter(Plotter):
         self.impl.set_tick()
 
         #ax.legend(loc='upper right', fontsize=14)
-        ax.legend(fontsize=18)
+        ax.legend(fontsize=10)
         self.impl.set_labels()
 
         if savename is not None:
