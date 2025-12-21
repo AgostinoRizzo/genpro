@@ -1,6 +1,8 @@
 import numpy as np
-from dataset import Dataset1d, DataPoint
+from dataset import Dataset, Dataset1d, DataPoint
+from gp.gp import GP
 import matplotlib.pyplot as plt
+from matplotlib.figure import Figure
 
 
 class SpaceVisualizerDataset(Dataset1d):
@@ -79,3 +81,41 @@ class SpaceVisualizer:
                 plt.savefig(savename + str(group) + '.pdf', bbox_inches='tight')
 
             plt.show()
+
+
+class EvolutionVisualizer:
+    def plot(self, gp_status:GP):
+        raise NotImplementedError()
+
+    def get_figure(self) -> Figure:
+        raise NotImplementedError()
+    
+    def on_finalize(self):
+        plt.close()
+
+
+class SolutionPlotVisualizer(EvolutionVisualizer):
+    def __init__(self, data:Dataset, sols_to_plot:int=10):
+        super().__init__()
+        self.data = data
+        self.sols_to_plot = sols_to_plot
+    
+    def plot(self, gp_status:GP):
+        data_plotter = self.data.get_plotter()
+        is_plotter_init = data_plotter.impl.is_init()
+        if is_plotter_init:
+            data_plotter.impl.ax.clear()
+        data_plotter.plot(show=False, init=not is_plotter_init)
+
+        pop_to_plot = gp_status.population[:min(self.sols_to_plot, gp_status.popsize)]
+        
+        for i, p in enumerate(pop_to_plot):
+            # TODO: add support for linearly scaled solutions
+            p.clear_output()
+            alpha_val = 1 - (i / len(pop_to_plot))
+            data_plotter.impl.plot_model(model=p, xl=self.data.xl, xu=self.data.xu,
+                                         zoomout=1, linewidth=1, color=(0.2, 0.2, 0.2, alpha_val), label=None)
+            p.clear_output()
+    
+    def get_figure(self) -> Figure:
+        return self.data.get_plotter().impl.fig

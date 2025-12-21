@@ -1,5 +1,6 @@
 import matplotlib.pyplot as plt
 from matplotlib.axes import Axes
+from matplotlib.figure import Figure
 import numpy as np
 
 
@@ -25,12 +26,13 @@ class DatasetPlotter(Plotter):
              model=None,
              zoomout:float=1.,
              savename:str=None,
-             show:bool=True):
+             show:bool=True,
+             init:bool=True):
         """
         acts as a template method w.r.t the implementation.
         """
         
-        ax = self.impl.init(width, height)
+        ax = self.impl.init(width, height) if init else self.impl.ax
         self.impl.set_model(self.dataset.func)
 
         if plot_data:
@@ -112,10 +114,12 @@ Implementation interface (according to the Bridge pattern).
 class PlotterImpl:
     def __init__(self, dataset):
         self.dataset = dataset
+        self.fig:Figure = None
         self.ax:Axes = None
         self.model = None
     
     def init(self, width, height) -> Axes: pass
+    def is_init(self) -> bool: return self.fig is not None and self.ax is not None
     def set_model(self, model): self.model = model
     def plot_datapoints(self, dps:list, marker, color, markersize, label=None): pass
     def plot_scatter(self, x, y, marker, color, markersize, label=None): pass
@@ -134,8 +138,8 @@ class Dataset1dPlotterImpl(PlotterImpl):
         super().__init__(dataset)
     
     def init(self, width, height) -> Axes:
-        fig = plt.figure(2, figsize=[width,height])
-        self.ax = fig.add_subplot()
+        self.fig = plt.figure(2, figsize=[width,height])
+        self.ax = self.fig.add_subplot()
         return self.ax
     
     def plot_datapoints(self, dps:list, marker, color, markersize, label=None):
