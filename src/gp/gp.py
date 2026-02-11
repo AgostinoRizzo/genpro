@@ -115,6 +115,7 @@ class GP:
         self.stats      = args.evaluator.create_stats()
         self.genidx     = 0
         self.fea_front_tracker = None
+        self.evo_tracker = None
         self.visualizer = None
 
         self.stats = PropertiesGPStats(self.stats)

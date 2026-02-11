@@ -29,7 +29,7 @@ class RankTournamentSelector(TournamentSelector):
         parents = []
         for _ in range(nparents):
             group_ids = random.choices(range(len(population)), k=self.group_size)
-            parents.append(population[group_ids[0]])
+            parents.append(population[min(group_ids)])
         return parents
 
 

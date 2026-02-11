@@ -1,3 +1,6 @@
+from treelib import Tree
+
+from symbols.syntax_tree import SyntaxTree
 from symbols.binop import BinaryOperatorSyntaxTree
 from symbols.unaop import UnaryOperatorSyntaxTree
 from symbols.const import ConstantSyntaxTree
@@ -112,3 +115,25 @@ class SyntaxTreeNodeSelector(SyntaxTreeVisitor):
     def visitSemantic(self, stree:SemanticSyntaxTree):
         if self.i == self.ith: self.node = stree
         self.i += 1
+
+
+class SyntaxTreeDisplayer(SyntaxTreeVisitor):
+    def __init__(self):
+        self.tree = Tree()
+    
+    def visitUnaryOperator(self, stree:UnaryOperatorSyntaxTree): self.__visit_node(stree, stree.operator)
+    def visitBinaryOperator(self, stree:BinaryOperatorSyntaxTree): self.__visit_node(stree, stree.operator)
+    def visitConstant(self, stree:ConstantSyntaxTree): self.__visit_node(stree, str(stree))
+    def visitVariable(self, stree:VariableSyntaxTree): self.__visit_node(stree, str(stree))
+    def visitFunction(self, stree:FunctionSyntaxTree):
+        raise NotImplementedError()
+    def visitUnknown(self, stree:UnknownSyntaxTree):
+        raise NotImplementedError()
+    def visitSemantic(self, stree:SemanticSyntaxTree):
+        raise NotImplementedError()
+    
+    def show(self):
+        self.tree.show()
+    
+    def __visit_node(self, node:SyntaxTree, tag):
+        self.tree.create_node(tag, id(node), parent=id(node.parent) if node.has_parent() else None)

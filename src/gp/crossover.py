@@ -12,6 +12,7 @@ from symbols.const import ConstantSyntaxTree
 from symbols.var   import VariableSyntaxTree
 from symbols.misc  import SemanticSyntaxTree
 from symbols.grammar import can_nest
+from symbols.generator import SyntaxTreeGenerator
 from backprop import models, library
 from gp import utils, selector
 
@@ -37,7 +38,7 @@ class SubTreeCrossover:
         max_nesting_length = self.max_length - (child.get_nnodes() - cross_point1.get_nnodes())
         
         parent_opt = None if not cross_point1.has_parent() else cross_point1.parent.operator
-        cross_point2 = self.__select_cross_branch(parent2.cache.nodes, max_nesting_depth, max_nesting_length, parent_opt)
+        cross_point2 = self._select_cross_branch(parent2.cache.nodes, max_nesting_depth, max_nesting_length, parent_opt)
         if cross_point2 is None:
             return child
         
@@ -59,7 +60,7 @@ class SubTreeCrossover:
             return random.choice(internal_nodes) if len(internal_nodes) > 0 else random.choice(terminal_nodes)
         return random.choice(terminal_nodes) if len(terminal_nodes) > 0 else random.choice(internal_nodes)
     
-    def __select_cross_branch(self, nodes, max_nesting_depth, max_nesting_length, parent_opt):
+    def _select_cross_branch(self, nodes, max_nesting_depth, max_nesting_length, parent_opt):
         allowedTerminalNodes = []
         allowedInternalNodes = []
         for node in nodes:
@@ -786,3 +787,45 @@ class ApproximatelyGeometricCrossover(SubTreeCrossover):
             return parent1.clone(), None, None
         
         return child, cross_point, None
+
+
+class SubTreeMergeCrossover(SubTreeCrossover):
+    def __init__(self, max_depth:int, max_length:int, evaluator, internal_cross_prob:float=0.9):
+        super().__init__(max_depth, max_length, internal_cross_prob)
+        self.evaluator = evaluator
+        
+    def cross(self, parent1:SyntaxTree, parent2:SyntaxTree) -> SyntaxTree:
+        
+        parent_1_max_depth = parent1.get_depth() == self.max_depth
+        cross_point1 = None
+        while cross_point1 is None or (parent_1_max_depth and id(cross_point1) == id(parent1)):
+            cross_point1 = self._select_cross_point(parent1.cache.nodes)
+        cross_point1 = cross_point1.clone()
+        
+        max_nesting_depth = self.max_depth - 1  # -1 because of the new root
+        max_nesting_length = self.max_length - (cross_point1.get_nnodes() + 1)  # +1 because of the new root
+        
+        parent_opt = None
+        cross_point2 = self._select_cross_branch(parent2.cache.nodes, max_nesting_depth, max_nesting_length, parent_opt)
+
+        best_child = None
+        best_child_eval = None
+
+        for opt in SyntaxTreeGenerator.UNA_OPERATORS:
+            child = UnaryOperatorSyntaxTree(opt, inner=cross_point1)
+            child_eval = self.evaluator.evaluate(child)
+            if best_child is None or child_eval.better_than(best_child_eval):
+                best_child = child
+                best_child_eval = child_eval
+        
+        if cross_point2 is not None:
+            for opt in SyntaxTreeGenerator.BIN_OPERATORS:
+                child = BinaryOperatorSyntaxTree(opt, left=cross_point1, right=cross_point2)
+                child_eval = self.evaluator.evaluate(child)
+                if best_child is None or child_eval.better_than(best_child_eval):
+                    best_child = child
+                    best_child_eval = child_eval
+        
+        best_child.cache.clear()
+        best_child.set_parent()
+        return best_child, cross_point1, cross_point2

@@ -1,4 +1,5 @@
 import numpy as np
+from sklearn.decomposition import PCA
 from dataset import Dataset, Dataset1d, DataPoint
 from gp.gp import GP
 import matplotlib.pyplot as plt
@@ -119,3 +120,48 @@ class SolutionPlotVisualizer(EvolutionVisualizer):
     
     def get_figure(self) -> Figure:
         return self.data.get_plotter().impl.fig
+
+
+class SemanticSpaceVisualizer(EvolutionVisualizer):
+    def __init__(self, data:Dataset, width:int, height:int):
+        super().__init__()
+        self.data = data
+        self.width = width
+        self.height = height
+        self.fig = None
+        self.ax = None
+    
+    def plot(self, gp_status:GP):
+        if self.ax is None:
+            self.fig = plt.figure(2, figsize=[self.width, self.height])
+            self.ax = self.fig.add_subplot()
+        else:
+            self.ax.clear()
+        
+        Y = [self.data.y]
+        for p in gp_status.population:
+            y = p(self.data.X)
+            if np.isfinite(y).all():
+                Y.append(y)
+
+        pca = PCA(n_components=2)
+        Y_new = pca.fit_transform(Y)
+
+        target = [Y_new[0][0], Y_new[0][1]]
+        
+        y_1 = []
+        y_2 = []
+        delta = 5
+        for y in Y_new[1:]:
+            if y[0] >= target[0] - delta and y[0] <= target[0] + delta and \
+               y[1] >= target[1] - delta and y[1] <= target[1] + delta:
+                y_1.append(y[0])
+                y_2.append(y[1])
+
+        self.ax.set_xlim(target[0] - delta, target[0] + delta)
+        self.ax.set_ylim(target[1] - delta, target[1] + delta)
+        self.ax.scatter(y_1, y_2, c='black')
+        self.ax.scatter(target[0], target[1], c='red')
+    
+    def get_figure(self) -> Figure:
+        return self.fig

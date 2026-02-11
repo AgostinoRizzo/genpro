@@ -313,3 +313,25 @@ class LayeredEvaluator(Evaluator):
 class UnconstrainedLayeredEvaluator(LayeredEvaluator):
     def __init__(self, know_evaluator, data_evaluator):
         super().__init__(know_evaluator, data_evaluator, 0.0)
+
+
+class HierachicalEvaluator(Evaluator):
+    def __init__(self, node_evaluator:Evaluator):
+        self.node_evaluator = node_evaluator
+
+    def evaluate(self, stree:SyntaxTree):
+        _, best_eval = self.get_best_subtree(stree)
+        return best_eval
+    
+    def create_stats(self):
+        return self.node_evaluator.create_stats()
+    
+    def get_best_subtree(self, stree:SyntaxTree) -> tuple:
+        best_node = None
+        best_eval = None
+        for n in stree.cache.nodes:
+            n_eval = self.node_evaluator.evaluate(n)
+            if best_node is None or n_eval.better_than(best_eval):
+                best_node = n
+                best_eval = n_eval
+        return best_node, best_eval
