@@ -127,7 +127,7 @@ class Backpropagator:
 
         for _ in range(self.rounds):
             nodeSelector = backprop.SyntaxTreeNodeSelector(random.randrange(stree.get_nnodes()))
-            stree.accept(nodeSelector)
+            for node in stree: node.accept(nodeSelector)
             node = nodeSelector.node
 
             if id(node) in synth_nodes or id(node) == id(stree): continue

@@ -91,7 +91,7 @@ class SubTreeImprovementCrossover:
         
         child = parent1.clone()
         nodeSelector = SyntaxTreeNodeSelector(random.randrange(nnodes1))
-        child.accept(nodeSelector)
+        for node in child: node.accept(nodeSelector)
         cross_point1 = nodeSelector.node
         child.set_parent()
         if cross_point1 is None:
@@ -101,7 +101,7 @@ class SubTreeImprovementCrossover:
         if max_nesting_depth < 0: return child
         
         nodesCollector = SyntaxTreeNodeCollector()
-        parent2.accept(nodesCollector)
+        for node in parent2: node.accept(nodesCollector)
         allowedNodes = []
         for node in nodesCollector.nodes:
             if node.get_max_depth() <= max_nesting_depth: allowedNodes.append(node)
@@ -131,7 +131,7 @@ class ExhaustiveSubTreeCrossover:
         
         child = parent1.clone()
         nodeSelector = SyntaxTreeNodeSelector(random.randrange(nnodes1))
-        child.accept(nodeSelector)
+        for node in child: node.accept(nodeSelector)
         cross_point1 = nodeSelector.node
         child.set_parent()
         if cross_point1 is None:
@@ -141,7 +141,7 @@ class ExhaustiveSubTreeCrossover:
         if max_nesting_depth < 0: return child
         
         nodesCollector = SyntaxTreeNodeCollector()
-        parent2.accept(nodesCollector)
+        for node in parent2: node.accept(nodesCollector)
         allowedNodes = []
         for node in nodesCollector.nodes:
             if node.get_max_depth() <= max_nesting_depth: allowedNodes.append(node)
@@ -190,7 +190,7 @@ class KnowledgePropagationCrossover(Crossover):
         cross_points = [None, None]
         for idx, parent in enumerate([parent1, parent2]):
             nodesCollector = SyntaxTreeNodeCollector()
-            parent.accept(nodesCollector)
+            for node in parent: node.accept(nodesCollector)
             allowedNodes = []
             for node in nodesCollector.nodes:
                 if node.get_max_depth() < self.max_depth: allowedNodes.append(node)
@@ -228,7 +228,7 @@ class ConstrBackpropCrossover(Crossover):
         
         child = parent1.clone()
         nodeSelector = SyntaxTreeNodeSelector(random.randrange(nnodes1))
-        child.accept(nodeSelector)
+        for node in child: node.accept(nodeSelector)
         cross_point1 = nodeSelector.node
         child.set_parent()
         cross_point1_depth = cross_point1.get_depth()
@@ -236,7 +236,7 @@ class ConstrBackpropCrossover(Crossover):
         invertible_path = SyntaxTree.is_invertible_path(cross_point1)
         
         nodesCollector = SyntaxTreeNodeCollector()
-        parent2.accept(nodesCollector)
+        for node in parent2: node.accept(nodesCollector)
         allowedNodes = []
         for node in nodesCollector.nodes:
             if node.get_max_depth() <= max_nesting_depth: allowedNodes.append(node)
@@ -265,7 +265,7 @@ class SoftmaxSubTreeCrossover:
         
         child = parent1.clone()
         nodeSelector = SyntaxTreeNodeSelector(random.randrange(nnodes1))
-        child.accept(nodeSelector)
+        for node in child: node.accept(nodeSelector)
         cross_point1 = nodeSelector.node
         child.set_parent()
         if cross_point1 is None:
@@ -274,7 +274,7 @@ class SoftmaxSubTreeCrossover:
         max_nesting_depth = self.max_depth - cross_point1_depth
         
         nodesCollector = SyntaxTreeNodeCollector()
-        parent2.accept(nodesCollector)
+        for node in parent2: node.accept(nodesCollector)
         allowedNodes = []
         for node in nodesCollector.nodes:
             if node.get_max_depth() <= max_nesting_depth: allowedNodes.append(node)
@@ -310,10 +310,10 @@ class SoftmaxSubTreeCrossover:
         child.set_parent()
 
         parent1NodeCollector = SyntaxTreeNodeCollector()
-        parent1.accept(parent1NodeCollector)
+        for node in parent1: node.accept(parent1NodeCollector)
 
         childNodeCollector = SyntaxTreeNodeCollector()
-        child.accept(childNodeCollector)
+        for node in child: node.accept(childNodeCollector)
 
         # apply softmax on child nodes.
         childNodeProbs  = np.array( [(n.match_r2) for n in parent1NodeCollector.nodes] )
@@ -339,7 +339,7 @@ class SoftmaxSubTreeCrossover:
         max_nesting_depth = self.max_depth - cross_point1_depth
         
         nodesCollector = SyntaxTreeNodeCollector()
-        parent2.accept(nodesCollector)
+        for node in parent2: node.accept(nodesCollector)
         allowedNodes = []
         for node in nodesCollector.nodes:
             if node.get_max_depth() <= max_nesting_depth: allowedNodes.append(node)
@@ -370,7 +370,7 @@ class MatchSubTreeCrossover:
         child = parent1.clone()
 
         nodesCollector = SyntaxTreeNodeCollector()
-        parent1.accept(nodesCollector)
+        for node in parent1: node.accept(nodesCollector)
         parent1_nodes = nodesCollector.nodes
         matchableNodesIdx = []
         for i, n in enumerate(parent1_nodes):
@@ -378,7 +378,7 @@ class MatchSubTreeCrossover:
                 matchableNodesIdx.append(i)
         
         nodesCollector = SyntaxTreeNodeCollector()
-        child.accept(nodesCollector)
+        for node in child: node.accept(nodesCollector)
         child_nodes = nodesCollector.nodes
 
         matchableNodes = []
@@ -394,7 +394,7 @@ class MatchSubTreeCrossover:
             best_mse = None
             parent2(matchableNodes[0].X)
             nodesCollector = SyntaxTreeNodeCollector()
-            parent2.accept(nodesCollector)
+            for node in parent2: node.accept(nodesCollector)
             
             for mn in matchableNodes:
                 for n in nodesCollector.nodes:
@@ -417,7 +417,7 @@ class MatchSubTreeCrossover:
 
 
         nodeSelector = SyntaxTreeNodeSelector(random.randrange(nnodes1))
-        child.accept(nodeSelector)
+        for node in child: node.accept(nodeSelector)
         cross_point1 = nodeSelector.node
         child.set_parent()
         if cross_point1 is None:
@@ -426,7 +426,7 @@ class MatchSubTreeCrossover:
         max_nesting_depth = self.max_depth - cross_point1_depth
         
         nodesCollector = SyntaxTreeNodeCollector()
-        parent2.accept(nodesCollector)
+        for node in parent2: node.accept(nodesCollector)
         allowedNodes = []
         for node in nodesCollector.nodes:
             if node.get_max_depth() <= max_nesting_depth: allowedNodes.append(node)
@@ -492,7 +492,7 @@ class EclipseCrossover(Crossover):
         sT = s1 + s2
 
         nodesCollector = SyntaxTreeNodeCollector()
-        child.accept(nodesCollector)
+        for node in child: node.accept(nodesCollector)
 
         backprop_nodes = []
         for node in nodesCollector.nodes:
@@ -535,7 +535,7 @@ class ApproxGeometricCrossover(Crossover):
         
         child = parent1.clone()  # TODO: avoid cloning...
         nodesCollector = SyntaxTreeNodeCollector()
-        child.accept(nodesCollector)
+        for node in child: node.accept(nodesCollector)
 
         cross_node = random.choice(nodesCollector.nodes)
 

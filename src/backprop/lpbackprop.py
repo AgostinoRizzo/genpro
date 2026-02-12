@@ -270,7 +270,8 @@ def lpbackprop(K:dataset.DataKnowledge, stree:SyntaxTree, onsynth_callback, on_k
     for deriv, stree in stree_map.items():
         stree.validate()
     for deriv, stree in stree_map.items(): aspSpecBuilder.map_root(stree, deriv)
-    for deriv, stree in stree_map.items(): stree.accept(aspSpecBuilder)
+    for deriv, stree in stree_map.items():
+        for node in stree: node.accept(aspSpecBuilder)
     stree_spec = aspSpecBuilder.spec
     #logging.debug(stree_spec)
 

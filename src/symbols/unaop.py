@@ -267,7 +267,6 @@ class UnaryOperatorSyntaxTree(SyntaxTree):
     
     def accept(self, visitor):
         visitor.visitUnaryOperator(self)
-        self.inner.accept(visitor)
     
     def to_sympy(self, dps:int=None):
         inner_sympy = self.inner.to_sympy(dps)

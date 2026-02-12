@@ -182,6 +182,10 @@ class SyntaxTree:
         #for i in range(len(self.cache)): self.cache[i] = None
         pass
     
+    def __iter__(self):
+        from symbols.iterator import DefaultIterator
+        return iter(DefaultIterator(self))
+    
     @staticmethod
     def is_invertible_path(node) -> bool:
         p = node.parent
@@ -202,7 +206,7 @@ class SyntaxTree:
         derivs_map = {(): stree.simplify()}
         for deriv in sorted(derivs):
             if len(deriv) == 0: continue
-            derivs_map[deriv] = derivs_map[deriv[:-1]].diff(deriv[-1]).simplify()
+            derivs_map[deriv] = SyntaxTree.diff( derivs_map[deriv[:-1]], (deriv[-1],) ).simplify()
         if not include_zeroth:
             del derivs_map[()]
         return derivs_map

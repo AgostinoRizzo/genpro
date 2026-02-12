@@ -42,7 +42,7 @@ def test_diff(stree, nvars):
     stree = stree.clone()
 
     unkn_collector = UnknownSyntaxTreeCollector()
-    stree.accept(unkn_collector)
+    for node in stree: node.accept(unkn_collector)
     for unkn in unkn_collector.unknowns:
         unkn.nvars = nvars
 
@@ -70,7 +70,7 @@ def test_diff(stree, nvars):
 
     for deriv, stree_deriv in derivs_map.items():
         unkn_collector = UnknownSyntaxTreeCollector()
-        stree_deriv.accept(unkn_collector)
+        for node in stree_deriv: node.accept(unkn_collector)
 
         for unkn_stree in unkn_collector.unknowns:
             unkn_stree.set_unknown_model(unkn_stree.label, unkn_model.get_deriv(unkn_stree.deriv))
@@ -119,7 +119,7 @@ def test_derivative(stree, nvars):
     stree = stree.clone()
 
     unkn_collector = UnknownSyntaxTreeCollector()
-    stree.accept(unkn_collector)
+    for node in stree: node.accept(unkn_collector)
     for unkn in unkn_collector.unknowns:
         unkn.nvars = nvars
 
@@ -148,7 +148,7 @@ def test_derivative(stree, nvars):
 
     for deriv, stree_deriv in derivs_map.items():
         unkn_collector = UnknownSyntaxTreeCollector()
-        stree_deriv.f.accept(unkn_collector)
+        for node in stree_deriv.f: node.accept(unkn_collector)
 
         for unkn_stree in unkn_collector.unknowns:
             unkn_stree.set_unknown_model(unkn_stree.label, unkn_model.get_deriv(unkn_stree.deriv))

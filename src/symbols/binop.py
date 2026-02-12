@@ -365,8 +365,6 @@ class BinaryOperatorSyntaxTree(SyntaxTree):
     
     def accept(self, visitor):
         visitor.visitBinaryOperator(self)
-        self.left.accept(visitor)
-        self.right.accept(visitor)
     
     def to_sympy(self, dps:int=None):
         left_sympy  = self.left.to_sympy(dps)

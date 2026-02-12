@@ -80,7 +80,8 @@ def test_ASPSpecBuilder(stree:SyntaxTree, nvars:int, stree_spec:str):
 
     aspSpecBuilder = ASPSpecBuilder()
     for deriv, stree in stree_map.items(): aspSpecBuilder.map_root(stree, deriv)
-    for deriv, stree in stree_map.items(): stree.accept(aspSpecBuilder)
+    for deriv, stree in stree_map.items():
+        for node in stree: node.accept(aspSpecBuilder)
     
     actual   = re.sub(r"[\s\t\n]+", '', aspSpecBuilder.spec)
     expected = re.sub(r"[\s\t\n]+", '', stree_spec)

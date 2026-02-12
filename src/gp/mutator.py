@@ -49,7 +49,7 @@ class SubtreeReplacerMutator(Mutator):
 class FunctionSymbolMutator(Mutator):
     def mutate(self, stree:SyntaxTree) -> SyntaxTree:
         nonTerminalCollector = NonTerminalSyntaxTreeCollector()
-        stree.accept(nonTerminalCollector)
+        for node in stree: node.accept(nonTerminalCollector)
         if len(nonTerminalCollector.nodes) == 0: return stree
         sub_stree = random.choice(nonTerminalCollector.nodes)
 
@@ -77,7 +77,7 @@ class NumericParameterMutator(Mutator):
     
     def mutate(self, stree:SyntaxTree) -> SyntaxTree:
         constsCollector = ConstantSyntaxTreeCollector()
-        stree.accept(constsCollector)
+        for node in stree: node.accept(constsCollector)
 
         stree.set_parent()
 
